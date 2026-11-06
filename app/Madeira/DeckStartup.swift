@@ -206,7 +206,12 @@ struct DeckStartupRoot<Content: View>: View {
                     Color.black.ignoresSafeArea()
                     if !movieFinished && movieEnabled && !reduced {
                         DeckBootMovie(sound: soundEnabled) { movieFinished = true }
-                            .ignoresSafeArea().allowsHitTesting(false)
+                            .ignoresSafeArea()
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) { movieFinished = true }
+                            .accessibilityLabel(Text("Startup animation"))
+                            .accessibilityHint(Text("Double-tap to skip the animation."))
+                            .accessibilityAction(named: Text("Skip animation")) { movieFinished = true }
                     } else {
                         VStack(spacing: 16) {
                             DeckMark().frame(width: 80, height: 80)
@@ -214,12 +219,6 @@ struct DeckStartupRoot<Content: View>: View {
                         }.frame(maxHeight: .infinity, alignment: .top).padding(.top, 44)
                     }
                     VStack {
-                        HStack {
-                            Spacer()
-                            if !movieFinished && movieEnabled && !reduced {
-                                Button("Skip animation") { movieFinished = true }.buttonStyle(DeckButtonStyle())
-                            }
-                        }
                         Spacer(minLength: 16)
                         if startup.phase == .preparing {
                             ScrollView {

@@ -177,20 +177,20 @@ expect(env("MADEIRA_EXE") == "explorer.exe" && env("MADEIRA_DESKTOP") == "1", "d
 expect(env("MADEIRA_SCREEN_W") == "1280" && env("MADEIRA_SCREEN_H") == "720", "desktop size exported")
 expect(published == (1280, 720), "desktop size published to the display shim")
 
-// A build-6 installer entry has startServices=true. Normalize it before launch
-// so explorer creates NSIS directly, without the failing cmd /c services batch.
+// Migrate old installer entries away from explorer and services wrappers.
 var installer = LibraryEntry(title: "Steam 安装程序", relativePath: "Madeira/Installers/SteamSetup.exe", bits: 32)
 installer.id = SteamClient.installerID
 installer.startServices = true
+installer.launchMode = "desktop"
 installer.arguments = "/D=C:\\Program Files\\Steam Client"
 installer.resolution = "1280x720"
 SteamClient.normalizeLaunch(&installer)
 installer.configureLaunch()
-expect(installer.servicesScript == nil && installer.runsInDesktop,
-       "saved Steam installer bypasses the services batch and stays in the desktop")
-expect(env("MADEIRA_EXE") == "explorer.exe" && env("MADEIRA_ARGS") ==
-       "/desktop=shell,1280x720 \"C:\\Madeira\\Installers\\SteamSetup.exe\" /D=C:\\Program Files\\Steam Client",
-       "Steam installer command launches the executable directly and retains the final NSIS directory argument")
+expect(installer.servicesScript == nil && !installer.runsInDesktop && installer.launchMode == "direct",
+       "saved Steam installer bypasses explorer and the services batch")
+expect(env("MADEIRA_EXE") == "C:\\Madeira\\Installers\\SteamSetup.exe" && env("MADEIRA_ARGS") ==
+       "/D=C:\\Program Files\\Steam Client" && env("MADEIRA_DESKTOP") == "0",
+       "Steam installer is the initial process and retains the final NSIS directory argument")
 var ordinaryServices = LibraryEntry(title: "Other", relativePath: "Other/setup.exe", bits: 32)
 ordinaryServices.startServices = true
 SteamClient.normalizeLaunch(&ordinaryServices)
@@ -588,6 +588,9 @@ check('LibraryView(play: launchLibraryEntry' in content, 'ContentView shows the 
 launch_entry = block(content, 'private func launchLibraryEntry(')
 check(launch_entry.index('SteamClient.normalizeLaunch(&entry)') < launch_entry.index('GameRecommendations.prepare'),
       'library starts normalize saved Steam installer profiles before recommendations and JIT continuation')
+check(launch_entry.count('SteamClient.normalizeLaunch(&entry)') == 2
+      and launch_entry.rindex('SteamClient.normalizeLaunch(&entry)') > launch_entry.index('GameRecommendations.prepare'),
+      'recommendations cannot put the installer back behind the desktop wrapper')
 check('runWineFullSequence(profile: entry)' in content and 'profile.applyEnvironment()' in content,
       'library launches use the shared launch path with the profile applied')
 check('Button("Use New Interface")' in content, 'the developer interface can switch back to the library')

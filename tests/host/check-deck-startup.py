@@ -32,6 +32,9 @@ assert home.count('Button {') == 1 and 'install: !SteamClient.installed' in home
 assert 'LibraryStatus()' not in home and 'enableJIT' not in home and 'Run Steam installer' not in home
 assert 'deckDestination != .library && deckDestination != .steam' in library
 assert 'DeckBootSettings()' in library and 'DeckComponentSetupView()' in library
+assert 'Button("Skip animation")' not in startup
+assert '.onTapGesture(count: 2) { movieFinished = true }' in startup
+assert '.accessibilityAction(named: Text("Skip animation"))' in startup
 assert 'case .graphics:' in (app / 'SettingsPages.swift').read_text()
 print('PASS: old onboarding removed, two JIT choices, one Steam home action, settings retained')
 

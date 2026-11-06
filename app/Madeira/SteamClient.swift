@@ -44,13 +44,12 @@ enum SteamClient {
         return entry
     }
 
-    /// Start the installer as explorer's direct child. The generic services
-    /// batch exited in cmd.exe before creating SteamSetup on the first iPad
-    /// test. NSIS can request its own services while installing; an otherwise
-    /// empty desktop does not need a shell script to open its initial window.
+    /// Build 9's explorer child failed while loading the native WoW64 CPU
+    /// backend. Start NSIS as the initial process so its failure is also
+    /// reported by the existing initial-process exit monitor.
     static func normalizeLaunch(_ entry: inout LibraryEntry) {
         guard entry.id == installerID else { return }
-        entry.launchMode = "desktop"
+        entry.launchMode = "direct"
         entry.startServices = false
     }
 
@@ -78,7 +77,7 @@ enum SteamClient {
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: destination(clientDirectory), withIntermediateDirectories: true)
         try data.write(to: target, options: .atomic)
-        LogStore.shared.log("[steam-installer] verified bundled SteamSetup.exe; route=explorer-direct; services-batch=off; bits=32")
+        LogStore.shared.log("[steam-installer] verified bundled SteamSetup.exe; route=initial-process; desktop=off; services-batch=off; bits=32")
     }
 
     private static func destination(_ relative: String) throws -> URL {

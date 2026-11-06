@@ -55270,6 +55270,26 @@
           }
         }
       }
+    },
+    "Startup animation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动动画"
+          }
+        }
+      }
+    },
+    "Double-tap to skip the animation.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "双击跳过动画。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -25,8 +25,9 @@ python3 tests/host/check-deck-startup.py --static-only
 ```
 
 Xcode 工程为 `app/Madeira.xcodeproj`，应用目标为 `Madeira`。
-本轮应用与 JIT 助手的构建号为 **9**，IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成。
+本轮应用与 JIT 助手的构建号为 **10**，IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成。
 此前的 `dist/native-build8/Madeira.ipa` 包含前一轮原生界面，不包含本次启动流程。
+Build 10 改为双击启动动画跳过，并直接运行 Steam 安装器，避免先启动 explorer 桌面。
 新启动流程的模型行为测试与 iOS 视图类型检查可运行
 `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer python3 tests/host/check-deck-startup.py --typecheck-ios`。
 
