@@ -367,47 +367,46 @@ instead.
 
 ## First-run setup
 
-The code is `app/Madeira/Onboarding.swift`. It uses `JITCoordinator` for the
-JIT method and validated pairing-file import, `OnDevicePairing` for in-app
-pairing (iOS 27, `docs/JIT.md`), Steam sign-in
-(`docs/STEAM_SIGNIN.md`) through `SteamSignInModel`/`SteamSignInView` (the
-token stays in sign-in's Keychain store), and Madeira Dock
-(`docs/MADEIRA_DOCK.md`) through
-`MadeiraDockModel.prepareClient()`/`MadeiraDockView`, and Wine Mono through
-`WineMonoModel` (`app/Madeira/WineMono.swift`, below).
+`app/Madeira/DeckStartup.swift` replaces the former multi-page onboarding.
+On the first launch of this frontend, it offers exactly two JIT choices:
+**Script JIT** (export madeira-jit.js and run it in StikDebug) and **Built-in JIT**
+(configure device pairing and LocalDevVPN through the existing JIT settings).
+The choice is saved in `deck.startup.jitChoice`; it is not requested again on
+subsequent launches. Built-in JIT stays unavailable under LiveContainer.
+The method can be changed later in Settings › JIT.
 
-**First-run setup.** On a new install (and once after an update that raises
-the setup revision, below) the library opens a full-screen setup: welcome, **Install LocalDevVPN** (only when it is missing: every JIT way
-reaches the device through it; **Get LocalDevVPN** opens the App Store, and
-Madeira checks again with `canOpenURL` whenever it comes back to the front),
-**Set up JIT**, **Sign in to Steam**, **Prepare Madeira Dock**
-(Valve's client components, about 73 MB, only when Dock is available),
-**Add .NET Framework support** (Wine Mono, only when the device has none),
-**Install the Visual C++ runtime** (the DLLs out of Microsoft's installers, only
-while the device lacks the pinned version), done.
-The JIT page offers three ways in, **In-app** (iOS 27 and later),
-**In-app with pairing file** and **StikDebug**, or **I'll do this later**.
-Each way opens numbered steps that tick off as they are done, with **Back to
-options**. A completed pairing or a valid pairing-file import selects Built-in
-StikJIT; it does not enable JIT yet. Steam and Dock steps have **Set up later**, and the welcome
-page has **Skip setup**. Finishing or skipping stores the setup revision
-(`madeiraOnboardingRevision`) in the app's UserDefaults, which iOS removes with
-the app. Setup opens on a new install, and once after an update whose
-`OnboardingRules.revision` is higher than the stored one; raise it in a release
-whose setup every existing install should see. Revision 2 (Install LocalDevVPN,
-in-app pairing, the Madeira JIT shortcut) also reopens setup for installs
-that finished it before revisions (`madeiraOnboardingDone`). After an update,
-setup shows only the pages added since the revision the device last saw
-(`Step.introduced`), under **New in Madeira**: revision 3 adds Wine Mono, so an
-install that finished revision 2 sees just that page, and nothing at all when
-it already has Wine Mono; revision 4 adds the Visual C++ runtime the same way.
-A new install and **Run setup again** show every page.
-The JIT page is always available; Steam pages follow their feature
-switches. Setup never opens over a running session.
+Continuing plays DroidDeck 0.6.9's original startup movie through AVPlayer
+(H.264/AAC conversion of the original 1280×720, 30 fps, approximately 6.35 s movie).
+At the same time, the first launch prepares Wine Mono, Visual C++, Wine Gecko
+and Madeira Dock's Valve client components using their existing verified
+installers. Each component has its own real download/unpacking status.
+Already available components are reused. Preparation does not start Wine or
+allocate JIT memory. The Dock host stays part of the app; its Valve client
+files are downloaded from Valve.
+
+Only a fully successful preparation writes `deck.startup.componentsReady`.
+Failures remain visible and can be retried without downloading completed
+components again. After a failed attempt, **Download later** enters the app
+without storing success; the next launch resumes preparation and retains the
+JIT choice. Settings › Launcher or Components can prepare missing components
+again. The former welcome, Steam-login, shortcut, per-runtime setup pages and
+**Run setup again** buttons have been removed. `MADEIRA_ONBOARDING` and the old
+revision keys no longer control this flow.
+
+Subsequent cold launches play only the startup movie before entering the
+frontend. Settings › Launcher controls movie playback and startup sound and
+provides a preview. The movie pauses in the background, releases its player
+on exit and is skipped when Reduce Motion is enabled. A playback failure or
+stall cannot block the frontend indefinitely.
+
+The Steam home page exposes one **Start Steam** action. Until the separate
+interactive Steam client exists, it opens the included installer and explains
+that first-launch behavior below the button. Settings and the other native
+pages remain accessible in the sidebar.
 
 **Wine Mono** (`app/Madeira/WineMono.swift`). Games built on .NET Framework
 start through Wine's mscoree, which needs Wine Mono at `C:\windows\mono\mono-2.0`.
-Release builds do not carry it; setup's Wine Mono page and **Settings › .NET
+Release builds do not carry it; first-launch preparation and **Settings › .NET
 Framework** download it from WineHQ (`wine-mono-<ver>-x86.tar.xz`, about 42 MB,
 pinned by SHA-256 in `build/wine-mono/pin.sh`), unpack it on the device with
 Apple's LZMA decoder and a small tar reader, without the compile-time
@@ -423,8 +422,8 @@ code on the real tarball. Log tag: `[wine-mono]`.
 games need Microsoft's Visual C++ 2015-2022 runtime. Builds made with
 `tools/fetch-vcruntime.sh` carry its x64 DLLs in the app bundle and link them
 over Wine's builtins at every session (`WineProcessBridge.m`, 64-bit games only;
-`Documents/vcruntime` is consulted first). Setup's **Install the Visual C++
-runtime** page and **Settings › Visual C++ runtimes** get the runtime onto any
+`Documents/vcruntime` is consulted first). First-launch preparation
+and **Settings › Visual C++ runtimes** get the runtime onto any
 build, for 64-bit and 32-bit games, without a Windows session: the app downloads
 Microsoft's two installers (`VC_redist.x64.exe` and `VC_redist.x86.exe`, version
 14.44.35211.0, about 38 MB) from their versioned
@@ -554,7 +553,6 @@ menu owns input, the game sees a connected pad at rest.
 | `MADEIRA_SESSION_TOOLS` | on | no Aspect & scaling (a session does not save it) and no Diagnostics in the in-game menu |
 | `MADEIRA_SESSION_DIAGNOSTICS` | off | `1` shows the in-game menu's Diagnostics: frame capture (render-target pixels to `Documents/capture`) and GPU sync, for Direct3D 12 games |
 | `MADEIRA_FRONTEND_KEYBOARD` | on | Keyboard opens the game view's own keyboard instead of the key window |
-| `MADEIRA_ONBOARDING` | on | first-run setup never opens, and Settings › JIT/Steam have no **Run setup again** |
 | `MADEIRA_LIBRARY_COLLAPSE` | on | the **Steam** and **Other games** titles do not collapse (**Not installed** still folds) |
 | `MADEIRA_LIBRARY_TABS` | on | no store tabs: every section on one page |
 | `MADEIRA_LIBRARY_AMBIENT` | on | no ambient light around the library's grid cards |
@@ -594,10 +592,12 @@ in-game menu options), `tests/host/check-runtime-settings.py`
 `tests/host/check-library-api.py` (renderer detection and the badge).
 `tests/host/check-jit-pool-meter.py` covers the JIT memory field's parsing
 (split pools, the small-pool note) and that it counts with Live logs off.
-`tests/host/check-onboarding.py` covers first-run setup: the JIT choices,
-pairing import, pages with and without Dock, the done key, the
-`MADEIRA_ONBOARDING` switch, and the wiring (no Wine session, no pool or
-engine switch; JIT, sign-in and Dock through their public pieces).
+`tests/host/check-deck-startup.py` compiles the actual startup models with
+fake component installers and checks persistent JIT choice, cached components,
+partial failures, retries, deferral, active-session refusal and missing Dock.
+It checks the packaged movie hash and native routes; `--typecheck-ios` also
+checks the new SwiftUI views and AVPlayer bridge against the iOS SDK with
+stubbed dependencies. `check-onboarding.py` forwards to these replacement checks.
 `tests/host/check-vcredist.py` covers the Visual C++ runtime: the pins, the
 cabinet reader over the real installers, the PE checks, the staged install and
 the wiring.

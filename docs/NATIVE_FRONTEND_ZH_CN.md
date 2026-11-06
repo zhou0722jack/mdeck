@@ -27,12 +27,13 @@
 ## 现有页面与按钮的保留方式
 
 原有界面的源码清单见 `native-ui-inventory.json`。清单以原生基线提交生成，
-覆盖 39 个文件中的 174 个原生视图类型及按钮/开关/选择器的直接文本。
-该清单用于发现误删，并不等同于 174 个页面全部完成实机测试。
+原始清单覆盖 39 个文件中的 174 个原生视图类型及按钮/开关/选择器的直接文本。
+本轮按用户要求移除 `OnboardingView`，其余 173 个原有视图继续保留。
+该清单用于发现误删，并不等同于全部页面完成实机测试。
 
 | 前一版设计区域 | 原生实现与功能来源 | 保留的原有入口 |
 | --- | --- | --- |
-| Steam 首页 | `LibraryView.deckSteamHome`；真实 `SteamClient` 启动 | Steam 安装器、客户端启动、JIT、Steam 与 Dock 设置 |
+| Steam 首页 | `LibraryView.deckSteamHome`；真实 `SteamClient` 启动 | 只显示“启动 Steam”；未安装时自动打开安装程序，其余设置保留在侧栏 |
 | 游戏库 | `LibraryView.library` / `zoomableLibrary`，原有游戏模型 | 搜索、排序、分组、紧凑布局、可缩放网格、添加 EXE |
 | 商店 | `deckStores`、各商店原生设置和原有游戏库分区 | Steam、GOG、Epic、itch.io、EA 登录与库、Workshop |
 | 桌面 | `deckDesktop`、原来的桌面 `LibraryEntry` | 打开桌面、桌面配置、指针、显示、图形、内存、外部盘 |
@@ -42,33 +43,34 @@
 | 更新 | `deckUpdates`，真实 Steam 下载状态 | 刷新、下载状态、各游戏原有的更新/修复/管理入口 |
 | 游戏详情 | 原生详情头、页签与 `pageSections` | 显示、手柄、启动、兼容性、Steam/DLC、云、Workshop、GOG、itch、成就、文件和高级设置 |
 | 运行中面板 | `LibraryHUD` 原生窗口覆盖层 | 全部既有性能、显示、触控、手柄映射、陀螺仪、退出按钮 |
-| 首次配置与 JIT | 原来的原生引导和配对页面，应用新按钮样式 | 外部脚本、内置 JIT、配对、LocalDevVPN、快捷指令 |
+| 首次启动与 JIT | `DeckStartupRoot` / `DeckJITChoiceView` / `DeckComponentPreparation` | 首次提供脚本、内置两种 JIT；旧的多页引导已删除，配对和网络设置保留 |
 
 没有对应新设计的功能不删除：旧详情导航、共享/应用配置、复制配置、
 帮助、推荐设置重置、开发者界面等仍可从各自的原生页面打开。
 原来的高级设置开关和页面分组开关也保留。
 
 反过来，移植稿有而 mdeck 尚无实现的入口，也以原生按钮保留，包括
-Flathub、开机动画、智能眼镜、头部追踪、校准、空间设置和应用更新。
+Flathub、智能眼镜、头部追踪、校准、空间设置和应用更新。
+开机动画已接入 DroidDeck 原始视频、音效开关和原生预览。
 这些按钮标为“待接入”，点击只说明当前状态，不伪造成功结果或操作设备。
 更新页的游戏刷新和已有下载状态则仍连接原来的 Steam 模型。
 
+## 本轮启动流程
+
+首次打开：选择脚本或内置 JIT → DroidDeck 启动动画，同时准备四项组件 → Steam 首页。
+后续冷启动只播放动画，不重复选择或下载。缺失组件的失败重试和设置入口见
+[启动流程说明](STARTUP_ZH_CN.md)。下载复用原有校验、解压与安装服务。
+Madeira Dock 的宿主随包提供，首次下载的是它需要的 Valve 客户端组件。
+
 ## 验证范围
 
-本轮执行：
+已通过原生路由与原控件保留检查、简体中文目录检查、JIT 方式/配对/网络检查、
+首次启动模型行为测试、iOS SDK 下新启动视图及 AVPlayer 桥接的类型检查，
+以及改动 Swift 源码的语法解析和工程 plist 检查。
+启动视频共 190 帧，转码前后的画面 SSIM 为 0.995711，原始视频和产物均记录哈希。
 
-```sh
-python3 tests/host/check-native-deck.py
-python3 tests/host/check-localization.py --static-only
-python3 tests/host/check-jit-method.py
-python3 tests/host/check-jit-network.py --static-only
-python3 tests/host/check-onboarding.py --static-only
-```
-
-原生检查核对视图与按钮文本保留、原有 UI 源码仍在应用目标中、共享 scheme
-指向正确的应用 target，以及新入口不再使用网页壳。还执行了 Swift 源码
-语法解析和 Xcode 工程 plist 格式检查；语法解析不生成二进制。
-
-遵照“先不构建”，没有类型检查整个原生工程、链接原生库、构建或安装 IPA。
-旧的网页预览与截图只表示视觉参考，不能作为本轮原生界面的运行截图。
-实际 SwiftUI 布局、手柄焦点、弹窗层级和设备运行效果仍须下一次获准构建后验证。
+IPA 构建使用 GitHub Actions 的 `Build IPA` 工作流，当前构建号为 9。
+以上源码检查不能代替完整编译；原生页面实际布局、音效、网络下载及 iPad 上的
+Steam 启动还须通过实机验证。
+`dist/native-build8/Madeira.ipa` 是此前的原生前端包，不包含这次的启动流程改动。
+旧网页预览与截图只表示视觉参考。

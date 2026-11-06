@@ -68,15 +68,14 @@ for source in APP.rglob("*.swift"):
         chinese(key)
 print("PASS: every L/LF call resolves to a translated catalog entry")
 
-# The onboarding helpers accept localized keys but are not recognized as SwiftUI
-# APIs by the extractor. Keep their static titles and interpolated steps covered.
-onboarding = (APP / "Onboarding.swift").read_text()
-for match in re.finditer(r'\b(?:point|header|primary|secondary)\(\s*(?:\d+\s*,\s*)?(' + literal + ')', onboarding):
-    raw_key = re.sub(r'\\\([^)]*\)', '%@', match[1])
-    key = json.loads(raw_key)
-    assert key in strings, f"Onboarding helper: missing {key}"
-    chinese(key)
-print("PASS: onboarding helper titles, steps and linked instructions are translated")
+# The startup choice helper receives localization keys as arguments.
+startup = (APP / "DeckStartup.swift").read_text()
+for title, detail in re.findall(r'choice\(\.\w+, title: (' + literal + r'), symbol: ' + literal + r',\s*detail: (' + literal + r')', startup):
+    for raw in [title, detail]:
+        key = json.loads(raw)
+        assert key in strings, f"Startup choice: missing {key}"
+        chinese(key)
+print("PASS: startup JIT choice titles and descriptions have Chinese translations")
 
 if args.static_only:
     print("SKIP: Xcode compilation and runtime bundle checks (--static-only)")

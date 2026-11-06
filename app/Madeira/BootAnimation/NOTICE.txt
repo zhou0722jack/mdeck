@@ -1,0 +1,13 @@
+DroidDeck startup movie
+
+Source: https://github.com/Droid-Deck/DroidDeck
+Tag: 0.6.9
+Commit: 0a07926ef3477c90db911d169904137cfc5e2505
+Original: app/src/main/assets/steam-startup/droiddeck-startup.webm
+Copyright remains with the DroidDeck contributors.
+Distributed under the upstream GPL-3.0 license; see LICENSE-DroidDeck.txt.
+
+Modified for Madeira: converted VP8/Opus WebM to H.264/AAC MP4 for native
+iOS playback. Original picture, audio, 1280x720 resolution, 30 fps timing
+and approximately 6.35 second duration retained. No logo or audio redesign.
+Source and output SHA-256 values are recorded in docs/droiddeck-startup-asset.json.

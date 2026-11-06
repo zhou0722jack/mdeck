@@ -6,6 +6,11 @@
 Steam、游戏库、商店、桌面、组件、应用、设置、更新均使用原来的 mdeck
 数据和功能入口。没有对应新设计的页面、开关和按钮继续保留。
 
+本轮加入 DroidDeck 原版启动动画。首次打开只选择“脚本 JIT / 内置 JIT”，
+随后自动准备 Wine Mono、Visual C++、Wine Gecko 和 Madeira Dock 客户端组件。
+Steam 首页只保留“启动 Steam”；原来的多页新手引导已移除。
+流程说明见 [首次启动与组件准备](docs/STARTUP_ZH_CN.md)。
+
 详细映射、源码检查和验证限制见
 [原生前端重构说明](docs/NATIVE_FRONTEND_ZH_CN.md)。
 
@@ -16,12 +21,14 @@ python3 tests/host/check-native-deck.py
 python3 tests/host/check-localization.py --static-only
 python3 tests/host/check-jit-method.py
 python3 tests/host/check-jit-network.py --static-only
-python3 tests/host/check-onboarding.py --static-only
+python3 tests/host/check-deck-startup.py --static-only
 ```
 
 Xcode 工程为 `app/Madeira.xcodeproj`，应用目标为 `Madeira`。
-已恢复原生 Wine/FEX/JIT 和商店依赖；本轮没有构建、链接或安装 IPA。
-`dist` 中的旧 IPA 不包含本轮的原生重构。
+本轮应用与 JIT 助手的构建号为 **9**，IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成。
+此前的 `dist/native-build8/Madeira.ipa` 包含前一轮原生界面，不包含本次启动流程。
+新启动流程的模型行为测试与 iOS 视图类型检查可运行
+`DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer python3 tests/host/check-deck-startup.py --typecheck-ios`。
 
 ## 视觉参考
 

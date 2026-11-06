@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D3C000000000000000000102 /* DeckStartup.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C000000000000000000202 /* DeckStartup.swift */; };
+		D3C000000000000000000103 /* BootAnimation in Resources */ = {isa = PBXBuildFile; fileRef = D3C000000000000000000203 /* BootAnimation */; };
 		D3C000000000000000000101 /* DeckDesign.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C000000000000000000201 /* DeckDesign.swift */; };
 		A1000E07 /* EpicCloudSaves.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000E07 /* EpicCloudSaves.swift */; };
 		A1000E06 /* EpicCloud.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000E06 /* EpicCloud.swift */; };
@@ -289,6 +291,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D3C000000000000000000202 /* DeckStartup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckStartup.swift; sourceTree = "<group>"; };
+		D3C000000000000000000203 /* BootAnimation */ = {isa = PBXFileReference; lastKnownFileType = folder; path = BootAnimation; sourceTree = "<group>"; };
 		D3C000000000000000000201 /* DeckDesign.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckDesign.swift; sourceTree = "<group>"; };
 		A2000E07 /* EpicCloudSaves.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftEpic/EpicCloudSaves.swift"; sourceTree = "<group>"; };
 		A2000E06 /* EpicCloud.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "EpicCloud.swift"; sourceTree = "<group>"; };
@@ -720,6 +724,8 @@
 				A2000519 /* SteamLog.swift */,
 				A2000001 /* MadeiraApp.swift */,
 				D3C000000000000000000201 /* DeckDesign.swift */,
+				D3C000000000000000000202 /* DeckStartup.swift */,
+				D3C000000000000000000203 /* BootAnimation */,
 				A2000245 /* TouchGamepad.swift */,
 				A2000F01 /* GestureZones.swift */,
 				A2000246 /* TouchControlPresets.swift */,
@@ -1025,6 +1031,7 @@
 				A1000082 /* x86_64-opengl in Resources */,
 				A1000040 /* prefix-template.tar.gz in Resources */,
 				A1000094 /* cacert.pem in Resources */,
+				D3C000000000000000000103 /* BootAnimation in Resources */,
 				A1009C03 /* Localizable.xcstrings in Resources */,
 				A1000910 /* Assets.xcassets in Resources */,
 				B1000004 /* madeira-jit.js in Resources */,
@@ -1189,6 +1196,7 @@
 				A1000519 /* SwiftSteam/Helpers/SteamLog.swift in Sources */,
 				A1000001 /* MadeiraApp.swift in Sources */,
 				D3C000000000000000000101 /* DeckDesign.swift in Sources */,
+				D3C000000000000000000102 /* DeckStartup.swift in Sources */,
 				A1000245 /* TouchGamepad.swift in Sources */,
 				A1000F01 /* GestureZones.swift in Sources */,
 				A1000246 /* TouchControlPresets.swift in Sources */,
@@ -1367,7 +1375,7 @@
 				CODE_SIGN_ENTITLEMENTS = Madeira/Madeira.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
@@ -1419,7 +1427,7 @@
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = ("$(inherited)", "$(MADEIRA_VULKAN_LDFLAGS)");
 				CODE_SIGN_ENTITLEMENTS = Madeira/Madeira.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
@@ -1469,7 +1477,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/Frameworks/StikJIT.xcframework/ios-arm64";
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1500,7 +1508,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 8;
+				CURRENT_PROJECT_VERSION = 9;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/Frameworks/StikJIT.xcframework/ios-arm64";
 				GENERATE_INFOPLIST_FILE = NO;

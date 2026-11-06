@@ -1,0 +1,16 @@
+{
+  "repository": "https://github.com/Droid-Deck/DroidDeck",
+  "tag": "0.6.9",
+  "commit": "0a07926ef3477c90db911d169904137cfc5e2505",
+  "source": "app/src/main/assets/steam-startup/droiddeck-startup.webm",
+  "sourceSHA256": "7da5ceeb892a1328ed36fb7b40708eb03ef7ca74f1fbaa713f5631ba4a5b0d00",
+  "output": "app/Madeira/BootAnimation/droiddeck-startup.mp4",
+  "outputSHA256": "650bae70644bf4c607878f3bed03172b59cd676841d968886664e9ade1af7000",
+  "conversion": "ffmpeg -i droiddeck-startup.webm -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart droiddeck-startup.mp4",
+  "width": 1280,
+  "height": 720,
+  "framesPerSecond": 30,
+  "videoFrames": 190,
+  "durationSeconds": 6.35,
+  "license": "GPL-3.0, upstream LICENSE included in BootAnimation"
+}

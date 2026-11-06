@@ -15,18 +15,25 @@ inventory = json.loads((ROOT / "docs/native-ui-inventory.json").read_text())
 count = 0
 for record in inventory["files"]:
     source = (ROOT / record["file"]).read_text()
+    removed = inventory.get("intentionalRemovals", {}).get(record["file"], {})
     for name in record["views"]:
+        if name in removed.get("views", []):
+            assert not re.search(r"\b(?:struct|class)\s+" + re.escape(name) + r"\b", source)
+            continue
         assert re.search(r"\b(?:struct|class)\s+" + re.escape(name) + r"\b", source), (record["file"], name)
         count += 1
     for label in record["controlLabels"]:
+        if label in removed.get("controlLabels", []):
+            continue
         assert '"' + label + '"' in source, (record["file"], "Missing original control", label)
-print(f"PASS: {count} existing native view types and their literal control labels retained")
+print(f"PASS: {count} existing native view types retained; original onboarding intentionally removed")
 
 project = (ROOT / "app/Madeira.xcodeproj/project.pbxproj").read_text()
 assert "DroidDeckShell.swift" not in project
 assert "DroidDeckUI" not in project
 assert "DroidDeckInfo.plist" not in project
 assert "DeckDesign.swift in Sources" in project
+assert "DeckStartup.swift in Sources" in project and "BootAnimation in Resources" in project
 for name in ["ContentView.swift", "Library.swift", "JITSetup.swift", "SteamGames.swift", "SettingsPages.swift", "SteamClient.swift"]:
     assert name + " in Sources" in project, name
 ids = re.findall(r"^\s*([A-F0-9]+) /\*.*?\*/ = \{", project, re.M)
@@ -46,19 +53,22 @@ print("PASS: restored native app target, existing UI sources and matching scheme
 app = (APP / "MadeiraApp.swift").read_text()
 library = (APP / "Library.swift").read_text()
 design = (APP / "DeckDesign.swift").read_text()
-assert "DeckThemeHost { ContentView() }" in app
+assert "DeckThemeHost { DeckStartupRoot { ContentView() } }" in app
 assert "DroidDeckShell()" not in app
 assert "WebKit" not in design and "WKWebView" not in design
 for route in ["steam", "library", "stores", "desktop", "components", "apps", "settings", "updates", "diagnostics"]:
     assert "case ." + route + ":" in library
 for page in [".steam", ".gog", ".itch", ".epic", ".ea", ".graphics", ".display", ".memory", ".jit", ".signing", ".saves", ".drives", ".advanced", ".credits"]:
     assert page in (APP / "SettingsPages.swift").read_text()
-assert "SteamClient.entry(install: false)" in library and "SteamClient.entry(install: true)" in library
+assert "SteamClient.entry(install: !SteamClient.installed)" in library
+client = (APP / "SteamClient.swift").read_text()
+assert "SteamClient.entry(install: false)" in client and "SteamClient.entry(install: true)" in client
 assert "pageSections(selection)" in library and "SteamWorkshopSections(appID:" in library
 assert "GameSetupShareSheet(entry:" in library and "GameSetupApplySheet(setup:" in library
 assert "DeckSetupTabs(selected: $deckSetupTab)" in library
 assert "session.current != nil || scenePhase != .active" in design
-for label in ["Flathub", "Boot animation", "Smart glasses", "Head tracking", "Calibration", "Spatial setup", "Check for updates"]:
+assert "DeckBootSettings()" in library
+for label in ["Flathub", "Smart glasses", "Head tracking", "Calibration", "Spatial setup", "Check for updates"]:
     assert 'DeckPendingFeatureButton(title: L("' + label + '")' in library, label
 assert "case .workshop:" in library and "case .iniFiles:" in library
 print("PASS: native routes retain Steam, JIT, Workshop, cloud and shared-setup actions")

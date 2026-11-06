@@ -109,8 +109,8 @@ def tar_xz(entries, fmt):
 
 with tempfile.TemporaryDirectory(prefix='madeira-wine-mono-') as tmp:
     tmp = Path(tmp)
-    (tmp / 'driver.swift').write_text(driver)
-    built = subprocess.run(['xcrun', 'swiftc', '-O', str(tmp / 'driver.swift'), '-o', str(tmp / 'driver')],
+    (tmp / 'main.swift').write_text(driver)
+    built = subprocess.run(['xcrun', 'swiftc', '-O', str(root / 'app/Madeira/Localization.swift'), str(tmp / 'main.swift'), '-o', str(tmp / 'driver')],
                            capture_output=True, text=True)
     check(built.returncode == 0, 'the installer part of WineMono.swift compiles on the host (Foundation, Compression, CryptoKit only)'
           + ('' if built.returncode == 0 else '\n' + built.stderr[-2000:]))
@@ -183,8 +183,9 @@ check('guard try WineMonoInstaller.sha256(of: archive) == WineMonoPin.tarSHA256'
       and swift.index('WineMonoInstaller.sha256(of: archive)') < swift.index('WineMonoInstaller.unpack(tarXZ: archive')
       and 'try fm.moveItem(at: staging, to: runtime)' in swift,
       'the download is checked before it is unpacked, and installed by one rename')
-check('case .wineMono: wineMonoPage' in onboarding and 'mono.install()' in onboarding,
-      'setup: the Wine Mono page downloads it')
+startup = (root / 'app/Madeira/DeckStartup.swift').read_text()
+check('case .mono: WineMonoModel.shared.install()' in startup and 'return WineMonoModel.available' in startup,
+      'first launch downloads missing Wine Mono through the existing verified installer')
 check('WineMonoSettingsSection()' in library, 'Settings: .NET Framework')
 check('A1000711 /* WineMono.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000711' in project
       and 'path = "WineMono.swift"' in project and project.count('A2000711 /* WineMono.swift */,') == 1

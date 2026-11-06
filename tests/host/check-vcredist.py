@@ -8,7 +8,7 @@
 Checks:
   * the pins: two packages (x64, x86) on download.visualstudio.microsoft.com over https,
     each URL carrying its own SHA-256, sizes and version set;
-  * the wiring: setup's page with Set up later and revision 4, the Settings section behind
+  * the wiring: first-launch component preparation, the Settings section behind
     the switch, the bridge's x86 overlay and its switch, the bridging header, the Xcode
     project entries for the three new files, the catalog entries, no Wine session anywhere;
   * compiled with the host C compiler and swiftc (CabinetReader.c, zlib, and the
@@ -61,15 +61,11 @@ require(redist.count('"vcruntime140_1.dll"') >= 2 and 'arch == "x86" ? dllNames.
         "x86 expects no vcruntime140_1.dll (Microsoft ships none)")
 
 # ------------------------------------------------------------------ static: wiring
-require('case welcome, localDevVPN = "localdevvpn", jit, signIn = "sign-in", dockClient = "dock-client",\n'
-        '             wineMono = "wine-mono", vcRedist = "vc-redist", done' in onboarding
-        and "case .vcRedist: return 4" in onboarding and "static let revision = 4" in onboarding,
-        "setup: the vc-redist step, introduced by revision 4")
-page = block(onboarding, "private var vcRedistPage: some View {")
-require('secondary("Set up later") { model.next() }' in page and "redist.install()" in page and "No Windows session" in page,
-        "setup page: Set up later, install through the model, says no session runs")
-require("case .vcRedist: vcRedistPage" in onboarding and "offerVCRedist = Self.vcRedistOffered()" in onboarding,
-        "setup shows the page while the device lacks the runtime")
+startup = (APP / "DeckStartup.swift").read_text()
+require('case .visualCPP: VCRedistModel.shared.install()' in startup,
+        "first launch prepares Visual C++ through the verified installer")
+require('VCRedistModel.shared.refresh()' in startup and 'return VCRedistModel.shared.complete' in startup,
+        "first launch verifies the installed runtime and skips existing files")
 require("VCRedistSettingsSection()" in library and "VCRedistModel.enabled" in library, "Settings: the section, behind the switch")
 require('MadeiraConfig.flag("MADEIRA_VCREDIST")' in redist, "the feature switch is read through MadeiraConfig.flag")
 for forbidden in ["runWineFullSequence", "launchRequest", "wine_process_start", "MADEIRA_EXE", "install.cmd", "startSetupSession"]:
@@ -90,6 +86,10 @@ require('key: "env.MADEIRA_VCREDIST"' in catalog and 'key: "env.MADEIRA_VCREDIST
 require(not re.search(r'LogStore.shared.log\([^\n]*\\\((account|token|signIn|url|path)', redist), "no account, token or path in a log line")
 
 # ------------------------------------------------------------------ compiled
+if "--static-only" in sys.argv:
+    print("SKIP: compiled installer checks (--static-only)")
+    sys.exit(1 if failures else 0)
+
 SWIFTC = os.environ.get("SWIFTC") or shutil.which("swiftc") or str(Path.home() / ".local/share/swiftly/bin/swiftc")
 CC = os.environ.get("CC") or shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
 if not Path(SWIFTC).exists() or not CC:
@@ -199,7 +199,7 @@ func expect(_ c: Bool, _ what: String) { print((c ? "ok   " : "FAIL ") + what); 
             require(False, "CabinetReader.c compiles with -Wall -Wextra -Werror")
         else:
             build = subprocess.run([SWIFTC, "-parse-as-library", "-swift-version", "5", "-import-objc-header", str(APP / "CabinetReader.h"),
-                                    "-o", str(tmp / "check"), str(tmp / "redist.swift"), str(tmp / "checks.swift"), str(tmp / "cab.o"), "-lz"],
+                                    "-o", str(tmp / "check"), str(APP / "Localization.swift"), str(tmp / "redist.swift"), str(tmp / "checks.swift"), str(tmp / "cab.o"), "-lz"],
                                    capture_output=True, text=True)
             if build.returncode != 0:
                 print(build.stderr[-4000:])

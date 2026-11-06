@@ -12,6 +12,7 @@ dependency license texts are in `LICENSES/`. See "Why GPL-3.0-or-later" below.
 
 | Component | Upstream license | **Madeira's fork** | Notes |
 |---|---|---|---|
+| **DroidDeck startup movie** (0.6.9) | GPL-3.0 | H.264/AAC conversion for iOS | Original picture, timing and audio from `Droid-Deck/DroidDeck` commit `0a07926ef3477c90db911d169904137cfc5e2505`. Copyright remains with the DroidDeck contributors. Movie, source notice and license ship in `BootAnimation/`; hashes in `docs/droiddeck-startup-asset.json`. |
 | **Wine** | LGPL-2.1-or-later | **GPL-3.0-or-later** | Fork relicensed under LGPL-2.1 §3, which expressly permits applying the ordinary GPL to a copy. `ntdll`, `wineserver`, `win32u`, ARM64EC loader modified for iOS. |
 | **FEX-Emu** | MIT | upstream MIT + **modifications GPL-3.0-or-later** | Forked. x86-64 → ARM64 translation. |
 | **DXMT** | MIT | upstream MIT + **modifications GPL-3.0-or-later** | Forked. D3D11 → Metal. |

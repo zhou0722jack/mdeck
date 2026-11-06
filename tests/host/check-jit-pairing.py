@@ -9,8 +9,8 @@
 2. Source checks: the app advertises through mDNSResponder (no multicast
    entitlement), only on iOS 27 and later, keeps the session alive until the
    accept returns, stores the result through the same validation as an import,
-   logs no PIN or device name, and offers the three JIT choices in both setup
-   screens; Info.plist, the Xcode project, .gitignore and the notices are in
+   logs no PIN or device name, and retains device pairing behind the built-in
+   JIT choice; Info.plist, the Xcode project, .gitignore and the notices are in
    step.
 """
 from pathlib import Path
@@ -117,14 +117,13 @@ require(bool(plist.get('NSLocalNetworkUsageDescription')), 'Info.plist explains 
 require('$(PRODUCT_BUNDLE_IDENTIFIER).pairing.*' in plist.get('BGTaskSchedulerPermittedIdentifiers', []),
         'Info.plist permits the pairing background task')
 
-# ------------------------------------------------------------------ the three choices
-choices = block(onboarding, 'private var jitChoices')
-require(all(f'jitChoice("{title}"' in choices for title in ['In-app', 'In-app with pairing file', 'StikDebug'])
-        and 'enabled: OnDevicePairing.isSupported' in choices,
-        'setup: In-app (iOS 27), In-app with pairing file, StikDebug')
-require('OnDevicePairingPanel()' in block(onboarding, 'private var onDeviceGuide')
-        and 'pairing.start()' in block(onboarding, 'private func startPairing'),
-        'setup: the on-device guide pairs and shows its progress')
+# ------------------------------------------------------------------ replacement startup and pairing settings
+startup = (app / 'DeckStartup.swift').read_text()
+require('choice(.externalScript' in startup and 'choice(.builtIn' in startup
+        and 'JITMethod.launcherChoices' in setup,
+        'startup offers script and built-in JIT; Settings uses the same two choices')
+require('OnDevicePairingPanel()' in block(setup, 'struct JITSetupView: View'),
+        'built-in JIT settings retain the pairing progress panel')
 require('pairing.start()' in block(setup, 'struct JITSetupView: View'), 'Settings › JIT setup can pair on the device')
 
 # ------------------------------------------------------------------ packaging

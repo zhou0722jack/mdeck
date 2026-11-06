@@ -12,6 +12,8 @@ enum JITMethod: String, CaseIterable, Identifiable {
     case stikDebug
     case builtIn
 
+    static let launcherChoices: [JITMethod] = [.externalScript, .builtIn]
+
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -620,13 +622,12 @@ enum LocalDevVPN {
 
 struct JITSettingsSection: View {
     @ObservedObject private var coordinator = JITCoordinator.shared
-    @ObservedObject private var onboarding = OnboardingModel.shared
     @ObservedObject private var shortcut = JITNetworkShortcut.shared
 
     var body: some View {
         Section {
             Picker("JIT method", selection: $coordinator.method) {
-                ForEach(JITMethod.allCases) { method in
+                ForEach(JITMethod.launcherChoices) { method in
                     Text(method.title).tag(method)
                 }
             }
@@ -635,13 +636,6 @@ struct JITSettingsSection: View {
                 coordinator.showSetup = true
             } label: {
                 Label("JIT setup", systemImage: "bolt.badge.clock")
-            }
-            if onboarding.available {
-                Button {
-                    onboarding.rerun()
-                } label: {
-                    Label("Run setup again", systemImage: "wand.and.stars")
-                }
             }
             if coordinator.method == .automatic {
                 Text(coordinator.automaticDescription)
@@ -742,7 +736,7 @@ struct JITSetupView: View {
             Form {
                 Section {
                     Picker("Method", selection: $coordinator.method) {
-                        ForEach(JITMethod.allCases) { method in
+                        ForEach(JITMethod.launcherChoices) { method in
                             Text(method.title).tag(method)
                         }
                     }

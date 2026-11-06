@@ -713,5 +713,16 @@
         "Remove Wine Mono"
       ]
     }
-  ]
+  ],
+  "intentionalRemovals": {
+    "app/Madeira/Onboarding.swift": {
+      "views": [
+        "OnboardingView"
+      ],
+      "controlLabels": [
+        "Use it for JIT"
+      ],
+      "reason": "User requested removal of the original onboarding; replaced by DeckStartup.swift."
+    }
+  }
 }

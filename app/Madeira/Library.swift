@@ -3310,8 +3310,7 @@ struct LibraryView: View {
     @ObservedObject private var jitState = LibraryJITState.shared
     /// Madeira Dock's start, for Settings › Steam (Onboarding.swift).
     var startDock: (DockGame, Bool) -> Void = { _, _ in }
-    /// First-run setup (Onboarding.swift).
-    @ObservedObject private var onboarding = OnboardingModel.shared
+    @State private var deckComponentSetup = false
     @ObservedObject private var jit = JITCoordinator.shared
     /// The library's error is a JIT connection problem with a fix to offer.
     private var jitProblem: JITCoordinator.ConnectionProblem? {
@@ -3428,12 +3427,10 @@ struct LibraryView: View {
         .modifier(SigningRefreshOffer())
         // A setup opened from Files, a chat or a madeira://setup link (GameSetupShare.swift).
         .modifier(GameSetupInboxPresenter())
-        .fullScreenCover(isPresented: $onboarding.presented) { OnboardingView() }
+        .sheet(isPresented: $deckComponentSetup) { DeckComponentSetupView() }
         .onAppear {
             // An ended desktop session's surface never stays over the library.
             EndedSessionSurface.install(); EndedSessionSurface.hide(reason: "library-appeared")
-            // First-run setup opens once on a new install.
-            onboarding.presentIfNeeded()
         }
         .onAppear {
             LogStore.shared.log("[library-sections] native-steam=\(SteamOwnedLibrary.enabled ? 1 : 0) sections=\(SteamGamesSection.shown ? 1 : 0) collapse=\(SteamGamesSection.collapsible ? 1 : 0)")
@@ -3449,7 +3446,7 @@ struct LibraryView: View {
             deckSettingFocus = deckSettingChoices.first
         }
         .onReceive(controller.commands) { command in
-            guard selected == nil, !browser, !onboarding.presented, deckSettingsPage == nil,
+            guard selected == nil, !browser, !deckComponentSetup, deckSettingsPage == nil,
                   !deckWorkshop, !steamClientPresented, settingsSheet == nil else { return }
             if command == "tab" {
                 let routes = DeckDestination.allCases
@@ -3716,7 +3713,7 @@ struct LibraryView: View {
         }
         .refreshable { await SteamGamesSection.refresh() }
         .onReceive(controller.commands) { command in
-            guard tab == 0, selected == nil, !browser, !onboarding.presented else { return }
+            guard tab == 0, selected == nil, !browser, !deckComponentSetup else { return }
             let items = focusOrder
             let ids = [LibraryEntry.desktopID] + items.map(\.id)
             let index = ids.firstIndex(where: { $0 == focused }) ?? 0
@@ -3807,7 +3804,7 @@ struct LibraryView: View {
                         open: { selected = $0 },
                         desktop: { AnyView(desktopButton) })
         .onReceive(controller.commands) { command in
-            guard tab == 0, selected == nil, !browser, !onboarding.presented else { return }
+            guard tab == 0, selected == nil, !browser, !deckComponentSetup else { return }
             let items = focusOrder
             let ids = [LibraryEntry.desktopID] + items.map(\.id)
             let index = ids.firstIndex(where: { $0 == focused }) ?? 0
@@ -3980,7 +3977,7 @@ private extension LibraryView {
             if deckDestination == .settings || deckDestination == .components || deckDestination == .diagnostics {
                 DeckIconButton(title: L("All settings"), symbol: "slider.horizontal.3") { settingsSheet = .allSettings }
             }
-            if deckDestination != .library {
+            if deckDestination != .library && deckDestination != .steam {
                 Button(action: enableJIT) { Label("Enable JIT", systemImage: "bolt.fill") }
                     .buttonStyle(DeckButtonStyle())
                     .disabled(jitState.enabled)
@@ -4008,27 +4005,21 @@ private extension LibraryView {
                         DeckMark().frame(width: 48, height: 48)
                         Text("mdeck").font(.system(size: 40, weight: .bold, design: .rounded))
                     }
-                    LibraryStatus()
                     Spacer(minLength: 40)
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 12) { deckSteamActions }
-                        VStack(alignment: .leading, spacing: 12) { deckSteamActions }
+                    deckSteamActions
+                    if !SteamClient.installed {
+                        Text("Steam will open its installer on the first launch.")
+                            .font(.footnote).foregroundStyle(palette.muted)
                     }
-                    Button { deckSettingsPage = DeckSettingsRoute(page: .steam) } label: {
-                        Label("Steam and Dock", systemImage: "gearshape")
-                    }.buttonStyle(DeckButtonStyle())
                 }.padding(28)
             }.clipped()
         }
     }
 
-    @ViewBuilder var deckSteamActions: some View {
-        Button { play(SteamClient.entry(install: false)) } label: {
+    var deckSteamActions: some View {
+        Button { play(SteamClient.entry(install: !SteamClient.installed)) } label: {
             Label("Start Steam", systemImage: "play.fill")
-        }.buttonStyle(DeckButtonStyle(primary: true)).disabled(!SteamClient.installed || model.launching)
-        Button { play(SteamClient.entry(install: true)) } label: {
-            Label("Run Steam installer", systemImage: "shippingbox")
-        }.buttonStyle(DeckButtonStyle()).disabled(model.launching)
+        }.buttonStyle(DeckButtonStyle(primary: true)).disabled(model.launching)
     }
 
     var deckDesktop: some View {
@@ -4087,6 +4078,8 @@ private extension LibraryView {
     var deckComponents: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                Button("Prepare missing components") { deckComponentSetup = true }
+                    .buttonStyle(DeckButtonStyle(primary: true))
                 Text("Running games").font(.headline)
                 DeckSettingsTiles(pages: [.runtimes, .graphics, .display, .memory, .advanced], focused: deckSettingFocus) { deckSettingsPage = DeckSettingsRoute(page: $0) }
                 Button { settingsSheet = .allSettings } label: { Label("All settings", systemImage: "slider.horizontal.3") }
@@ -4139,7 +4132,10 @@ private extension LibraryView {
                         DeckAppearanceControls()
                         Section {
                             Button { deckSettingsPage = DeckSettingsRoute(page: .appearance) } label: { Label("Appearance", systemImage: "paintpalette") }
-                            DeckPendingFeatureButton(title: L("Boot animation"), symbol: "play.rectangle")
+                        }
+                        DeckBootSettings()
+                        Section {
+                            Button("Prepare missing components") { deckComponentSetup = true }
                         }
                     }.modifier(DeckFormSkin())
                 case .storage:
@@ -4176,7 +4172,7 @@ private extension LibraryView {
             Section("Live logs") { LibraryLiveLogs().frame(height: 240) }
             Section {
                 Button("All settings") { settingsSheet = .allSettings }
-                Button("Run setup again") { onboarding.rerun() }
+                Button("Prepare missing components") { deckComponentSetup = true }
                 Button("Use developer interface") {
                     developerUI = true
                     FrontendChoice.choose(new: false)

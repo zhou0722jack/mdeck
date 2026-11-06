@@ -30,7 +30,7 @@ struct MadeiraApp: App {
 
     var body: some Scene {
         WindowGroup {
-            DeckThemeHost { ContentView() }
+            DeckThemeHost { DeckStartupRoot { ContentView() } }
                 .environment(\.locale, AppLanguage.locale)
                 .background(InteractionFrameRateInstaller())   // touch frame-rate request (New library grid)
                 .modifier(ClaimGamepadEvents())
@@ -39,7 +39,6 @@ struct MadeiraApp: App {
                     GamepadInput.shared.start()
                     HardwareInput.shared.start()
                     JITNetworkShortcut.shared.restoreLeftover()   // also starts its network path monitor
-                    WineGeckoModel.shared.installAutomatically()  // on Wi-Fi, so Wine never asks (WineGecko.swift)
                     AchievementWatcher.shared.start()             // unlock banners from Steam's stats files (SteamAchievements.swift)
                     ClaudeHelp.install()                          // the fixes guide beside madeira-log.txt (ClaudeHelp.swift)
                 }

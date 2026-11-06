@@ -82,19 +82,15 @@ require('Bundle.main.url(forResource: "Madeira JIT", withExtension: "shortcut")'
 require('OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)' in net
         and 'coordinator.method != .externalScript, JITShortcutFile.supported, let url = JITShortcutFile.url {' in setup,
         'the network shortcut is offered on iOS 27 or later, outside external-script mode')
-shortcut_page = onboarding[onboarding.index('private var shortcutPage'):onboarding.index('private var signInPage')]
-require('case .shortcut: shortcutPage' in onboarding and 'JITShortcutOffer' not in onboarding
-        and onboarding.count('finishJIT()') == 3 and 'jitPath = .shortcut' in onboarding,
-        "setup offers it after the three app-initiated JIT guides; the external guide skips it")
-require('UIApplication.shared.open(JITShortcutFile.iCloudLink)' in shortcut_page and 'ShareLink(item: url)' in shortcut_page
-        and 'UIApplication.shared.open(JITShortcutFile.iCloudLink)' in setup and 'ShareLink(item: url)' in setup,
-        "setup's page and Settings › JIT add it from its iCloud link (straight to Add Shortcut), "
-        "and Madeira's copy through the share sheet with no connection")
+require('UIApplication.shared.open(JITShortcutFile.iCloudLink)' in setup and 'ShareLink(item: url)' in setup,
+        "Settings JIT retains both the iCloud shortcut link and the local signed export")
+require('OnboardingView' not in onboarding and 'shortcutPage' not in onboarding,
+        "the removed onboarding no longer forces a shortcut setup page")
 require('static let iCloudLink = URL(string: "https://www.icloud.com/shortcuts/' in net
         and 'THE TWO MUST BE THE SAME SHORTCUT' in net,
         'the iCloud link and the bundled file are kept as one shortcut')
-require("Keychain" in onboarding and "stays in Madeira's Documents folder" not in onboarding,
-        "setup no longer says the pairing file is in Documents")
+require("Keychain" in setup and "stays in Madeira's Documents folder" not in onboarding,
+        "pairing instructions keep the Keychain storage contract")
 
 # ------------------------------------------------------------------ Swift
 if '--static-only' in sys.argv:

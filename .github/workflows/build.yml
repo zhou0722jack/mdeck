@@ -32,7 +32,9 @@ jobs:
       - name: Check bundled Steam installer
         run: python3 tests/host/check-bundled-steam.py
       - name: Check native frontend integration
-        run: python3 tests/host/check-native-deck.py
+        run: |
+          python3 tests/host/check-native-deck.py
+          python3 tests/host/check-deck-startup.py
       - name: Check build reuse rules
         run: |
           python3 tests/host/check-build-inputs.py

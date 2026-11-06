@@ -55020,6 +55020,256 @@
           }
         }
       }
+    },
+    "End the current session before preparing components.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先结束当前会话，再准备组件。"
+          }
+        }
+      }
+    },
+    "Component preparation did not finish. Try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "组件准备未完成，请重试。"
+          }
+        }
+      }
+    },
+    "Downloading Wine Mono…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载 Wine Mono…"
+          }
+        }
+      }
+    },
+    "Unpacking and verifying…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在解压和校验…"
+          }
+        }
+      }
+    },
+    "Downloading Visual C++…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载 Visual C++…"
+          }
+        }
+      }
+    },
+    "Downloading Wine Gecko…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载 Wine Gecko…"
+          }
+        }
+      }
+    },
+    "This build is missing Madeira Dock. Install a complete IPA and try again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此版本缺少 Madeira Dock，请安装完整 IPA 后重试。"
+          }
+        }
+      }
+    },
+    "Skip animation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过动画"
+          }
+        }
+      }
+    },
+    "Retry downloads": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重试下载"
+          }
+        }
+      }
+    },
+    "Download later": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后下载"
+          }
+        }
+      }
+    },
+    "Choose how to start JIT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择 JIT 启动方式"
+          }
+        }
+      }
+    },
+    "Choose once. You can change it later in Settings → JIT.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "只需首次选择，以后可在“设置 → JIT”中更改。"
+          }
+        }
+      }
+    },
+    "Script JIT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "脚本 JIT"
+          }
+        }
+      }
+    },
+    "Built-in JIT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置 JIT"
+          }
+        }
+      }
+    },
+    "Run madeira-jit.js in StikDebug, then return here and start Steam.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 StikDebug 中运行 madeira-jit.js，然后返回这里启动 Steam。"
+          }
+        }
+      }
+    },
+    "Madeira starts its own JIT helper. Pair this device and connect LocalDevVPN first.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由 Madeira 启动内置 JIT 助手。请先完成设备配对并连接 LocalDevVPN。"
+          }
+        }
+      }
+    },
+    "Configure built-in JIT": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配置内置 JIT"
+          }
+        }
+      }
+    },
+    "Continue and prepare components": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "继续并准备组件"
+          }
+        }
+      }
+    },
+    "The first launch downloads Wine Mono, Visual C++, Wine Gecko and Madeira Dock components. Keep this app open until preparation finishes.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首次启动将下载 Wine Mono、Visual C++、Wine Gecko 和 Madeira Dock 所需组件。准备完成前请保持应用打开。"
+          }
+        }
+      }
+    },
+    "Preparing first launch": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备首次启动"
+          }
+        }
+      }
+    },
+    "Prepare missing components": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备缺失组件"
+          }
+        }
+      }
+    },
+    "Play DroidDeck startup animation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "播放 DroidDeck 启动动画"
+          }
+        }
+      }
+    },
+    "Startup sound": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动音效"
+          }
+        }
+      }
+    },
+    "Preview startup animation": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "预览启动动画"
+          }
+        }
+      }
+    },
+    "Steam will open its installer on the first launch.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首次启动将打开 Steam 安装程序。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
