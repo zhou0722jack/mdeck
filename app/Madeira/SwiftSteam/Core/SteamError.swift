@@ -68,73 +68,73 @@ enum SteamError: LocalizedError, Equatable {
         case .authenticationFailed(let reason):
             return reason
         case .invalidCredentials:
-            return "The account name or password is incorrect."
+            return L("The account name or password is incorrect.")
         case .rateLimited:
-            return "Too many attempts. Please try again later."
+            return L("Too many attempts. Please try again later.")
         case .accountDisabled:
-            return "This Steam account has been disabled"
+            return L("This Steam account has been disabled")
         case .rsaKeyFetchFailed:
-            return "Failed to fetch RSA public key for password encryption"
+            return L("Failed to fetch RSA public key for password encryption")
         case .qrCodeExpired:
-            return "QR code has expired. Please try again."
+            return L("QR code has expired. Please try again.")
         case .authSessionExpired:
-            return "The sign-in request expired. Start again."
+            return L("The sign-in request expired. Start again.")
         case .protobufError(let detail):
-            return "Protocol buffer error: \(detail)"
+            return LF("Protocol buffer error: %@", String(describing: (detail)))
         case .noServersAvailable:
-            return "No Steam servers are available."
+            return L("No Steam servers are available.")
         case .connectionFailed(let reason):
-            return "Connection failed: \(reason)"
+            return LF("Connection failed: %@", String(describing: (reason)))
         case .transportFailed(let domain, let code):
             if domain == NSURLErrorDomain {
                 switch URLError.Code(rawValue: code) {
                 case .secureConnectionFailed:
-                    return "Steam could not make a secure connection (\(code)). Check your network or VPN and try again."
+                    return LF("Steam could not make a secure connection (%@). Check your network or VPN and try again.", String(describing: (code)))
                 case .serverCertificateHasBadDate, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid:
-                    return "Steam could not verify the server certificate (\(code)). Check your device's date and network settings."
+                    return LF("Steam could not verify the server certificate (%@). Check your device's date and network settings.", String(describing: (code)))
                 case .clientCertificateRejected, .clientCertificateRequired:
-                    return "Steam requested or rejected a client certificate (\(code)). Check your network or VPN settings."
+                    return LF("Steam requested or rejected a client certificate (%@). Check your network or VPN settings.", String(describing: (code)))
                 default: break
                 }
             }
-            return "Steam connection failed (\(domain), \(code))."
+            return LF("Steam connection failed (%@, %@).", String(describing: (domain)), String(describing: (code)))
         case .connectionTimeout:
-            return "Steam did not respond in time. Check your internet connection and try again."
+            return L("Steam did not respond in time. Check your internet connection and try again.")
         case .disconnected:
-            return "Disconnected from Steam."
+            return L("Disconnected from Steam.")
         case .logonDenied(let code):
             return SteamError.signInExpiredCodes.contains(code)
                 ? "Your Steam sign-in is no longer valid. Sign in again."
                 : "Steam refused the connection (code \(code)). Try again later."
         case .invalidMessage:
-            return "Received an invalid message from Steam."
+            return L("Received an invalid message from Steam.")
         case .appInfoNotFound(let appID):
-            return "Steam has no information for app \(appID)."
+            return LF("Steam has no information for app %@.", String(describing: (appID)))
         case .depotNotFound:
-            return "Steam has no Windows download for this game."
+            return L("Steam has no Windows download for this game.")
         case .manifestFetchFailed(let reason):
-            return "Could not read the game's file list: \(reason)"
+            return LF("Could not read the game's file list: %@", String(describing: (reason)))
         case .chunkDownloadFailed(let reason):
-            return "Download failed: \(reason)"
+            return LF("Download failed: %@", String(describing: (reason)))
         case .contentHTTP(let status):
-            return "Download failed: Content server returned HTTP \(status)."
+            return LF("Download failed: Content server returned HTTP %@.", String(describing: (status)))
         case .contentRefused(let status):
-            return "Steam's download servers would not hand out this game's file list (HTTP \(status)), even after Madeira asked Steam for new download permission. Wait a few minutes and tap Try again; downloaded parts are kept. If it keeps happening, check that the game still shows in your Steam library and send Madeira's log."
+            return LF("Steam's download servers would not hand out this game's file list (HTTP %@), even after Madeira asked Steam for new download permission. Wait a few minutes and tap Try again; downloaded parts are kept. If it keeps happening, check that the game still shows in your Steam library and send Madeira's log.", String(describing: (status)))
         case .decryptionFailed(let reason):
-            return "Decryption failed: \(reason)"
+            return LF("Decryption failed: %@", String(describing: (reason)))
         case .decompressionFailed:
-            return "Failed to decompress downloaded data."
+            return L("Failed to decompress downloaded data.")
         case .chunkDecodeFailed(let format):
-            return "Part of the game could not be decoded (\(format)). Try again; downloaded parts are kept."
+            return LF("Part of the game could not be decoded (%@). Try again; downloaded parts are kept.", String(describing: (format)))
         case .checksumMismatch:
-            return "A downloaded part failed its checksum."
+            return L("A downloaded part failed its checksum.")
         case .depotKeyNotFound:
-            return "Steam did not allow this account to download the game's files. Check that the account owns it."
+            return L("Steam did not allow this account to download the game's files. Check that the account owns it.")
         case .insufficientDiskSpace(let needed, let available):
-            return String(format: "Not enough free space: the download needs %.1f GB and %.1f GB is available.",
+            return String(format: L("Not enough free space: the download needs %.1f GB and %.1f GB is available."),
                           Double(needed) / 1_000_000_000, Double(available) / 1_000_000_000)
         case .betaCodeNeeded(let branch):
-            return "The \(branch) version needs a beta code Steam accepts. Enter it under Game details › Steam › Version, or pick another version."
+            return LF("The %@ version needs a beta code Steam accepts. Enter it under Game details › Steam › Version, or pick another version.", String(describing: (branch)))
         }
     }
 }

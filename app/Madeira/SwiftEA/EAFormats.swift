@@ -440,8 +440,8 @@ enum EAZipError: LocalizedError, Equatable {
     case bad(String)
     var errorDescription: String? {
         switch self {
-        case .noDirectory: return "EA's build file is not a zip Madeira can read (no central directory)."
-        case .bad(let what): return "EA's build file could not be read (\(what))."
+        case .noDirectory: return L("EA's build file is not a zip Madeira can read (no central directory).")
+        case .bad(let what): return LF("EA's build file could not be read (%@).", String(describing: (what)))
         }
     }
 }

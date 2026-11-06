@@ -72,7 +72,7 @@ enum EALicense {
     /// Writes the licence as `<content id>.dlf` and its `_cached` twin.
     static func save(xml: String, signature: String, contentID: String, decodeSignature: Bool, drive: URL) throws {
         guard let file = EALicenseFile.pack(xml: xml, signature: signature, decodeSignature: decodeSignature) else {
-            throw EAAPIError.license("bad signature")
+            throw EAAPIError.license(L("bad signature"))
         }
         let folder = folder(drive: drive)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -85,7 +85,7 @@ enum EALicense {
         let (hash, input) = profile.machineHash(version: activation.hashVersion)
         EALog.event("[ea-license] request hash-version=\(activation.hashVersion) input=\"\(input.replacingOccurrences(of: "\0", with: "\\0"))\" hash=\(hash)")
         let (xml, signature) = try await api.license(contentID: contentID, machineHash: hash)
-        guard let info = EALicenseInfo(xml: xml) else { throw EAAPIError.license("unreadable licence") }
+        guard let info = EALicenseInfo(xml: xml) else { throw EAAPIError.license(L("unreadable licence")) }
         try save(xml: xml, signature: signature, contentID: contentID, decodeSignature: activation.decodeSignature, drive: drive)
         EALog.event("[ea-license] saved content=\(contentID) token=\(info.gameToken == nil ? 0 : 1)")
         return info

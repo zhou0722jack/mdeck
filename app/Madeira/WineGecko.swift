@@ -66,8 +66,8 @@ struct WineGeckoPin {
     func refresh() { installed = Self.available }
 
     var status: String {
-        if let progress { return "Downloading… \(Int((progress * 100).rounded()))%" }
-        return installed ? "Wine Gecko \(WineGeckoPin.version) is ready" : "Not downloaded"
+        if let progress { return LF("Downloading… %@%%", String(describing: (Int((progress * 100).rounded())))) }
+        return installed ? LF("Wine Gecko %@ is ready", String(describing: (WineGeckoPin.version))) : L("Not downloaded")
     }
 
     private func log(_ line: String) { LogStore.shared.log("[wine-gecko] " + line) }
@@ -125,10 +125,10 @@ struct WineGeckoPin {
             if failure == nil, let temp {
                 do {
                     if let http = response as? HTTPURLResponse, http.statusCode != 200 {
-                        throw WineMonoInstallError.message("WineHQ answered \(http.statusCode).")
+                        throw WineMonoInstallError.message(LF("WineHQ answered %@.", String(describing: (http.statusCode))))
                     }
                     guard try WineMonoInstaller.sha256(of: temp) == pin.sha256 else {
-                        throw WineMonoInstallError.message("The download does not match Wine Gecko \(WineGeckoPin.version) (\(pin.arch)).")
+                        throw WineMonoInstallError.message(LF("The download does not match Wine Gecko %@ (%@).", String(describing: (WineGeckoPin.version)), String(describing: (pin.arch))))
                     }
                     let fm = FileManager.default
                     try? fm.removeItem(at: partial)
@@ -209,7 +209,7 @@ struct WineGeckoSettingsSection: View {
                     Button("Remove Wine Gecko", role: .destructive) { confirmRemove = true }
                 } else {
                     Button { gecko.install() } label: {
-                        Label(gecko.error == nil ? "Download Wine Gecko" : "Try again", systemImage: "arrow.down.circle")
+                        Label(gecko.error == nil ? L("Download Wine Gecko") : L("Try again"), systemImage: "arrow.down.circle")
                     }
                 }
             }

@@ -53,7 +53,7 @@ struct SteamSignInView: View {
             .navigationTitle("Steam").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(steam.signedIn ? "Done" : "Cancel") { steam.cancelSignIn(); dismiss() }
+                    Button(steam.signedIn ? L("Done") : L("Cancel")) { steam.cancelSignIn(); dismiss() }
                 }
             }
             .onAppear {

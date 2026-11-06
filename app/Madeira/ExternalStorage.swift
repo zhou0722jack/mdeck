@@ -9,11 +9,11 @@ enum ExternalStorageError: Error, LocalizedError {
     case unsafePath, invalidRecord, mappingConflict, identityMismatch, unavailable
     var errorDescription: String? {
         switch self {
-        case .unsafePath: return "The requested path leaves the external folder."
-        case .invalidRecord: return "The saved external drive registration is invalid."
-        case .mappingConflict: return "The external drive mapping is already in use. Existing files were kept."
-        case .identityMismatch: return "This is not the registered folder. Select the original folder."
-        case .unavailable: return "The external drive is not available. Reconnect it and try again."
+        case .unsafePath: return L("The requested path leaves the external folder.")
+        case .invalidRecord: return L("The saved external drive registration is invalid.")
+        case .mappingConflict: return L("The external drive mapping is already in use. Existing files were kept.")
+        case .identityMismatch: return L("This is not the registered folder. Select the original folder.")
+        case .unavailable: return L("The external drive is not available. Reconnect it and try again.")
         }
     }
 }

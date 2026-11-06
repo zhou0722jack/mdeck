@@ -25,14 +25,14 @@ enum EpicFormatError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .truncated: return "Epic sent incomplete data."
-        case .badMagic(let what): return "Epic sent data that is not a \(what)."
-        case .checksum(let what): return "A downloaded \(what) failed its checksum."
-        case .decompress(let what): return "A downloaded \(what) could not be decompressed."
-        case .missingKey: return "Epic did not send the key for this encrypted game."
-        case .decrypt(let what): return "A downloaded \(what) could not be decrypted."
-        case .unsupported(let what): return "This game uses a format Madeira cannot read yet (\(what))."
-        case .unsafePath: return "This game's file list names a path outside its install folder."
+        case .truncated: return L("Epic sent incomplete data.")
+        case .badMagic(let what): return LF("Epic sent data that is not a %@.", String(describing: (what)))
+        case .checksum(let what): return LF("A downloaded %@ failed its checksum.", String(describing: (what)))
+        case .decompress(let what): return LF("A downloaded %@ could not be decompressed.", String(describing: (what)))
+        case .missingKey: return L("Epic did not send the key for this encrypted game.")
+        case .decrypt(let what): return LF("A downloaded %@ could not be decrypted.", String(describing: (what)))
+        case .unsupported(let what): return LF("This game uses a format Madeira cannot read yet (%@).", String(describing: (what)))
+        case .unsafePath: return L("This game's file list names a path outside its install folder.")
         }
     }
 }
@@ -362,7 +362,7 @@ struct EpicManifest: Sendable {
 
         // Feature level 24: launch data and file names, encrypted with the manifest's key.
         if storedAs & 2 != 0 {
-            guard level >= 24 else { throw EpicFormatError.unsupported("encrypted manifest \(level)") }
+            guard level >= 24 else { throw EpicFormatError.unsupported(LF("encrypted manifest %@", String(describing: (level)))) }
             let key = try EpicCodec.key(secretGUID, in: secrets)
             let edStart = r.offset
             let edSize = Int(try r.u32())
@@ -444,7 +444,7 @@ struct EpicManifest: Sendable {
               let groups = j["DataGroupList"] as? [String: Any], let fileList = j["FileManifestList"] as? [[String: Any]] else {
             throw EpicFormatError.badMagic("manifest")
         }
-        if j["bIsFileData"] as? Bool == true { throw EpicFormatError.unsupported("file-data manifest") }
+        if j["bIsFileData"] as? Bool == true { throw EpicFormatError.unsupported(L("file-data manifest")) }
         let shas = j["ChunkShaList"] as? [String: Any] ?? [:]
         func size(_ value: Any?) throws -> UInt64 {
             let n = try number(value)

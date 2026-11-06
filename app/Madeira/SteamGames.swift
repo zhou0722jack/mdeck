@@ -36,14 +36,14 @@ enum SteamGamesRules {
         /// size), and a newer build adds "Update" to them.
         var badge: String? {
             switch self {
-            case .notInstalled: return "Not installed"
-            case .partlyInstalled: return "Not fully installed"
+            case .notInstalled: return L("Not installed")
+            case .partlyInstalled: return L("Not fully installed")
             case .installed: return nil
-            case .updateAvailable: return "Update"
-            case .queued: return "Waiting"
-            case .downloading(let percent): return "Downloading \(percent)%"
-            case .paused: return "Paused"
-            case .failed: return "Download failed"
+            case .updateAvailable: return L("Update")
+            case .queued: return L("Waiting")
+            case .downloading(let percent): return LF("Downloading %@%%", String(describing: (percent)))
+            case .paused: return L("Paused")
+            case .failed: return L("Download failed")
             }
         }
 
@@ -157,10 +157,10 @@ enum SteamGamesRules {
     /// Why Play is not offered yet, or nil when Dock can be asked to start the game.
     /// Valve's client still decides at launch.
     static func blocker(installed: Bool, client: Bool, signedIn: Bool, updating: Bool = false) -> String? {
-        if !installed { return "Steam does not list this game as fully installed yet." }
-        if updating { return "This game is being downloaded. Play is available when it is done." }
-        if !client { return "Madeira Dock needs Valve's client components. Download them in Settings › Steam › Madeira Dock." }
-        if !signedIn { return "Sign in to Steam in Settings › Steam to play." }
+        if !installed { return L("Steam does not list this game as fully installed yet.") }
+        if updating { return L("This game is being downloaded. Play is available when it is done.") }
+        if !client { return L("Madeira Dock needs Valve's client components. Download them in Settings › Steam › Madeira Dock.") }
+        if !signedIn { return L("Sign in to Steam in Settings › Steam to play.") }
         return nil
     }
 
@@ -343,9 +343,9 @@ enum SteamDirectStart {
     /// Why Play is not offered for "The game" yet, or nil. No Steam client or sign-in
     /// is involved; the game's own program must be chosen.
     static func blocker(installed: Bool, program: String?, updating: Bool = false) -> String? {
-        if !installed { return "Steam does not list this game as fully installed yet." }
-        if updating { return "This game is being downloaded. Play is available when it is done." }
-        if (program ?? "").isEmpty { return "Choose the program to start in Game details › Steam › Program." }
+        if !installed { return L("Steam does not list this game as fully installed yet.") }
+        if updating { return L("This game is being downloaded. Play is available when it is done.") }
+        if (program ?? "").isEmpty { return L("Choose the program to start in Game details › Steam › Program.") }
         return nil
     }
 }
@@ -543,7 +543,7 @@ struct SteamGamesSection: View {
             if Self.shown {
                 VStack(alignment: .leading, spacing: 14) {
                     if part != .notInstalled {
-                    LibrarySectionHeader(title: "Steam", count: installed.count,
+                    LibrarySectionHeader(title: L("Steam"), count: installed.count,
                                          collapsed: collapsible ? $hideInstalled : nil) {
                         if steam.refreshing { ProgressView().accessibilityLabel("Refreshing Steam library") }
                         // The Workshop area: every installed game's Workshop items (SteamWorkshop.swift).
@@ -563,14 +563,14 @@ struct SteamGamesSection: View {
                     // A line here, not an alert: an alert would close a page that is open.
                     if SteamOwnedLibrary.cloudEnabled, !steam.cloudUndecided.isEmpty {
                         let names = steam.cloudUndecided.compactMap { id in model.games.first { $0.id == id }?.name }
-                        Label("Steam Cloud: \(names.joined(separator: ", ")) \(names.count == 1 ? "has" : "have") saves that differ from this device's. Open the game's details to choose which to keep.",
+                        Label(LF("Steam Cloud: %@ %@ saves that differ from this device's. Open the game's details to choose which to keep.", String(describing: (names.joined(separator: ", "))), String(describing: (names.count == 1 ? "has" : "have"))),
                               systemImage: "exclamationmark.icloud")
                             .font(.footnote).foregroundStyle(.orange)
                     }
                     if let waiting = steam.cloudWaitingFor {
                         HStack(spacing: 8) {
                             ProgressView()
-                            Text("Syncing \(model.games.first { $0.id == waiting }?.name ?? "the game")'s Steam Cloud saves, then starting it…")
+                            Text(LF("Syncing %@'s Steam Cloud saves, then starting it…", String(describing: (model.games.first { $0.id == waiting }?.name ?? "the game"))))
                         }.font(.footnote).foregroundStyle(.secondary)
                     }
                     if hideInstalled && collapsible {
@@ -580,7 +580,7 @@ struct SteamGamesSection: View {
                             cell(item, list: list, dense: dense)
                         }
                     } else if signedIn && !steam.refreshing && groups.notInstalled.isEmpty && search.isEmpty {
-                        Text(steam.libraryUpdated == nil ? "Pull down to load your Steam library."
+                        Text(steam.libraryUpdated == nil ? L("Pull down to load your Steam library.")
                              : "No Windows games were found in this Steam library.").foregroundStyle(.secondary)
                     }
                     }
@@ -899,32 +899,32 @@ struct SteamDownloadStatus: View {
         let p = download.progress
         guard case .active = download.state, p.phase == .downloading else { return nil }
         if let pc = p.pcName {
-            if p.pcDropped { return Label("From Steam's servers (\(pc) stopped answering)", systemImage: "cloud") }
+            if p.pcDropped { return Label(LF("From Steam's servers (%@ stopped answering)", String(describing: (pc))), systemImage: "cloud") }
             let sent = p.pcBytes > 0 ? " · \(formatBytes(Int64(p.pcBytes))) so far" : ""
-            return Label("From \(pc) on this network\(sent)", systemImage: "desktopcomputer")
+            return Label(LF("From %@ on this network%@", String(describing: (pc)), String(describing: (sent))), systemImage: "desktopcomputer")
         }
         return Label("From Steam's servers", systemImage: "cloud")
     }
     private var caption: String {
         let p = download.progress
         switch download.state {
-        case .queued: return "Waiting to start…"
-        case .paused: return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
+        case .queued: return L("Waiting to start…")
+        case .paused: return p.totalBytes > 0 ? LF("Paused at %@%%", String(describing: (Int(p.fraction * 100)))) : "Paused"
         case .failed(let message): return message
         case .active:
             switch p.phase {
             case .preparing:
                 switch p.step {
-                case .start: return "Preparing download…"
-                case .fileList: return "Getting the game's file list from Steam…"
-                case .files: return "Looking over the game's files…"
+                case .start: return L("Preparing download…")
+                case .fileList: return L("Getting the game's file list from Steam…")
+                case .files: return L("Looking over the game's files…")
                 }
             case .checking:
                 let done = p.checkTotal > 0 ? Int(Double(p.checkDone) / Double(p.checkTotal) * 100) : 0
-                return "Checking files already there: \(done)% · \(formatBytes(Int64(p.checkDone))) of \(formatBytes(Int64(p.checkTotal)))"
-            case .finishing: return "Finishing…"
+                return LF("Checking files already there: %@%% · %@ of %@", String(describing: (done)), String(describing: (formatBytes(Int64(p.checkDone)))), String(describing: (formatBytes(Int64(p.checkTotal)))))
+            case .finishing: return L("Finishing…")
             case .downloading:
-                var parts = ["\(Int(p.fraction * 100))%", "\(formatBytes(Int64(p.doneBytes))) of \(formatBytes(Int64(p.totalBytes)))"]
+                var parts = ["\(Int(p.fraction * 100))%", LF("%@ of %@", String(describing: (formatBytes(Int64(p.doneBytes)))), String(describing: (formatBytes(Int64(p.totalBytes)))))]
                 // Files already on the drive are checked, not downloaded again.
                 if p.reusedBytes > 0 { parts.append("\(formatBytes(Int64(p.reusedBytes))) already there") }
                 if p.bytesPerSecond > 0 {
@@ -967,7 +967,7 @@ struct SteamGameLanguagePicker: View {
         let options = SteamLanguage.all.filter { supported.isEmpty || supported.contains($0.code) || $0.code == current }
         Picker("Game language", selection: Binding(get: { current ?? "" },
                                                    set: { choices.choose(appID, $0.isEmpty ? nil : $0) })) {
-            Text("Default (\(SteamLanguage.name(SteamLanguage.download)))").tag("")
+            Text(LF("Default (%@)", String(describing: (SteamLanguage.name(SteamLanguage.download))))).tag("")
             ForEach(options, id: \.code) { Text($0.name).tag($0.code) }
         }
         .pickerStyle(.navigationLink)
@@ -1052,7 +1052,7 @@ struct SteamBranchPicker: View {
 
     /// "public" reads as Steam's own label; a beta shows its description when it has one.
     static func label(_ branch: SteamAppInfo.Branch) -> String {
-        if branch.name == SteamAppInfo.publicBranch { return "Public (default)" }
+        if branch.name == SteamAppInfo.publicBranch { return L("Public (default)") }
         return branch.description.isEmpty ? branch.name : "\(branch.name) – \(branch.description.prefix(60))"
     }
 
@@ -1065,9 +1065,9 @@ struct SteamBranchPicker: View {
         }
         guard current != SteamAppInfo.publicBranch else { return nil }
         if branches.contains(where: { $0.name == current && $0.passwordRequired }), SteamBranch.code(appID) == nil {
-            return "This beta needs its beta code."
+            return L("This beta needs its beta code.")
         }
-        return "A beta build: it can be unstable, and its saves may not work on the public build."
+        return L("A beta build: it can be unstable, and its saves may not work on the public build.")
     }
 
     private func check() {
@@ -1118,7 +1118,7 @@ struct SteamDLCRows: View {
         let off = SteamDLC.off(appID)
         ForEach(steam.game(appID)?.dlc ?? []) { dlc in
             if dlc.depots.isEmpty {
-                LabeledContent(dlc.name, value: "No download")
+                LabeledContent(dlc.name, value: L("No download"))
             } else {
                 Toggle(isOn: Binding(get: { !off.contains(dlc.id) }, set: { choices.set(dlc.id, on: $0, for: appID) })) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -1135,11 +1135,11 @@ struct SteamDLCRows: View {
     /// installed game, whether the install record has it (by its depots or
     /// by `dlcappid`, with the recorded size).
     private func detail(_ dlc: SteamOwnedDLC) -> String {
-        let size = dlc.downloadBytes > 0 ? "About " + formatBytes(Int64(clamping: dlc.downloadBytes)) : nil
+        let size = dlc.downloadBytes > 0 ? L("About ") + formatBytes(Int64(clamping: dlc.downloadBytes)) : nil
         guard let installedDepots else { return size ?? "" }
         if let bytes = installedDLC[dlc.id] { return bytes > 0 ? "Installed, " + formatBytes(bytes) : "Installed" }
-        if Set(dlc.depots).isSubset(of: installedDepots) { return "Installed" }
-        return size.map { $0 + ", not installed" } ?? "Not installed"
+        if Set(dlc.depots).isSubset(of: installedDepots) { return L("Installed") }
+        return size.map { $0 + L(", not installed") } ?? "Not installed"
     }
 }
 
@@ -1208,10 +1208,10 @@ struct SteamGameSheet: View {
                         if item.installed == nil { SteamBranchPicker(appID: appID) }
                         if item.installed == nil, let game = steam.game(appID) {
                             if let bytes = game.downloadBytes {
-                                LabeledContent("Download size", value: "About " + formatBytes(Int64(clamping: bytes)))
+                                LabeledContent("Download size", value: L("About ") + formatBytes(Int64(clamping: bytes)))
                             }
                             if let bytes = game.installBytes {
-                                LabeledContent("Size on this device", value: "About " + formatBytes(Int64(clamping: bytes)))
+                                LabeledContent("Size on this device", value: L("About ") + formatBytes(Int64(clamping: bytes)))
                             }
                             if game.downloadBytes == nil && game.installBytes == nil {
                                 Text("Steam states no size for this game. Refresh your Steam library to read it again.")
@@ -1237,7 +1237,7 @@ struct SteamGameSheet: View {
                         }
                     }
                 } else {
-                    ContentUnavailableView("Game unavailable", systemImage: "questionmark.square.dashed",
+                    ContentUnavailableView(L("Game unavailable"), systemImage: "questionmark.square.dashed",
                                            description: Text("Refresh your Steam library and try again."))
                 }
             }
@@ -1330,12 +1330,12 @@ struct SteamCloudQuitRow: View {
                 case .working(let text):
                     HStack(spacing: 10) { ProgressView(); Text(text).font(.callout) }
                 case .done(let count):
-                    Label(count == 0 ? "Steam Cloud is already up to date. Closing…" : "Uploaded \(count) save\(count == 1 ? "" : "s"). Closing…",
+                    Label(count == 0 ? L("Steam Cloud is already up to date. Closing…") : LF("Uploaded %@ saves. Closing…", String(count)),
                           systemImage: "checkmark.circle.fill").font(.callout).foregroundStyle(.green)
                 case .failed(let message):
                     Text("Not uploaded, Madeira stays open: \(message)").font(.callout).foregroundStyle(.orange)
                 case .conflict(let count):
-                    Text("Not uploaded: \(count) save\(count == 1 ? " was" : "s were") also changed in Steam Cloud, by another device or with no record of a sync here. Uploading would replace the cloud's \(count == 1 ? "copy" : "copies").")
+                    Text(LF("Not uploaded: %@ saves also changed in Steam Cloud, by another device or with no record of a sync here. Uploading would replace the cloud copies.", String(count)))
                         .font(.callout).foregroundStyle(.orange)
                     Button("Replace the Steam Cloud saves and close", role: .destructive) { confirmReplace = true }
                         .confirmationDialog("Replace the Steam Cloud saves with this device's?", isPresented: $confirmReplace, titleVisibility: .visible) {
@@ -1374,12 +1374,12 @@ struct SteamCloudSection: View {
     @State private var confirmDevice = false
 
     private static func when(_ seconds: UInt64) -> String {
-        seconds == 0 ? "unknown date" : Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(date: .abbreviated, time: .shortened)
+        seconds == 0 ? L("Unknown date") : Date(timeIntervalSince1970: TimeInterval(seconds)).formatted(.dateTime.locale(AppLanguage.locale))
     }
     private static func size(_ bytes: UInt64) -> String {
         ByteCountFormatter.string(fromByteCount: Int64(min(bytes, UInt64(Int64.max))), countStyle: .file)
     }
-    private static func saves(_ count: Int) -> String { "\(count) save\(count == 1 ? "" : "s")" }
+    private static func saves(_ count: Int) -> String { LF("%@ saves", String(count)) }
 
     var body: some View {
         if SteamOwnedLibrary.cloudEnabled {
@@ -1402,9 +1402,9 @@ struct SteamCloudSection: View {
             case .checking:
                 HStack(spacing: 10) { ProgressView(); Text("Checking Steam Cloud…").foregroundStyle(.secondary) }
             case .downloading(let done, let total):
-                ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Downloading \(done) of \(total)") }
+                ProgressView(value: Double(done), total: Double(max(total, 1))) { Text(LF("Downloading %@ of %@", String(describing: (done)), String(describing: (total)))) }
             case .uploading(let done, let total):
-                ProgressView(value: Double(done), total: Double(max(total, 1))) { Text("Uploading \(done) of \(total)") }
+                ProgressView(value: Double(done), total: Double(max(total, 1))) { Text(LF("Uploading %@ of %@", String(describing: (done)), String(describing: (total)))) }
             case .failed(let message):
                 Text(message).font(.callout).foregroundStyle(.orange)
                 Button("Try again") { Task { await steam.syncCloud(appID) } }
@@ -1427,15 +1427,15 @@ struct SteamCloudSection: View {
         }
         if !conflicts.isEmpty {
             let missing = conflicts.filter { $0.kind == .cloudOnly }.count
-            Label(missing == conflicts.count ? "\(Self.saves(missing)) synced here before \(missing == 1 ? "is" : "are") missing on this device"
-                  : "\(Self.saves(conflicts.count)) differ between Steam Cloud and this device", systemImage: "exclamationmark.triangle.fill")
+            Label(missing == conflicts.count ? LF("%@ previously synced here are missing on this device", Self.saves(missing))
+                  : LF("%@ differ between Steam Cloud and this device", Self.saves(conflicts.count)), systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
             ForEach(conflicts) { entry in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(entry.name).font(.subheadline.weight(.medium))
-                    Text("Steam Cloud: \(Self.when(entry.cloudTime)) · \(Self.size(entry.cloudSize))\(entry.kind != .cloudOnly && entry.cloudTime > entry.localTime ? " · newer" : "")")
+                    Text(LF("Steam Cloud: %@ · %@%@", String(describing: (Self.when(entry.cloudTime))), String(describing: (Self.size(entry.cloudSize))), String(describing: (entry.kind != .cloudOnly && entry.cloudTime > entry.localTime ? L(" · newer") : ""))))
                         .font(.caption).foregroundStyle(.secondary)
-                    Text(entry.kind == .cloudOnly ? "This device: missing (it was synced here before)"
+                    Text(entry.kind == .cloudOnly ? L("This device: missing (it was synced here before)")
                          : "This device: \(Self.when(entry.localTime)) · \(Self.size(entry.localSize))\(entry.localTime > entry.cloudTime ? " · newer" : "")")
                         .font(.caption).foregroundStyle(.secondary)
                 }
@@ -1443,13 +1443,13 @@ struct SteamCloudSection: View {
             Text("Nothing is changed until you choose which to keep.")
                 .font(.caption).foregroundStyle(.secondary)
             Button("Keep the Steam Cloud saves…") { confirmCloud = true }
-                .confirmationDialog("Use the Steam Cloud version of \(Self.saves(conflicts.count)) on this device? This device's copies are saved first, in Files › Madeira › Steam Cloud Backups.",
+                .confirmationDialog(LF("Use the Steam Cloud version of %@ on this device? This device's copies are saved first, in Files › Madeira › Steam Cloud Backups.", String(describing: (Self.saves(conflicts.count)))),
                                     isPresented: $confirmCloud, titleVisibility: .visible) {
                     Button("Use the Steam Cloud saves", role: .destructive) { Task { await steam.resolveCloud(appID, useCloud: true) } }
                     Button("Cancel", role: .cancel) {}
                 }
             Button("Keep this device's saves…") { confirmDevice = true }
-                .confirmationDialog("Keep this device's version of \(Self.saves(conflicts.count))? Saves that differ replace Steam Cloud's for every device; the cloud's copies are saved first, in Files › Madeira › Steam Cloud Backups. Saves missing on this device stay missing, and Steam Cloud keeps them.",
+                .confirmationDialog(LF("Keep this device's version of %@? Saves that differ replace Steam Cloud's for every device; the cloud's copies are saved first, in Files › Madeira › Steam Cloud Backups. Saves missing on this device stay missing, and Steam Cloud keeps them.", String(describing: (Self.saves(conflicts.count)))),
                                     isPresented: $confirmDevice, titleVisibility: .visible) {
                     Button("Keep this device's saves", role: .destructive) { Task { await steam.resolveCloud(appID, useCloud: false) } }
                     Button("Cancel", role: .cancel) {}
@@ -1468,12 +1468,12 @@ struct SteamCloudSection: View {
             Text(problem).font(.callout).foregroundStyle(.orange)
         }
         if let last = state.lastDownload, last.files > 0 {
-            Text("Downloaded \(Self.saves(last.files))."
+            Text(LF("Downloaded %@.", String(describing: (Self.saves(last.files))))
                  + (last.backedUp > 0 ? " \(Self.saves(last.backedUp)) replaced on this device \(last.backedUp == 1 ? "was" : "were") backed up." : ""))
                 .font(.caption).foregroundStyle(.secondary)
         }
         if let last = state.lastUpload, last > 0 {
-            Text("Uploaded \(Self.saves(last)).").font(.caption).foregroundStyle(.secondary)
+            Text(LF("Uploaded %@.", String(describing: (Self.saves(last))))).font(.caption).foregroundStyle(.secondary)
         }
         Button("Sync now") { Task { await steam.syncCloud(appID) } }
     }
@@ -1590,9 +1590,9 @@ struct SteamEntrySection: View {
                 if downloads, download == nil,
                    let wanted = steam.game(appID)?.languageToDownload(recorded: recorded, installedDepots: games.depots[appID] ?? []) {
                     Button { steam.repair(appID) } label: {
-                        Label("Download in \(SteamLanguage.name(wanted))", systemImage: "character.bubble")
+                        Label(LF("Download in %@", String(describing: (SteamLanguage.name(wanted)))), systemImage: "character.bubble")
                     }.disabled(!steam.signedIn)
-                    Text("Adds the game's \(SteamLanguage.name(wanted)) content and tells Steam to start it in that language. Files of the current language are kept.")
+                    Text(LF("Adds the game's %@ content and tells Steam to start it in that language. Files of the current language are kept.", String(describing: (SteamLanguage.name(wanted)))))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -1602,7 +1602,7 @@ struct SteamEntrySection: View {
                 let chosen = SteamBranch.chosen(appID)
                 if download == nil, chosen != installedBranch {
                     Button { steam.install(appID) } label: {
-                        Label(chosen == SteamAppInfo.publicBranch ? "Download the public build" : "Download \(chosen)",
+                        Label(chosen == SteamAppInfo.publicBranch ? L("Download the public build") : LF("Download %@", String(describing: (chosen))),
                               systemImage: "arrow.triangle.branch")
                     }.disabled(!steam.signedIn)
                     Text("Files that match are kept; only what differs is downloaded. Steam then starts the game on this version.")
@@ -1620,7 +1620,7 @@ struct SteamEntrySection: View {
                 if download == nil, let missing = steam.game(appID)?.dlcToDownload(installedDepots: installedDepots, installedDLC: Set(installedDLC.keys)),
                    !missing.isEmpty {
                     Button { steam.repair(appID) } label: {
-                        Label(missing.count == 1 ? "Download DLC: \(missing[0].name)" : "Download \(missing.count) DLC",
+                        Label(missing.count == 1 ? LF("Download DLC: %@", String(describing: (missing[0].name))) : LF("Download %@ DLC", String(describing: (missing.count))),
                               systemImage: "puzzlepiece.extension")
                     }.disabled(!steam.signedIn)
                     Text("Adds the DLC's files to the game. The game's own files are checked and kept, so this takes a little longer than the DLC alone.")
@@ -1634,11 +1634,11 @@ struct SteamEntrySection: View {
             LabeledContent("App ID", value: String(appID))
             if let dlc = installedDLC {
                 if dlc.isEmpty {
-                    LabeledContent("Installed DLC", value: "None")
+                    LabeledContent("Installed DLC", value: L("None"))
                 } else {
                     DisclosureGroup {
                         ForEach(dlc) { item in
-                            LabeledContent(dlcNames[item.id] ?? "DLC \(item.id)",
+                            LabeledContent(dlcNames[item.id] ?? LF("DLC %@", String(describing: (item.id))),
                                            value: item.bytes > 0 ? formatBytes(item.bytes) : "")
                         }
                     } label: {

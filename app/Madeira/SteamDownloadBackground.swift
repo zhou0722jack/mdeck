@@ -119,7 +119,7 @@ import UserNotifications
     func progress(_ progress: SteamDownloadProgress) {
         self.progress(doneBytes: progress.doneBytes, totalBytes: progress.totalBytes)
         if #available(iOS 26.0, *), let task = continued as? BGContinuedProcessingTask {
-            let source = progress.pcName.map { progress.pcDropped ? "From Steam's servers" : "From \($0) on this network" } ?? "From Steam's servers"
+            let source = progress.pcName.map { progress.pcDropped ? L("From Steam's servers") : "From \($0) on this network" } ?? L("From Steam's servers")
             if source != lastSource, progress.phase == .downloading {
                 lastSource = source
                 task.updateTitle("Downloading \(currentName)", subtitle: source)
@@ -143,8 +143,8 @@ import UserNotifications
     func downloadEnded(appID: Int, name: String, outcome: Outcome, queueEmpty: Bool) {
         if isBackground {
             switch outcome {
-            case .completed: notify("\(name) is ready to play", body: "The \(source) download finished.")
-            case .failed(let reason): notify("\(name) download stopped", body: reason)
+            case .completed: notify(LF("%@ is ready to play", String(describing: (name))), body: LF("The %@ download finished.", String(describing: (source))))
+            case .failed(let reason): notify(LF("%@ download stopped", String(describing: (name))), body: reason)
             case .paused: break
             }
         }
@@ -187,7 +187,7 @@ import UserNotifications
             DispatchQueue.main.async {
                 self?.log("continued-processing expired; pausing downloads")
                 self?.pauseDownloads?()
-                self?.notify("Download paused", body: "Open Madeira to continue downloading.")
+                self?.notify("Download paused", body: L("Open Madeira to continue downloading."))
                 self?.finishContinued(success: false)
             }
         }
@@ -214,7 +214,7 @@ import UserNotifications
                 if self.continued == nil {
                     self.log("background time over; pausing downloads")
                     self.pauseDownloads?()
-                    self.notify("Download paused", body: "Open Madeira to continue downloading.")
+                    self.notify("Download paused", body: L("Open Madeira to continue downloading."))
                 }
                 self.endGrace()
             }

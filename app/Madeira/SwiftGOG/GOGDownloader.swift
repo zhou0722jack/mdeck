@@ -34,8 +34,8 @@ enum GOGDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .diskSpace(let needed):
-            return "Not enough free space on this device: this download needs about \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)) more. Free some space, then try again."
-        case .chunk(let reason): return "A game file could not be downloaded from GOG (\(reason)). Try again to continue."
+            return LF("Not enough free space on this device: this download needs about %@ more. Free some space, then try again.", String(describing: (ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))))
+        case .chunk(let reason): return LF("A game file could not be downloaded from GOG (%@). Try again to continue.", String(describing: (reason)))
         }
     }
 }
@@ -48,10 +48,10 @@ enum GOGFormatError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .decompress(let what): return "A GOG download could not be unpacked (\(what))."
-        case .parse(let what): return "GOG's file list could not be read (\(what))."
-        case .checksum(let what): return "A file from GOG failed its checksum (\(what)). Try again."
-        case .unsafePath: return "GOG's file list names a path outside the game's folder."
+        case .decompress(let what): return LF("A GOG download could not be unpacked (%@).", String(describing: (what)))
+        case .parse(let what): return LF("GOG's file list could not be read (%@).", String(describing: (what)))
+        case .checksum(let what): return LF("A file from GOG failed its checksum (%@). Try again.", String(describing: (what)))
+        case .unsafePath: return L("GOG's file list names a path outside the game's folder.")
         }
     }
 }

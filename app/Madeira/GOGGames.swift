@@ -74,7 +74,7 @@ struct GOGGamesSection: View {
         let others = items.filter { $0.installed == nil && gog.downloads[$0.id] == nil }
         let collapsible = SteamGamesSection.collapsible
         VStack(alignment: .leading, spacing: 14) {
-            LibrarySectionHeader(title: "GOG", count: mine.count, collapsed: collapsible ? $hidden : nil) {
+            LibrarySectionHeader(title: L("GOG"), count: mine.count, collapsed: collapsible ? $hidden : nil) {
                 if gog.refreshing { ProgressView().accessibilityLabel("Refreshing GOG library") }
             }
             if !(hidden && collapsible) {
@@ -84,7 +84,7 @@ struct GOGGamesSection: View {
                 if !mine.isEmpty {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if gog.signedIn && !gog.refreshing && others.isEmpty && search.isEmpty {
-                    Text(gog.libraryUpdated == nil ? "Pull down to load your GOG library."
+                    Text(gog.libraryUpdated == nil ? L("Pull down to load your GOG library.")
                          : "No Windows games were found in this GOG library.").foregroundStyle(.secondary)
                 }
                 if gog.signedIn && !others.isEmpty {
@@ -245,7 +245,7 @@ struct GOGGameCell: View {
         if let download {
             badge(state(download))
         } else if item.installed != nil, let entry {
-            LibraryBadges(entry: entry, note: gog.updateAvailable(item.id) ? "Update" : nil).foregroundStyle(.secondary)
+            LibraryBadges(entry: entry, note: gog.updateAvailable(item.id) ? L("Update") : nil).foregroundStyle(.secondary)
         } else if item.installed == nil {
             badge("Not installed")
         }
@@ -253,10 +253,10 @@ struct GOGGameCell: View {
 
     private func state(_ download: GOGLibrary.Download) -> String {
         switch download.state {
-        case .queued: return "Waiting"
-        case .active: return download.progress.phase == .verifying ? "Checking files" : "Downloading \(Int(download.progress.fraction * 100))%"
-        case .paused: return "Paused"
-        case .failed: return "Download failed"
+        case .queued: return L("Waiting")
+        case .active: return download.progress.phase == .verifying ? L("Checking files") : "Downloading \(Int(download.progress.fraction * 100))%"
+        case .paused: return L("Paused")
+        case .failed: return L("Download failed")
         }
     }
 
@@ -305,16 +305,16 @@ struct GOGDownloadStatus: View {
     private var caption: String {
         let p = download.progress
         switch download.state {
-        case .queued: return "Waiting for the other GOG download to finish…"
-        case .paused: return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
+        case .queued: return L("Waiting for the other GOG download to finish…")
+        case .paused: return p.totalBytes > 0 ? LF("Paused at %@%%", String(describing: (Int(p.fraction * 100)))) : "Paused"
         case .failed(let message): return message
         case .active:
             switch p.phase {
-            case .preparing: return p.step.map { $0 + "…" } ?? "Preparing download…"
-            case .verifying: return "Checking installed files… \(Int(p.fraction * 100))%"
-            case .finishing: return "Finishing…"
+            case .preparing: return p.step.map { $0 + "…" } ?? L("Preparing download…")
+            case .verifying: return LF("Checking installed files… %@%%", String(describing: (Int(p.fraction * 100))))
+            case .finishing: return L("Finishing…")
             case .downloading:
-                var parts = ["\(Int(p.fraction * 100))%", "\(gogBytes(p.doneBytes)) of \(gogBytes(p.totalBytes))"]
+                var parts = ["\(Int(p.fraction * 100))%", LF("%@ of %@", String(describing: (gogBytes(p.doneBytes))), String(describing: (gogBytes(p.totalBytes))))]
                 if p.bytesPerSecond > 0 {
                     parts.append("\(gogBytes(UInt64(p.bytesPerSecond)))/s")
                     let left = Double(p.totalBytes - min(p.doneBytes, p.totalBytes)) / p.bytesPerSecond
@@ -365,8 +365,8 @@ struct GOGGameSheet: View {
                         if item.installed == nil {
                             switch gog.sizes[productID] {
                             case .known(let download, let install):
-                                if download > 0 { LabeledContent("Download size", value: "About " + ByteCountFormatter.string(fromByteCount: download, countStyle: .file)) }
-                                if install > 0 { LabeledContent("Size on this device", value: "About " + ByteCountFormatter.string(fromByteCount: install, countStyle: .file)) }
+                                if download > 0 { LabeledContent("Download size", value: L("About ") + ByteCountFormatter.string(fromByteCount: download, countStyle: .file)) }
+                                if install > 0 { LabeledContent("Size on this device", value: L("About ") + ByteCountFormatter.string(fromByteCount: install, countStyle: .file)) }
                             case .unavailable(let reason):
                                 Text(reason).font(.caption).foregroundStyle(.secondary)
                             case nil:
@@ -378,7 +378,7 @@ struct GOGGameSheet: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } else {
-                    ContentUnavailableView("Game unavailable", systemImage: "questionmark.square.dashed",
+                    ContentUnavailableView(L("Game unavailable"), systemImage: "questionmark.square.dashed",
                                            description: Text("Refresh your GOG library and try again."))
                 }
             }
@@ -388,7 +388,7 @@ struct GOGGameSheet: View {
                 freeSpace = GOGDownloader.freeSpace(at: URL.documentsDirectory)
             }
             .task(id: productID) { await gog.loadSize(productID) }
-            .confirmationDialog(gog.installed[productID] == nil ? "Cancel this download? Downloaded files are deleted." : "Stop this download?",
+            .confirmationDialog(gog.installed[productID] == nil ? L("Cancel this download? Downloaded files are deleted.") : L("Stop this download?"),
                                 isPresented: $confirmCancel, titleVisibility: .visible) {
                 Button("Cancel download", role: .destructive) { gog.cancel(productID) }
                 Button("Keep downloading", role: .cancel) {}
@@ -435,7 +435,7 @@ struct GOGSetupRows: View {
             Text("Installed before Madeira added GOG's redistributables. Repair installed files adds them.")
                 .font(.caption).foregroundStyle(.secondary)
         } else if !programs.isEmpty || !notes.isEmpty {
-            DisclosureGroup("Redistributables (\(programs.count + notes.count))") {
+            DisclosureGroup(LF("Redistributables (%@)", String(describing: (programs.count + notes.count)))) {
                 ForEach(programs, id: \.id) { program in
                     LabeledContent(program.name, value: Self.text(GOGSetup.state(program.id, drive: LibraryModel.drive)))
                 }
@@ -451,9 +451,9 @@ struct GOGSetupRows: View {
 
     static func text(_ state: GOGSetup.State) -> String {
         switch state {
-        case .pending: return "Installs at the next start"
-        case .done: return "Installed"
-        case .failed(let code): return "Failed (code \(code)); Repair runs it again"
+        case .pending: return L("Installs at the next start")
+        case .done: return L("Installed")
+        case .failed(let code): return LF("Failed (code %@); Repair runs it again", String(describing: (code)))
         }
     }
 }
@@ -495,7 +495,7 @@ struct GOGEntrySection: View {
             }
             if let record {
                 LabeledContent("Version", value: record.versionName.isEmpty ? record.buildID : record.versionName)
-                LabeledContent("Language", value: record.language == "*" ? "Default" : record.language)
+                LabeledContent("Language", value: record.language == "*" ? L("Default") : record.language)
                 if !record.dlc.isEmpty { LabeledContent("DLC installed", value: "\(record.dlc.count)") }
                 if programs.count > 1, download == nil {
                     Picker("Program", selection: Binding(get: { record.launchExe.lowercased() }, set: { pick($0, id: id) })) {
@@ -505,7 +505,7 @@ struct GOGEntrySection: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if record.galaxy != nil, GOGGalaxy.enabled {
-                    LabeledContent("Achievements and stats", value: gog.signedIn ? "On while it runs" : "Sign in to GOG")
+                    LabeledContent("Achievements and stats", value: gog.signedIn ? L("On while it runs") : L("Sign in to GOG"))
                 }
                 GOGSetupRows(record: record)
             }
@@ -560,7 +560,7 @@ struct GOGSettingsSection: View {
     var body: some View {
         Section {
             if gog.signedIn {
-                LabeledContent("Signed in as", value: gog.accountName ?? "GOG account")
+                LabeledContent("Signed in as", value: gog.accountName ?? L("GOG account"))
                 Button("Sign out of GOG", role: .destructive) { confirmSignOut = true }
             } else {
                 Button { open(.gogSignIn) } label: { Label("Sign in to GOG", systemImage: "person.crop.circle.badge.plus") }
@@ -597,7 +597,7 @@ struct GOGSignInView: View {
             Group {
                 if gog.signedIn {
                     Form {
-                        LabeledContent("Signed in as", value: gog.accountName ?? "GOG account")
+                        LabeledContent("Signed in as", value: gog.accountName ?? L("GOG account"))
                         Button("Sign out", role: .destructive) { gog.signOut() }
                     }
                 } else {
@@ -640,7 +640,7 @@ struct GOGSignInView: View {
     private func submit(_ text: String) {
         guard !busy else { return }
         guard let code = GOGAPI.authorizationCode(in: text) else {
-            failure = "This is not a GOG sign-in address. Copy the address of the page GOG opens after you sign in."
+            failure = L("This is not a GOG sign-in address. Copy the address of the page GOG opens after you sign in.")
             return
         }
         busy = true

@@ -149,6 +149,6 @@ with tempfile.TemporaryDirectory() as tmp:
     source.write_text('import Foundation\n' + folder + '\nenum RegistrationFixture {\n' + validate + '\n}\n' + main)
     executable = Path(tmp) / 'check'
     subprocess.run([swiftc, '-swift-version', '5', '-sanitize=address', str(source),
-                    *[str(app / name) for name in ['ExternalStorage.swift', 'SteamInstall.swift', 'SteamKeyValues.swift']],
+                    *[str(app / name) for name in ['ExternalStorage.swift', 'SteamInstall.swift', 'SteamKeyValues.swift', 'Localization.swift']],
                     '-o', str(executable)], check=True)
     subprocess.run([str(executable)], check=True, env=dict(os.environ, ASAN_OPTIONS='detect_leaks=0'))

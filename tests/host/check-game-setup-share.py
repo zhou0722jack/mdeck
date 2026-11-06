@@ -119,7 +119,7 @@ else:
         (temporary / 'main.swift').write_text(main_swift)
         binary = temporary / 'setup'
         subprocess.run(compiler.split() + ['-swift-version', '5', str(temporary / 'GameSetupShare.swift'),
-                                           str(temporary / 'main.swift'), '-o', str(binary)], check=True)
+                                           str(temporary / 'main.swift'), str(app / 'Localization.swift'), '-o', str(binary)], check=True)
         out = dict(line.split('=', 1) for line in subprocess.run([str(binary)], capture_output=True, text=True,
                                                                  check=True).stdout.splitlines())
         check(out['shared'] == 'arguments,controllerMode,controls,fpsMode,metalFXUpscale,resolution,steamProgram',

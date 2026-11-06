@@ -331,7 +331,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-dock-start-') as tmp:
     (tmp / 'checks.swift').write_text(checks, encoding='utf-8')
     exe = tmp / 'swift-checks'
     r = subprocess.run([SWIFTC, '-parse-as-library', '-swift-version', '5', '-o', str(exe),
-                        str(tmp / 'rules.swift'), str(tmp / 'checks.swift')])
+                        str(tmp / 'rules.swift'), str(tmp / 'checks.swift'), str(app / 'Localization.swift')])
     require(r.returncode == 0, 'Swift rules compile on the host')
     if r.returncode == 0:
         r = subprocess.run([str(exe)])

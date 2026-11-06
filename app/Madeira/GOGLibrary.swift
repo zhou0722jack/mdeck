@@ -328,7 +328,7 @@ struct GOGInstalledGame: Codable, Sendable {
 
     private func enqueue(_ id: String, kind: Download.Kind) {
         guard Self.enabled else { return }
-        guard signedIn else { error = "Sign in to GOG to download games."; return }
+        guard signedIn else { error = L("Sign in to GOG to download games."); return }
         if active?.id == id || queue.contains(id) { return }
         if inSession { resumeAfterSession.insert(id); downloads[id] = Download(kind: kind, state: .paused); return }
         var item = downloads[id] ?? Download(kind: kind, state: .queued)
@@ -519,7 +519,7 @@ struct GOGInstalledGame: Codable, Sendable {
             GOGLog.event("[gog-setup] redistributables not downloaded id=\(id) reason=\(reason)")
             var plan = GOGSetup.Plan()
             plan.notes = [GOGSetupNote(id: "", name: "Redistributables",
-                                       note: "Could not be downloaded this time. Repair installed files tries again.")]
+                                       note: L("Could not be downloaded this time. Repair installed files tries again."))]
             return plan
         }
     }

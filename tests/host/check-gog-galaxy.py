@@ -17,8 +17,8 @@ if shutil.which('swift') is None:
     sys.exit(1 if '--require-swift' in sys.argv else 0)
 with tempfile.TemporaryDirectory() as tmp:
     exe = Path(tmp) / 'gog-setup'
-    r = subprocess.run(['swiftc', '-static-stdlib', str(root / 'tests/host/gog-setup/Stubs.swift'),
-                        str(root / 'app/Madeira/SwiftGOG/GOGSetup.swift'), str(root / 'tests/host/gog-setup/main.swift'),
+    r = subprocess.run(['swiftc', *(['-static-stdlib'] if sys.platform != 'darwin' else []), str(root / 'tests/host/gog-setup/Stubs.swift'),
+                        str(root / 'app/Madeira/SwiftGOG/GOGSetup.swift'), str(root / 'app/Madeira/Localization.swift'), str(root / 'tests/host/gog-setup/main.swift'),
                         '-o', str(exe)], capture_output=True, text=True)
     run = subprocess.run([str(exe)], capture_output=True, text=True) if r.returncode == 0 else None
     if run is None or 'ALL OK' not in run.stdout:
@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (pkg / 'Tests/GTests').mkdir(parents=True)
     for f in (root / 'app/Madeira/SwiftGOG/Galaxy').glob('*.swift'):
         shutil.copy(f, pkg / 'Sources/G' / f.name)
+    shutil.copy(root / 'app/Madeira/Localization.swift', pkg / 'Sources/G/Localization.swift')
     shutil.copy(root / 'tests/host/gog-galaxy/Stub.swift', pkg / 'Sources/G/Stub.swift')
     shutil.copy(root / 'tests/host/gog-galaxy/GalaxyTests.swift', pkg / 'Tests/GTests/GalaxyTests.swift')
     (pkg / 'Package.swift').write_text('// swift-tools-version:5.9\nimport PackageDescription\n'

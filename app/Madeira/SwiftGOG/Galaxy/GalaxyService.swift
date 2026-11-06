@@ -72,7 +72,7 @@ struct URLSessionGalaxyHTTP: GalaxyHTTP {
         }
         if let language { r.setValue(language, forHTTPHeaderField: "X-Gog-Lc") }
         let (data, response) = try await session.data(for: r)
-        guard data.count <= 1 << 20 else { throw GalaxyError.unsafeContent("Galaxy reply of \(data.count) bytes") }
+        guard data.count <= 1 << 20 else { throw GalaxyError.unsafeContent(LF("Galaxy reply of %@ bytes", String(describing: (data.count)))) }
         return ((response as? HTTPURLResponse)?.statusCode ?? 0, [UInt8](data))
     }
 }
@@ -83,7 +83,7 @@ extension GOGAPI: GalaxyTokenSource {
     func gameToken(for client: GOGGalaxyClient) async throws -> GOGGameToken {
         let host: GOGSession
         do { host = try await validSession() } catch GOGAPIError.signedOut { throw GalaxyError.notLoggedOn }
-        return try await gameGrant(GalaxySecret(host.refreshToken), client, label: "GOG game token")
+        return try await gameGrant(GalaxySecret(host.refreshToken), client, label: L("GOG game token"))
     }
 
     func refreshGameToken(_ refreshToken: GalaxySecret<String>, for client: GOGGalaxyClient) async throws -> GOGGameToken {
@@ -107,7 +107,7 @@ extension GOGAPI: GalaxyTokenSource {
             var user_id: String?
         }
         guard data.count <= 1 << 16, let r = try? JSONDecoder().decode(Reply.self, from: data), let user = r.user_id, UInt64(user) != nil else {
-            throw GalaxyError.protocolChanged("\(label): unexpected reply")
+            throw GalaxyError.protocolChanged(LF("%@: unexpected reply", String(describing: (label))))
         }
         return GOGGameToken(accessToken: GalaxySecret(r.access_token), refreshToken: GalaxySecret(r.refresh_token),
                             expiresAt: Date().addingTimeInterval(r.expires_in ?? 3600), userID: user)

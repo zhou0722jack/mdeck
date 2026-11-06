@@ -45,10 +45,10 @@ enum GalaxyError: Error, Equatable, Sendable, CustomStringConvertible {
 
     var description: String {
         switch self {
-        case let .protocolChanged(s): return "protocol changed: \(s)"
+        case let .protocolChanged(s): return LF("protocol changed: %@", String(describing: (s)))
         case let .eresult(status, context): return "\(context): HTTP \(status)"
-        case .notLoggedOn: return "not signed in"
-        case let .unsafeContent(s): return "unsafe content: \(s)"
+        case .notLoggedOn: return L("not signed in")
+        case let .unsafeContent(s): return LF("unsafe content: %@", String(describing: (s)))
         }
     }
 }

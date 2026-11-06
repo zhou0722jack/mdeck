@@ -161,8 +161,8 @@ struct GameSetup {
         case notASetup, newerVersion(Int)
         var errorDescription: String? {
             switch self {
-            case .notASetup: return "This isn't a Madeira setup."
-            case .newerVersion: return "This setup was made by a newer Madeira. Update Madeira to apply it."
+            case .notASetup: return L("This isn't a Madeira setup.")
+            case .newerVersion: return L("This setup was made by a newer Madeira. Update Madeira to apply it.")
             }
         }
     }
@@ -231,13 +231,13 @@ struct GameSetup {
     var contents: [String] {
         var out: [String] = []
         let fields = entry.keys.filter { !Self.controlKeys.contains($0) && !Self.sameGameKeys.contains($0) }.count
-        if fields > 0 { out.append(fields == 1 ? "1 game setting" : "\(fields) game settings") }
+        if fields > 0 { out.append(fields == 1 ? L("1 game setting") : LF("%@ game settings", String(fields))) }
         let lines = configLines.count
-        if lines > 0 { out.append(lines == 1 ? "1 config line" : "\(lines) config lines") }
+        if lines > 0 { out.append(lines == 1 ? L("1 config line") : LF("%@ config lines", String(lines))) }
         let on = switches.filter { ($0.value as? Bool) == true || (($0.value as? String).map { !$0.isEmpty } ?? false) }.count
-        if on > 0 { out.append(on == 1 ? "1 launch switch" : "\(on) launch switches") }
-        if hasControls { out.append("touch controls and controller") }
-        if !iniFiles.isEmpty { out.append(iniFiles.count == 1 ? "1 settings file" : "\(iniFiles.count) settings files") }
+        if on > 0 { out.append(on == 1 ? L("1 launch switch") : LF("%@ launch switches", String(on))) }
+        if hasControls { out.append(L("touch controls and controller")) }
+        if !iniFiles.isEmpty { out.append(iniFiles.count == 1 ? L("1 settings file") : LF("%@ settings files", String(iniFiles.count))) }
         return out
     }
 
@@ -427,7 +427,7 @@ struct GameSetupShareSheet: View {
                             UIPasteboard.general.string = text
                             copied = true
                         } label: {
-                            Label(copied ? "Copied" : "Copy as Text", systemImage: copied ? "checkmark" : "doc.on.doc")
+                            Label(copied ? L("Copied") : L("Copy as Text"), systemImage: copied ? "checkmark" : "doc.on.doc")
                         }
                         .disabled(text == nil)
                     } footer: {
@@ -442,9 +442,9 @@ struct GameSetupShareSheet: View {
                     let made = try GameSetup(entry: entry)
                     setup = made
                     file = try made.temporaryFile()
-                    text = "\(made.title) setup for Madeira: " + (try made.text())
+                    text = LF("%@ setup for Madeira: ", String(describing: (made.title))) + (try made.text())
                 } catch {
-                    self.error = "This game's setup could not be saved: \(error.localizedDescription)"
+                    self.error = LF("This game's setup could not be saved: %@", String(describing: (error.localizedDescription)))
                 }
             }
         }
@@ -470,10 +470,10 @@ struct GameSetupApplySheet: View {
                         Label($0, systemImage: "checkmark.circle")
                     }
                 } header: {
-                    Text("\(setup.title) setup")
+                    Text(LF("%@ setup", String(describing: (setup.title))))
                 } footer: {
                     if otherGame {
-                        Text("This setup was made for \(setup.title). It may not suit \(gameTitle).")
+                        Text(LF("This setup was made for %@. It may not suit %@.", String(describing: (setup.title)), String(describing: (gameTitle))))
                             .foregroundStyle(.orange)
                     }
                 }
@@ -503,10 +503,10 @@ struct GameSetupApplySheet: View {
                     if setup.hasControls { Toggle("Touch controls and controller", isOn: $controls) }
                     if !setup.iniFiles.isEmpty { Toggle("Settings files", isOn: $iniFiles) }
                 } footer: {
-                    Text("Applying replaces \(gameTitle)'s settings with this setup's. Your saves and game files stay as they are.")
+                    Text(LF("Applying replaces %@'s settings with this setup's. Your saves and game files stay as they are.", String(describing: (gameTitle))))
                 }
                 Section {
-                    Button("Apply to \(gameTitle)", systemImage: "square.and.arrow.down") {
+                    Button(LF("Apply to %@", String(describing: (gameTitle))), systemImage: "square.and.arrow.down") {
                         apply(controls && setup.hasControls, iniFiles && !setup.iniFiles.isEmpty)
                         dismiss()
                     }
@@ -554,7 +554,7 @@ struct GameSetupInboxSheet: View {
                         }
                     }
                 } header: {
-                    Text("Apply \(setup.title) setup to")
+                    Text(LF("Apply %@ setup to", String(describing: (setup.title))))
                 } footer: {
                     if games.isEmpty { Text("Add the game to your library first, then open the setup again.") }
                 }
@@ -570,7 +570,7 @@ struct GameSetupInboxSheet: View {
                         model.save(entry)
                         dismiss()
                     } catch {
-                        self.error = "This setup could not be applied: \(error.localizedDescription)"
+                        self.error = LF("This setup could not be applied: %@", String(describing: (error.localizedDescription)))
                     }
                 }
             }

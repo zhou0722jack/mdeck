@@ -31,14 +31,14 @@ enum GOGAPIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .signedOut: return "Sign in to GOG to continue."
+        case .signedOut: return L("Sign in to GOG to continue.")
         case .http(let status):
-            if status == 401 || status == 403 { return "GOG refused the request (HTTP \(status)). Sign in again in Settings › GOG." }
-            return "GOG's server answered with HTTP \(status). Try again later."
-        case .invalid(let what): return "GOG sent an unexpected answer (\(what))."
-        case .noWindowsBuild: return "GOG has no Windows build of this game for Madeira to download."
-        case .legacyBuild: return "This game only has an older kind of GOG build (generation 1), which Madeira cannot download yet."
-        case .noPlayTask: return "The game's files downloaded, but they do not say which program starts the game (goggame-<id>.info). Add the game with + and choose its .exe."
+            if status == 401 || status == 403 { return LF("GOG refused the request (HTTP %@). Sign in again in Settings › GOG.", String(describing: (status))) }
+            return LF("GOG's server answered with HTTP %@. Try again later.", String(describing: (status)))
+        case .invalid(let what): return LF("GOG sent an unexpected answer (%@).", String(describing: (what)))
+        case .noWindowsBuild: return L("GOG has no Windows build of this game for Madeira to download.")
+        case .legacyBuild: return L("This game only has an older kind of GOG build (generation 1), which Madeira cannot download yet.")
+        case .noPlayTask: return L("The game's files downloaded, but they do not say which program starts the game (goggame-<id>.info). Add the game with + and choose its .exe.")
         }
     }
 

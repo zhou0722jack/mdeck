@@ -164,7 +164,7 @@ actor SteamConnection {
         case .success(let message):
             switch message {
             case .data(let data): messageHandler?(data)
-            case .string(let text): SteamLog.trace("unexpected text frame (\(text.utf8.count) bytes)")
+            case .string(let text): SteamLog.trace(LF("unexpected text frame (%@ bytes)", String(describing: (text.utf8.count))))
             @unknown default: break
             }
             scheduleReceive(task)

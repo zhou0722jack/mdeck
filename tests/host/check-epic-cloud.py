@@ -47,7 +47,7 @@ def build(work):
         mod.mkdir()
         (mod / "module.modulemap").write_text('module zlib [system] {\n header "/usr/include/zlib.h"\n link "z"\n export *\n}\n')
         args += ["-I", str(mod)]
-    args += [str(p) for p in sorted(src.glob("*.swift"))]
+    args += [str(ROOT / "app/Madeira/Localization.swift")] + [str(p) for p in sorted(src.glob("*.swift"))]
     r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode:
         print(r.stdout[-3000:], r.stderr[-6000:])

@@ -93,10 +93,10 @@ enum SteamWorkshopRequests {
         var id: String { rawValue }
         var label: String {
             switch self {
-            case .trend: return "Popular this week"
-            case .subscribed: return "Most subscribed"
-            case .recent: return "Most recent"
-            case .search: return "Search"
+            case .trend: return L("Popular this week")
+            case .subscribed: return L("Most subscribed")
+            case .recent: return L("Most recent")
+            case .search: return L("Search")
             }
         }
         /// EPublishedFileQueryType.

@@ -257,7 +257,7 @@ struct LibraryGridPageModel: Equatable {
 
     private mutating func othersSection(_ inputs: Inputs) {
         let collapsible = SteamGamesSection.collapsible
-        append(.fixed(.header(id: "others", title: "Other games", count: inputs.others.count,
+        append(.fixed(.header(id: "others", title: L("Other games"), count: inputs.others.count,
                               collapse: collapsible ? "others" : nil, collapsed: inputs.hideOthers)),
                spacing: LibraryGridGeometry.blockSpacing)
         if inputs.hideOthers && collapsible {
@@ -288,15 +288,15 @@ struct LibraryGridPageModel: Equatable {
             first = false
         }
         if part != .notInstalled {
-            add(.fixed(.header(id: "steam", title: "Steam", count: installed.count,
+            add(.fixed(.header(id: "steam", title: L("Steam"), count: installed.count,
                                collapse: collapsible ? "installed" : nil, collapsed: inputs.hideInstalled)))
             if SteamGamesRules.showsSignIn(library: libraryEnabled, signedIn: account.signedIn) { add(.fixed(.signIn)) }
             if SteamOwnedLibrary.cloudEnabled, !account.cloudUndecided.isEmpty {
                 let names = account.cloudUndecided.compactMap { id in model.games.first { $0.id == id }?.name }
-                add(.fixed(.cloudNotice("Steam Cloud: \(names.joined(separator: ", ")) \(names.count == 1 ? "has" : "have") saves that differ from this device's. Open the game's details to choose which to keep.")))
+                add(.fixed(.cloudNotice(LF("Steam Cloud: %@ %@ saves that differ from this device's. Open the game's details to choose which to keep.", String(describing: (names.joined(separator: ", "))), String(describing: (names.count == 1 ? "has" : "have"))))))
             }
             if let waiting = account.cloudWaitingFor {
-                add(.fixed(.syncing("Syncing \(model.games.first { $0.id == waiting }?.name ?? "the game")'s Steam Cloud saves, then starting it…")))
+                add(.fixed(.syncing(LF("Syncing %@'s Steam Cloud saves, then starting it…", String(describing: (model.games.first { $0.id == waiting }?.name ?? "the game"))))))
             }
             if inputs.hideInstalled && collapsible {
             } else if !groups.downloading.isEmpty || !installed.isEmpty {
@@ -304,7 +304,7 @@ struct LibraryGridPageModel: Equatable {
                 for item in cards { steam[item.id] = item }
                 add(.grid(id: "steam.installed", cards: cards.map { .steam($0.id) }))
             } else if signedIn && !account.refreshing && groups.notInstalled.isEmpty && inputs.search.isEmpty {
-                add(.fixed(.note(id: "steam", text: account.libraryUpdated == nil ? "Pull down to load your Steam library."
+                add(.fixed(.note(id: "steam", text: account.libraryUpdated == nil ? L("Pull down to load your Steam library.")
                                  : "No Windows games were found in this Steam library.")))
             }
         }
@@ -604,7 +604,7 @@ struct LibraryGridPage: View {
         case .notInstalledToggle(let count, _):
             return AnyView(LibraryGridNotInstalledToggle(count: count))
         case .emptyLibrary:
-            return AnyView(ContentUnavailableView("Make yourself at home", systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe.")))
+            return AnyView(ContentUnavailableView(L("Make yourself at home"), systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe.")))
         case .store(.gog, _):
             return AnyView(GOGGamesSection(search: search, layout: layout, width: width, open: open, inGrid: true))
         case .store(.itch, _):

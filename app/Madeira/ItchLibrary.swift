@@ -59,13 +59,13 @@ enum ItchInstallError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .diskSpace(let needed):
-            return "Not enough free space on this device: this download needs about \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)) more. Free some space, then try again."
+            return LF("Not enough free space on this device: this download needs about %@ more. Free some space, then try again.", String(describing: (ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))))
         case .unsupportedFile(let name):
-            return "This game comes as \(name), which Madeira cannot unpack yet. Only .zip and .7z archives, .exe files and .msi installers install from itch.io for now."
+            return LF("This game comes as %@, which Madeira cannot unpack yet. Only .zip and .7z archives, .exe files and .msi installers install from itch.io for now.", String(describing: (name)))
         case .innerRar:
-            return "This game's download holds a .rar archive, which Madeira cannot unpack. Unpack it in the game's folder in drive_c\\itch with another app, then add the game's .exe with + in the library."
+            return L("This game's download holds a .rar archive, which Madeira cannot unpack. Unpack it in the game's folder in drive_c\\itch with another app, then add the game's .exe with + in the library.")
         case .noProgram:
-            return "Madeira could not tell which program starts this game. Open its folder in drive_c\\itch and add the game's .exe with + in the library."
+            return L("Madeira could not tell which program starts this game. Open its folder in drive_c\\itch and add the game's .exe with + in the library.")
         }
     }
 
@@ -597,7 +597,7 @@ final class ItchTransfer: NSObject, URLSessionDownloadDelegate, @unchecked Senda
 
     private func enqueue(_ id: Int, kind: Download.Kind) {
         guard Self.enabled else { return }
-        guard signedIn else { error = "Sign in to itch.io to download games."; return }
+        guard signedIn else { error = L("Sign in to itch.io to download games."); return }
         if active?.id == id || queue.contains(id) { return }
         if inSession { resumeAfterSession.insert(id); downloads[id] = Download(kind: kind, state: .paused); return }
         var item = downloads[id] ?? Download(kind: kind, state: .queued)

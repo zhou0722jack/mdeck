@@ -6,13 +6,6 @@ import ImageIO
 import Combine
 import Metal
 
-/// A text that is built in code (a note, a picker title, a status or an error) in the
-/// device's language, from Localizable.xcstrings; English when the catalog lacks it.
-/// Texts written straight into Text("...")/Button("...") are looked up by SwiftUI already.
-func L(_ text: String) -> String {
-    Bundle.main.localizedString(forKey: text, value: text, table: "Localizable")
-}
-
 // ============================================================================
 // Library front end.
 //
@@ -571,7 +564,7 @@ struct LibraryEntry: Codable, Identifiable {
 
     static let desktopID = UUID(uuidString: "AF046C35-C32A-497B-92BC-0BBD14F8CB61")!
     static var desktopEntry: LibraryEntry {
-        var entry = LibraryEntry(title: "Desktop", relativePath: "windows/system32/explorer.exe", bits: 64)
+        var entry = LibraryEntry(title: L("Desktop"), relativePath: "windows/system32/explorer.exe", bits: 64)
         entry.id = desktopID; entry.desktop = true; entry.graphicsAPI = "Wine desktop"
         return entry
     }
@@ -586,7 +579,7 @@ struct LibraryEntry: Codable, Identifiable {
     /// .steamBigPicture) carries the launcher-chain memory lines a 64-bit Chromium
     /// host needs and the swap tier with the donor pool.
     static var bigPictureEntry: LibraryEntry {
-        var entry = LibraryEntry(title: "Big Picture", relativePath: "big-picture.bat", bits: 64)
+        var entry = LibraryEntry(title: L("Big Picture"), relativePath: "big-picture.bat", bits: 64)
         entry.id = bigPictureID; entry.bigPicture = true; entry.graphicsAPI = "Steam"; entry.launchMode = "desktop"
         return entry
     }
@@ -740,18 +733,18 @@ struct LibraryEntry: Codable, Identifiable {
               (0...4).contains(fpsMode), !arguments.contains("\0"), !windowsPath.contains("\0"),
               !launchArguments.contains("\0"), !launchWindowsPath.contains("\0"),
               launchWindowsPath.utf8.count < 1024, (steamWorkingWindowsPath?.utf8.count ?? 0) < 512 else {
-            throw LibraryError.message("The saved launch profile contains invalid display or argument values.")
+            throw LibraryError.message(L("The saved launch profile contains invalid display or argument values."))
         }
         guard LaunchArgumentText.valid(launchArguments) else {
-            throw LibraryError.message("Use balanced double quotes, no control characters, and at most 64 launch arguments in 4 KB.")
+            throw LibraryError.message(L("Use balanced double quotes, no control characters, and at most 64 launch arguments in 4 KB."))
         }
         // build/madeira_cfg.h reads at most 64 KB of a file.
         guard (config?.utf8.count ?? 0) < 60_000, config?.contains("\0") != true else {
-            throw LibraryError.message("This game's config is too long.")
+            throw LibraryError.message(L("This game's config is too long."))
         }
         // ml1163: the launch options.
         guard launchMode == nil || launchMode == "desktop" || launchMode == "direct" else {
-            throw LibraryError.message("The saved launch profile contains an invalid launch mode.")
+            throw LibraryError.message(L("The saved launch profile contains an invalid launch mode."))
         }
         if usesLaunchOptions, let chosen = workingDirectory?.trimmingCharacters(in: .whitespaces), !chosen.isEmpty {
             // WineProcessBridge maps MADEIRA_WORKDIR onto drive_c (C:\ only), and the
@@ -761,7 +754,7 @@ struct LibraryEntry: Codable, Identifiable {
             guard !chosen.contains("\""), !chosen.contains("\0"), chosen.utf8.count < 500,
                   let url = Self.hostURL(ofWindowsPath: chosen),
                   FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder), isFolder.boolValue else {
-                throw LibraryError.message("The working folder must be an existing folder on drive C:, such as C:\\Games\\Some Game.")
+                throw LibraryError.message(L("The working folder must be an existing folder on drive C:, such as C:\\Games\\Some Game."))
             }
         }
         // validate() is the last step of a launch that can refuse it
@@ -773,7 +766,7 @@ struct LibraryEntry: Codable, Identifiable {
                 try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try script.write(to: url, atomically: true, encoding: .utf8)
             } catch {
-                throw LibraryError.message("Could not write \(servicesScriptPath): \(error.localizedDescription)")
+                throw LibraryError.message(LF("Could not write %@: %@", String(describing: (servicesScriptPath)), String(describing: (error.localizedDescription))))
             }
         }
     }
@@ -1062,8 +1055,8 @@ final class LibraryModel: ObservableObject {
         var status: UInt32 = 0
         guard wine_crash_exit_status(&status) != 0 else { return nil }
         LogStore.shared.log("[exit-report] status=0x\(String(status, radix: 16))")
-        let kind = status == 0xC0000005 ? " (memory access violation)" : status == 0xC0000017 ? " (out of memory)" : ""
-        return "The game stopped with Windows error 0x\(String(status, radix: 16, uppercase: true))\(kind). Export the diagnostic log to report it."
+        let kind = status == 0xC0000005 ? L(" (memory access violation)") : status == 0xC0000017 ? L(" (out of memory)") : ""
+        return LF("The game stopped with Windows error 0x%@%@. Export the diagnostic log to report it.", String(describing: (String(status, radix: 16, uppercase: true))), String(describing: (kind)))
     }
     /// A game in a Madeira Dock session asked Steam to start another game (steam://run/<App ID>;
     /// ntdll refused steam.exe and reported it, WineProcessBridge.m): the next app run starts that
@@ -1078,7 +1071,7 @@ final class LibraryModel: ObservableObject {
         LogStore.shared.log("[dock-steam-run] the game asked Steam to start app \(id)\(name == nil ? ", which is not installed" : "")")
         guard let name else { return nil }
         NextSteamApp.set(id)
-        return "The game asked to start \(name). Madeira runs one game per app session: close Madeira and open it again, and \(name) starts by itself."
+        return LF("The game asked to start %@. Madeira runs one game per app session: close Madeira and open it again, and %@ starts by itself.", String(describing: (name)), String(describing: (name)))
     }
     private var readOnly = false
     private var metadataInFlight = Set<UUID>()
@@ -1100,11 +1093,11 @@ final class LibraryModel: ObservableObject {
         if FileManager.default.fileExists(atPath: file.path) {
             do {
                 let doc = try JSONDecoder().decode(Document.self, from: Data(contentsOf: file))
-                guard doc.version == 1 else { throw LibraryError.message("This library uses a newer format.") }
+                guard doc.version == 1 else { throw LibraryError.message(L("This library uses a newer format.")) }
                 entries = doc.entries
             } catch {
                 readOnly = true
-                self.error = "Library could not be opened. The original file was preserved. " + error.localizedDescription
+                self.error = L("Library could not be opened. The original file was preserved. ") + error.localizedDescription
             }
         }
         resetPhoneResolution()
@@ -1153,7 +1146,7 @@ final class LibraryModel: ObservableObject {
     }
 
     func save(_ entry: LibraryEntry, metadata: Bool = false) {
-        guard !readOnly else { error = "The library file could not be read. Preserve or repair it before making changes."; return }
+        guard !readOnly else { error = L("The library file could not be read. Preserve or repair it before making changes."); return }
         var next = entries
         var entry = entry
         // madeira-bcd: a game seen for the first time gets Madeira's recommended settings
@@ -1383,11 +1376,11 @@ final class LibraryModel: ObservableObject {
                 try LibraryFileWriter.encode(next, to: file)
                 entries = next
                 return true
-            } catch { self.error = "Could not save the library: " + error.localizedDescription; return false }
+            } catch { self.error = L("Could not save the library: ") + error.localizedDescription; return false }
         }
         if wait {
             do { try LibraryFileWriter.shared.writeNow(next, to: file) } catch {
-                self.error = "Could not save the library: " + error.localizedDescription; return false
+                self.error = L("Could not save the library: ") + error.localizedDescription; return false
             }
             record(metadata == nil ? .edit : .metadata, metadata ?? [])
             entries = next
@@ -1396,7 +1389,7 @@ final class LibraryModel: ObservableObject {
         record(metadata == nil ? .edit : .metadata, metadata ?? [])
         entries = next
         LibraryFileWriter.shared.write(next, to: file) { [weak self] error in
-            self?.error = "Could not save the library: " + error.localizedDescription
+            self?.error = L("Could not save the library: ") + error.localizedDescription
         }
         return true
     }
@@ -2121,7 +2114,7 @@ final class LibraryJITState: ObservableObject {
 /// simulators: the M starts on the field's edge to the pixel on both.
 final class LibraryHeaderAlignment: ObservableObject {
     static let shared = LibraryHeaderAlignment()
-    static let title = "Madeira"
+    static let title = L("Madeira")
     @Published private(set) var shift: CGFloat = 0
     weak var field: UIView?
     weak var anchor: UIView?
@@ -2348,7 +2341,7 @@ enum SteamCatalog {
         var request = URLRequest(url: url.url!); request.timeoutInterval = 15
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200, data.count < 2_000_000 else {
-            throw LibraryError.message("Steam search is unavailable. You can still edit the title and artwork manually.")
+            throw LibraryError.message(L("Steam search is unavailable. You can still edit the title and artwork manually."))
         }
         struct Results: Decodable { var items: [SteamMatch] }
         return Array(try JSONDecoder().decode(Results.self, from: data).items.prefix(30))
@@ -2964,10 +2957,10 @@ enum LibraryStoreTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return L("All")
-        case .steam: return "Steam"
+        case .steam: return L("Steam")
         case .other: return L("Other")
-        case .gog: return "GOG"
-        case .itch: return "itch.io"
+        case .gog: return L("GOG")
+        case .itch: return L("itch.io")
         case .epic: return "Epic"
         case .ea: return "EA"
         }
@@ -3143,8 +3136,8 @@ enum LibraryGrouping {
                 groups[index].games.append(game)
             }
         case "installed":
-            groups = [Group(id: "installed", title: "Installed", games: games.filter(\.installed)),
-                      Group(id: "notInstalled", title: "Not installed", games: games.filter { !$0.installed })]
+            groups = [Group(id: "installed", title: L("Installed"), games: games.filter(\.installed)),
+                      Group(id: "notInstalled", title: L("Not installed"), games: games.filter { !$0.installed })]
         default:
             groups = [Group(id: "all", title: nil, games: games)]
         }
@@ -3236,7 +3229,7 @@ struct LibraryGroupedGames<LocalCell: View>: View {
         VStack(alignment: .leading, spacing: 24) {
             if groups.isEmpty {
                 if search.isEmpty {
-                    ContentUnavailableView("Make yourself at home", systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."))
+                    ContentUnavailableView(L("Make yourself at home"), systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."))
                 } else {
                     Text("No games match your search.").foregroundStyle(.secondary)
                 }
@@ -3553,7 +3546,7 @@ struct LibraryView: View {
             if EpicLibrary.enabled, settingsShow("Epic", "Epic Games", "sign in", "account") {
                 EpicSettingsSection(open: { settingsSheet = $0 })
             }
-            if EALibrary.enabled, settingsShow("EA", "EA app", "Origin", "sign in", "account") {
+            if EALibrary.enabled, settingsShow("EA", L("EA app"), "Origin", "sign in", "account") {
                 EASettingsSection(open: { settingsSheet = $0 })
             }
             if settingsShow(".NET", "Mono", "Wine Mono", "framework", "download") { WineMonoSettingsSection() }
@@ -3670,7 +3663,7 @@ struct LibraryView: View {
                 } else if !tab.shows(.other) {
                     EmptyView()
                 } else if model.entries.filter({ $0.desktop != true && $0.listedInLibrary && $0.steamAppID == nil && $0.epicAppName == nil && $0.gogProductID == nil && $0.itchGameID == nil && $0.eaOfferID == nil }).isEmpty {
-                    ContentUnavailableView("Make yourself at home", systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."))
+                    ContentUnavailableView(L("Make yourself at home"), systemImage: "gamecontroller", description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."))
                 } else {
                     cells(entries, width: viewport.size.width)
                 }
@@ -4046,13 +4039,13 @@ struct LibraryDetail: View {
         // (EALibrary.prepareLaunch gets its licence and the EA app's environment).
         if let offer = entry.eaOfferID {
             if EALibrary.shared.downloads[offer] != nil {
-                error = "This game's download has not finished. Resume it and wait for it to complete before playing."; return
+                error = L("This game's download has not finished. Resume it and wait for it to complete before playing."); return
             }
             if EALibrary.shared.installed[offer] == nil {
-                error = "This EA game is no longer installed. Install it again from the EA app section."; return
+                error = L("This EA game is no longer installed. Install it again from the EA app section."); return
             }
             if !EALibrary.shared.signedIn {
-                error = "Sign in to EA in Settings › EA app first. An EA game needs the sign-in to get its licence and start."; return
+                error = L("Sign in to EA in Settings › EA app first. An EA game needs the sign-in to get its licence and start."); return
             }
         }
         // An Epic game starts once its files are complete (EpicLibrary).
@@ -4100,19 +4093,19 @@ struct LibraryDetail: View {
         case display, controls, launch, compatibility, steam, cloud, achievements, gog, itch, library, iniFiles, advanced
         var title: String {
             switch self {
-            case .display: return "Display"
-            case .controls: return "Controls"
-            case .launch: return "Launch"
-            case .compatibility: return "Compatibility"
-            case .steam: return "Steam"
-            case .cloud: return "Steam Cloud"
-            case .workshop: return "Steam Workshop"
-            case .gog: return "GOG"
-            case .itch: return "itch.io"
-            case .achievements: return "Achievements"
-            case .library: return "Library details"
-            case .iniFiles: return "Settings files"
-            case .advanced: return "Advanced"
+            case .display: return L("Display")
+            case .controls: return L("Controls")
+            case .launch: return L("Launch")
+            case .compatibility: return L("Compatibility")
+            case .steam: return L("Steam")
+            case .cloud: return L("Steam Cloud")
+            case .workshop: return L("Steam Workshop")
+            case .gog: return L("GOG")
+            case .itch: return L("itch.io")
+            case .achievements: return L("Achievements")
+            case .library: return L("Library details")
+            case .iniFiles: return L("Settings files")
+            case .advanced: return L("Advanced")
             }
         }
         var symbol: String {
@@ -4343,7 +4336,7 @@ struct LibraryDetail: View {
             if entry.anisotropyLimit != nil {
                 Picker("D3D9 anisotropic filtering", selection: Binding(get: { entry.anisotropyLimit ?? 0 }, set: { entry.anisotropyLimit = $0 == 0 ? nil : $0 })) {
                     Text("Application default").tag(0)
-                    ForEach([1, 2, 4, 8], id: \.self) { Text("Up to \($0)×").tag($0) }
+                    ForEach([1, 2, 4, 8], id: \.self) { Text(LF("Up to %@×", String(describing: ($0)))).tag($0) }
                 }
             }
             // GPUCards.swift: a chosen card replaces the two NVIDIA switches below.
@@ -4484,7 +4477,7 @@ struct LibraryDetail: View {
                             if let appID = entry.steamAppID, let summary = SteamOwnedLibrary.shared.playtime[appID]?.summary {
                                 Text(summary).font(.subheadline).foregroundStyle(.secondary)
                             } else if let played = entry.lastPlayed {
-                                Text("Last played \(played.formatted(.relative(presentation: .named)))").font(.subheadline).foregroundStyle(.secondary)
+                                Text(LF("Last played %@", String(describing: (played.formatted(.relative(presentation: .named)))))).font(.subheadline).foregroundStyle(.secondary)
                             }
                             // A game Valve's client starts (Madeira Dock): can it start without a connection?
                             if DockOffline.enabled, let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
@@ -4598,7 +4591,7 @@ struct LibraryDetail: View {
                     model.save(entry)
                     reloadBCD()
                 } catch {
-                    setupError = "This setup could not be applied: \(error.localizedDescription)"
+                    setupError = LF("This setup could not be applied: %@", String(describing: (error.localizedDescription)))
                 }
             }
         }
@@ -4699,7 +4692,7 @@ struct SteamSearchView: View {
                     }
                 }
             }.navigationTitle("Find on Steam")
-            .searchable(text: $query, prompt: "Title").onSubmit(of: .search) { submitted = query }
+            .searchable(text: $query, prompt: L("Title")).onSubmit(of: .search) { submitted = query }
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .onAppear { submitted = query }
             .task(id: submitted) {
@@ -4778,22 +4771,22 @@ struct ControllerBindsPage: View {
                 if name == "LS" || name == "RS" {
                     pick(name, name == "RS" ? "Mouse" : "Nothing", .none)
                     pick(name, "WASD", .joystickWASD)
-                    pick(name, "Arrow keys", .joystickArrows)
+                    pick(name, L("Arrow keys"), .joystickArrows)
                 } else {
-                    pick(name, "Left click", .mouseLeft)
-                    pick(name, "Right click", .mouseRight)
+                    pick(name, L("Left click"), .mouseLeft)
+                    pick(name, L("Right click"), .mouseRight)
                     Menu("Letters") { ForEach(0x41...0x5A, id: \.self) { vk in pick(name, String(UnicodeScalar(UInt8(vk))), .key(Int32(vk))) } }
                     Menu("Numbers") { ForEach(0x30...0x39, id: \.self) { vk in pick(name, String(UnicodeScalar(UInt8(vk))), .key(Int32(vk))) } }
                     Menu("Function keys") { ForEach(0...11, id: \.self) { i in pick(name, "F\(i + 1)", .key(Int32(0x70 + i))) } }
                     Menu("Modifiers & editing") {
                         pick(name, "Escape", .key(0x1B)); pick(name, "Tab", .key(0x09)); pick(name, "Shift", .key(0x10))
                         pick(name, "Ctrl", .key(0x11)); pick(name, "Alt", .key(0x12)); pick(name, "Space", .key(0x20))
-                        pick(name, "Enter", .key(0x0D)); pick(name, "Backspace", .key(0x08)); pick(name, "Caps Lock", .key(0x14))
+                        pick(name, "Enter", .key(0x0D)); pick(name, "Backspace", .key(0x08)); pick(name, L("Caps Lock"), .key(0x14))
                     }
                     Menu("Navigation") {
                         pick(name, "↑", .key(0x26)); pick(name, "↓", .key(0x28)); pick(name, "←", .key(0x25)); pick(name, "→", .key(0x27))
                         pick(name, "Insert", .key(0x2D)); pick(name, "Delete", .key(0x2E)); pick(name, "Home", .key(0x24))
-                        pick(name, "End", .key(0x23)); pick(name, "Page Up", .key(0x21)); pick(name, "Page Down", .key(0x22))
+                        pick(name, "End", .key(0x23)); pick(name, L("Page Up"), .key(0x21)); pick(name, L("Page Down"), .key(0x22))
                     }
                     Menu("Symbols") {
                         pick(name, "-", .key(0xBD)); pick(name, "=", .key(0xBB)); pick(name, "[", .key(0xDB)); pick(name, "]", .key(0xDD))
@@ -4805,7 +4798,7 @@ struct ControllerBindsPage: View {
                         pick(name, "Numpad *", .key(0x6A)); pick(name, "Numpad +", .key(0x6B)); pick(name, "Numpad −", .key(0x6D))
                         pick(name, "Numpad .", .key(0x6E)); pick(name, "Numpad /", .key(0x6F))
                     }
-                    pick(name, "Show keyboard", .keyboardToggle)
+                    pick(name, L("Show keyboard"), .keyboardToggle)
                     pick(name, "Nothing", .none)
                 }
                 if changed {
@@ -4835,38 +4828,38 @@ struct ControllerBindsPage: View {
     static func describe(_ action: ControlAction, input: String) -> String {
         switch action {
         case .none:            return input == "RS" ? "Mouse" : "Nothing"
-        case .mouseLeft:       return "Left click"
-        case .mouseRight:      return "Right click"
+        case .mouseLeft:       return L("Left click")
+        case .mouseRight:      return L("Right click")
         case .joystickWASD:    return "WASD"
-        case .joystickArrows:  return "Arrow keys"
-        case .keyboardToggle:  return "Show keyboard"
+        case .joystickArrows:  return L("Arrow keys")
+        case .keyboardToggle:  return L("Show keyboard")
         case .pad(let n):      return n
         case .key(let vk):     return keyName(vk)
         }
     }
     static func keyName(_ vk: Int32) -> String {
         switch vk {
-        case 0x20: return "Space"
-        case 0x0D: return "Enter"
-        case 0x09: return "Tab"
-        case 0x1B: return "Escape"
-        case 0x10: return "Shift"
-        case 0x11: return "Ctrl"
-        case 0x12: return "Alt"
-        case 0x08: return "Backspace"
-        case 0x14: return "Caps Lock"
-        case 0x2D: return "Insert"
-        case 0x2E: return "Delete"
-        case 0x24: return "Home"
-        case 0x23: return "End"
-        case 0x21: return "Page Up"
-        case 0x22: return "Page Down"
+        case 0x20: return L("Space")
+        case 0x0D: return L("Enter")
+        case 0x09: return L("Tab")
+        case 0x1B: return L("Escape")
+        case 0x10: return L("Shift")
+        case 0x11: return L("Ctrl")
+        case 0x12: return L("Alt")
+        case 0x08: return L("Backspace")
+        case 0x14: return L("Caps Lock")
+        case 0x2D: return L("Insert")
+        case 0x2E: return L("Delete")
+        case 0x24: return L("Home")
+        case 0x23: return L("End")
+        case 0x21: return L("Page Up")
+        case 0x22: return L("Page Down")
         case 0x70...0x7B: return "F\(vk - 0x6F)"
         case 0x60...0x69: return "Numpad \(vk - 0x60)"
-        case 0x6A: return "Numpad *"
-        case 0x6B: return "Numpad +"
-        case 0x6D: return "Numpad −"
-        case 0x6E: return "Numpad ."
+        case 0x6A: return L("Numpad *")
+        case 0x6B: return L("Numpad +")
+        case 0x6D: return L("Numpad −")
+        case 0x6E: return L("Numpad .")
         case 0x6F: return "Numpad /"
         default:   return ControlAction.keyLabel(vk)
         }
@@ -4915,11 +4908,11 @@ struct DockOfflineMark: View {
     static func explanation(_ mark: DockOffline.Mark) -> String {
         switch mark {
         case .ready(let saved):
-            return "Steam signed in online on this device on \(saved.formatted(date: .abbreviated, time: .omitted)) and can now sign this account in without a connection. With no internet, Madeira asks Steam to start the game offline; Steam checks its saved sign-in and its saved list of your licenses each time. Its offline sign-in expires after a while, so start a game online now and then. A game that needs its own servers still needs them."
+            return LF("Steam signed in online on this device on %@ and can now sign this account in without a connection. With no internet, Madeira asks Steam to start the game offline; Steam checks its saved sign-in and its saved list of your licenses each time. Its offline sign-in expires after a while, so start a game online now and then. A game that needs its own servers still needs them.", String(describing: (saved.formatted(date: .abbreviated, time: .omitted))))
         case .needsFirstStart:
-            return "Steam can sign this account in offline, but it prepares this game's program for your account the first time it starts, and that needs a connection. Start this game once while you are online."
+            return L("Steam can sign this account in offline, but it prepares this game's program for your account the first time it starts, and that needs a connection. Start this game once while you are online.")
         case .needsOnline:
-            return "Steam has not saved an offline sign-in on this device yet. Start any Steam game once while you are online; after that, installed games can start without a connection."
+            return L("Steam has not saved an offline sign-in on this device yet. Start any Steam game once while you are online; after that, installed games can start without a connection.")
         }
     }
 }
@@ -5105,7 +5098,7 @@ struct MemoryHostTestRow: View {
                 DispatchQueue.main.async { running = false }
             })
         } label: {
-            Label(running ? "Testing extension memory…" : "Test extension memory", systemImage: "memorychip")
+            Label(running ? L("Testing extension memory…") : L("Test extension memory"), systemImage: "memorychip")
         }
         .disabled(running)
         if !last.isEmpty {
@@ -5219,7 +5212,7 @@ struct RuntimeMemorySyncSettings: View {
                 LogStore.shared.log("[runtime-settings] eco=\(on ? 1 : 0)")
             }))
             Button { open(.allSettings) } label: {
-                Label("All settings (\(ConfigCatalog.generated.count - Self.featuredKeys.count) more)", systemImage: "slider.horizontal.3")
+                Label(LF("All settings (%@ more)", String(describing: (ConfigCatalog.generated.count - Self.featuredKeys.count))), systemImage: "slider.horizontal.3")
             }
             MemoryHostTestRow()
         } header: { Text("Memory & sync") } footer: {
@@ -5539,8 +5532,8 @@ struct LibraryFloatingItem: View {
                     Image(systemName: "line.3.horizontal").font(.title3.weight(.semibold)).frame(width: 48, height: 48)
                 }.buttonStyle(.plain).modifier(LibraryPillGlass())
                     .opacity(faded && drag == .zero && !model.menu ? 0.3 : 1)
-                    .accessibilityLabel(L("Game menu")).accessibilityHint(L("Drag to move"))
-            } else { LibraryMetrics().accessibilityHint(L("Drag to move")) }
+                    .accessibilityLabel("Game menu").accessibilityHint("Drag to move")
+            } else { LibraryMetrics().accessibilityHint("Drag to move") }
         }
         // The overlay's cells have fixed widths, so it takes its own size. A frame with a
         // maxWidth takes all the width it is offered: the overlay measured the screen's width,
@@ -5723,7 +5716,7 @@ struct LibraryHUD: View {
                             if let note = DockInstallers.note {
                                 Text(note).font(.caption).foregroundStyle(.white.opacity(0.6)).multilineTextAlignment(.center).frame(maxWidth: 360)
                             }
-                            Text("\(Int(context.date.timeIntervalSince(model.startingSince)))s")
+                            Text(LF("%@s", String(describing: (Int(context.date.timeIntervalSince(model.startingSince))))))
                                 .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
                         }
                     }
@@ -5733,7 +5726,7 @@ struct LibraryHUD: View {
                     TimelineView(.periodic(from: .now, by: 1)) { context in
                         VStack(spacing: 8) {
                             Text(launchIdleStatus).foregroundStyle(.white.opacity(0.7))
-                            Text("\(Int(context.date.timeIntervalSince(model.startingSince)))s")
+                            Text(LF("%@s", String(describing: (Int(context.date.timeIntervalSince(model.startingSince))))))
                                 .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
                         }
                     }.modifier(LaunchEntrance(visible: launchVisible, step: 2, still: curtained))
@@ -5751,7 +5744,7 @@ struct LibraryHUD: View {
                     }
                     if dockStart.holding {
                         launchGlyph(L("Show desktop"), "macwindow") { dockStart.showDesktop(model) }
-                            .accessibilityHint(L("Shows the Windows desktop"))
+                            .accessibilityHint("Shows the Windows desktop")
                     }
                 }.modifier(LaunchEntrance(visible: launchVisible, step: 3, still: curtained))
                 if model.launchSlow && !dockStart.holding {
@@ -5802,7 +5795,7 @@ struct LibraryHUD: View {
                     }
                     if dockStart.holding {
                         launchGlyph(L("Show desktop"), "macwindow") { dockStart.showDesktop(model) }
-                            .accessibilityHint(L("Shows the Windows desktop"))
+                            .accessibilityHint("Shows the Windows desktop")
                     }
                     if model.launchSlow && !dockStart.holding {
                         Button("Show game view") { model.showGameView(reason: "button") }
@@ -5846,7 +5839,7 @@ struct LibraryHUD: View {
                     if dockStart.active, let note = DockInstallers.note {
                         Text(note).font(.caption).foregroundStyle(.white.opacity(0.6)).frame(maxWidth: 440, alignment: .leading)
                     }
-                    Text("\(Int(context.date.timeIntervalSince(model.startingSince)))s")
+                    Text(LF("%@s", String(describing: (Int(context.date.timeIntervalSince(model.startingSince))))))
                         .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
                 }
             }
@@ -6089,7 +6082,7 @@ struct LibraryLiveLogs: View {
                 .frame(maxWidth: .infinity, minHeight: max(0, geo.size.height - 16), alignment: .topLeading)
             }.defaultScrollAnchor(.bottom).padding(8)
         }.background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
-            .accessibilityLabel(L("Live diagnostic log"))
+            .accessibilityLabel("Live diagnostic log")
     }
 }
 

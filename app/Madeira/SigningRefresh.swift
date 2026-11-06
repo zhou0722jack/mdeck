@@ -239,10 +239,10 @@ struct DeveloperPortal {
 
         var errorDescription: String? {
             switch self {
-            case .anisette(let why): return "No anisette server gave an answer Madeira can use (\(why)). Try again later."
+            case .anisette(let why): return LF("No anisette server gave an answer Madeira can use (%@). Try again later.", String(describing: (why)))
             case .signInRefused: return SigningRefresh.signInRefusedMessage
-            case .apple(let code, let message): return "Apple did not issue a new profile: \(message) (error \(code))."
-            case .unreachable(let why): return "Madeira couldn't reach Apple (\(why)). Check the internet connection, then try again."
+            case .apple(let code, let message): return LF("Apple did not issue a new profile: %@ (error %@).", String(describing: (message)), String(describing: (code)))
+            case .unreachable(let why): return LF("Madeira couldn't reach Apple (%@). Check the internet connection, then try again.", String(describing: (why)))
             case .unexpected(let what): return what
             }
         }
@@ -277,7 +277,7 @@ struct DeveloperPortal {
 
     /// Asks an anisette server for the identity's headers: the first that gives them.
     static func open(_ account: SigningAccount, session: URLSession = .shared) async throws -> DeveloperPortal {
-        var failure = Failure.anisette("none was given")
+        var failure = Failure.anisette(L("none was given"))
         for server in account.anisetteServers {
             do {
                 return try await open(account, through: server, session: session)
@@ -290,7 +290,7 @@ struct DeveloperPortal {
 
     private static func open(_ account: SigningAccount, through server: String, session: URLSession) async throws -> DeveloperPortal {
         guard let url = URL(string: server)?.appendingPathComponent("v3/get_headers") else {
-            throw Failure.anisette("its address is invalid")
+            throw Failure.anisette(L("its address is invalid"))
         }
         var request = URLRequest(url: url, timeoutInterval: 20)
         request.httpMethod = "POST"
@@ -355,13 +355,13 @@ struct DeveloperPortal {
                                                          body: PropertyListSerialization.data(fromPropertyList: body, format: .xml, options: 0)))
         guard (200..<300).contains(status),
               let result = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any] else {
-            throw Failure.unexpected("Apple answered \(action) with HTTP \(status) and nothing Madeira can read.")
+            throw Failure.unexpected(LF("Apple answered %@ with HTTP %@ and nothing Madeira can read.", String(describing: (action)), String(describing: (status))))
         }
         let code = (result["resultCode"] as? NSNumber)?.intValue ?? 0
         guard code == 0 else {
             // 1100: "Your session has expired. Please log in."
             if code == 1100 { throw Failure.signInRefused }
-            throw Failure.apple(code: code, message: result["userString"] as? String ?? result["resultString"] as? String ?? "no reason given")
+            throw Failure.apple(code: code, message: result["userString"] as? String ?? result["resultString"] as? String ?? L("no reason given"))
         }
         return result
     }
@@ -387,7 +387,7 @@ struct DeveloperPortal {
     func addAppID(name: String, bundleID: String) async throws -> AppID {
         let added = try await send("addAppId", ["identifier": bundleID, "name": Self.plain(name)])
         guard let app = (added["appId"] as? [String: Any]).flatMap(Self.appID) else {
-            throw Failure.unexpected("Apple registered the App ID and did not say which.")
+            throw Failure.unexpected(L("Apple registered the App ID and did not say which."))
         }
         return app
     }
@@ -411,7 +411,7 @@ struct DeveloperPortal {
                                                          body: JSONSerialization.data(withJSONObject: body)))
         guard (200..<300).contains(status) else {
             let errors = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["errors"] as? [[String: Any]]
-            throw Failure.apple(code: status, message: errors?.first?["detail"] as? String ?? "Increased Memory Limit was not enabled")
+            throw Failure.apple(code: status, message: errors?.first?["detail"] as? String ?? L("Increased Memory Limit was not enabled"))
         }
     }
 
@@ -430,7 +430,7 @@ struct DeveloperPortal {
                 group = try await send("addApplicationGroup", ["identifier": identifier, "name": Self.plain(name)])["applicationGroup"] as? [String: Any]
             }
             guard let id = group?["applicationGroup"] as? String else {
-                throw Failure.unexpected("Apple registered the app group and did not say which.")
+                throw Failure.unexpected(L("Apple registered the app group and did not say which."))
             }
             groups.append(id)
         }
@@ -445,7 +445,7 @@ struct DeveloperPortal {
         let answer = try await send("downloadTeamProvisioningProfile", ["appIdId": app.id])
         guard let data = (answer["provisioningProfile"] as? [String: Any])?["encodedProfile"] as? Data,
               let profile = SigningProfile(mobileprovision: data) else {
-            throw Failure.unexpected("Apple's answer held no provisioning profile.")
+            throw Failure.unexpected(L("Apple's answer held no provisioning profile."))
         }
         return (data, profile)
     }
@@ -475,11 +475,11 @@ struct DeveloperPortal {
         var missing = installed.entitlements.subtracting(new.profile.entitlements)
         if !Set(installed.groups).isSubset(of: new.profile.groups) { missing.insert(SigningProfile.appGroups) }
         guard missing.isEmpty else {
-            throw Failure.unexpected("Apple's new profile does not grant \(missing.sorted().joined(separator: ", ")), "
+            throw Failure.unexpected(LF("Apple's new profile does not grant %@, ", String(describing: (missing.sorted().joined(separator: ", "))))
                 + "which this copy is signed with. Install Madeira again to renew it.")
         }
         guard installed.certificates.isEmpty || !Set(installed.certificates).isDisjoint(with: new.profile.certificates) else {
-            throw Failure.unexpected("This copy was signed with a certificate the Apple ID no longer has, "
+            throw Failure.unexpected(L("This copy was signed with a certificate the Apple ID no longer has, ")
                 + "so a new profile cannot renew it. Install Madeira again.")
         }
         return new
@@ -574,10 +574,10 @@ struct DeveloperPortal {
     /// "expires tomorrow", after "Madeira" or "Madeira's signing".
     var summary: String {
         switch daysLeft {
-        case nil: return "does not expire soon"
-        case 0: return "expires today"
-        case 1: return "expires tomorrow"
-        case let days?: return "expires in \(days) days"
+        case nil: return L("does not expire soon")
+        case 0: return L("expires today")
+        case 1: return L("expires tomorrow")
+        case let days?: return LF("expires in %@ days", String(describing: (days)))
         }
     }
 
@@ -645,21 +645,21 @@ struct DeveloperPortal {
         // A profile from another team's Apple ID cannot renew this copy, and asking for
         // one would spend an App ID there.
         if let team = main.teamID, team != account.teamID {
-            return stop("Madeira's sign-in is for another Apple ID than the one this copy was signed with. "
+            return stop(L("Madeira's sign-in is for another Apple ID than the one this copy was signed with. ")
                 + "Forget it under Settings › Signing, then sign in with the Apple ID that installed Madeira.")
         }
         // A second connection to the device while the debugger holds one is not worth
         // a game that fails to start.
         if isDebuggerAttached() || JITCoordinator.shared.busy {
-            return stop("JIT is being enabled or is waiting for a game. Refresh before enabling JIT, or after playing.")
+            return stop(L("JIT is being enabled or is waiting for a game. Refresh before enabling JIT, or after playing."))
         }
         guard let pairing = try? JITPairingFileStore.data() else {
-            return stop("Madeira has no pairing file for this device. Set up Built-in StikJIT under JIT setup, then refresh.")
+            return stop(L("Madeira has no pairing file for this device. Set up Built-in StikJIT under JIT setup, then refresh."))
         }
         guard LoopbackProbe.vpnInterfaceUp else { return stop(Self.unreachableMessage, unreachable: true) }
 
         deviceUnreachable = false
-        status = .working("Asking Apple for a new profile…")
+        status = .working(L("Asking Apple for a new profile…"))
         LogStore.shared.log("[signing] refresh started automatic=\(automatic ? 1 : 0) days-left=\(daysLeft.map(String.init) ?? "unknown")")
         Task {
             do {
@@ -669,7 +669,7 @@ struct DeveloperPortal {
                     renewed.append(try await DeveloperPortal.renewedProfile(for: item.identifier, named: item.name,
                                                                             account: account, covering: item.profile))
                 }
-                status = .working("Installing it on this device…")
+                status = .working(L("Installing it on this device…"))
                 for new in renewed { try await Self.install(new.data, pairing: pairing) }
                 let until = renewed.map(\.profile.expires).min() ?? main.expires
                 UserDefaults.standard.set(until.timeIntervalSince1970, forKey: Self.renewedUntilKey)
@@ -705,11 +705,11 @@ struct DeveloperPortal {
     private static func logged(_ error: Error) -> String {
         switch error {
         case DeveloperPortal.Failure.anisette: return "anisette"
-        case DeveloperPortal.Failure.signInRefused: return "sign-in refused"
-        case DeveloperPortal.Failure.apple(let code, _): return "apple error \(code)"
-        case DeveloperPortal.Failure.unreachable: return "apple unreachable"
-        case InstallFailure.unreachable: return "device unreachable"
-        case InstallFailure.pairing: return "pairing refused"
+        case DeveloperPortal.Failure.signInRefused: return L("sign-in refused")
+        case DeveloperPortal.Failure.apple(let code, _): return LF("apple error %@", String(describing: (code)))
+        case DeveloperPortal.Failure.unreachable: return L("apple unreachable")
+        case InstallFailure.unreachable: return L("device unreachable")
+        case InstallFailure.pairing: return L("pairing refused")
         default: return "other"
         }
     }
@@ -722,8 +722,8 @@ struct DeveloperPortal {
         var errorDescription: String? {
             switch self {
             case .unreachable: return SigningRefresh.unreachableMessage
-            case .pairing: return "This device no longer accepts Madeira's pairing file. Pair again under JIT setup, then refresh."
-            case .device(let why): return "This device did not take the new profile: \(why)."
+            case .pairing: return L("This device no longer accepts Madeira's pairing file. Pair again under JIT setup, then refresh.")
+            case .device(let why): return LF("This device did not take the new profile: %@.", String(describing: (why)))
             }
         }
     }
@@ -741,7 +741,7 @@ struct DeveloperPortal {
                                                           20, &message)
                     }
                 }
-                let why = message.map { String(cString: $0) } ?? "no reason given"
+                let why = message.map { String(cString: $0) } ?? L("no reason given")
                 madeira_rppairing_string_free(message)
                 switch code {
                 case 0: continuation.resume()
@@ -763,20 +763,20 @@ struct SigningSettingsSection: View {
     @ObservedObject private var signing = SigningRefresh.shared
 
     private var signIn: String {
-        if signing.signInRefused { return "No longer accepted" }
+        if signing.signInRefused { return L("No longer accepted") }
         if let until = signing.account?.tokenExpires {
             return until > Date() ? "Until \(until.formatted(date: .abbreviated, time: .omitted))" : "Expired"
         }
-        return signing.account?.appleID == nil ? "From SideInstaller" : "Signed in"
+        return signing.account?.appleID == nil ? L("From SideInstaller") : "Signed in"
     }
 
     private var footer: String {
         let weekly = "Madeira was signed with a free Apple ID, so it stops opening when this runs out. "
         guard let account = signing.account else {
-            return weekly + "Refresh it with the app that installed it before then, or sign in with the Apple ID it was installed with and Madeira renews its own signing when it is open and LocalDevVPN is connected. Installed with SideInstaller, Madeira needs no sign-in."
+            return weekly + L("Refresh it with the app that installed it before then, or sign in with the Apple ID it was installed with and Madeira renews its own signing when it is open and LocalDevVPN is connected. Installed with SideInstaller, Madeira needs no sign-in.")
         }
         let source = account.appleID == nil ? "the sign-in SideInstaller gave it" : "your Apple ID's sign-in"
-        return weekly + "With \(source) (a token for Apple's developer service, not your password, kept in this device's Keychain), Madeira renews its own signing when it is open and LocalDevVPN is connected. It asks Apple and an anisette server, \(account.anisetteServers.first.flatMap { URL(string: $0)?.host } ?? "the one it was given") first."
+        return weekly + LF("With %@ (a token for Apple's developer service, not your password, kept in this device's Keychain), Madeira renews its own signing when it is open and LocalDevVPN is connected. It asks Apple and an anisette server, %@ first.", String(describing: (source)), String(describing: (account.anisetteServers.first.flatMap { URL(string: $0)?.host } ?? "the one it was given")))
     }
 
     var body: some View {
@@ -790,7 +790,7 @@ struct SigningSettingsSection: View {
                     Button {
                         signing.signingIn = true
                     } label: {
-                        Label(signing.account == nil ? "Sign in with Apple ID…" : "Sign in again…", systemImage: "person.crop.circle")
+                        Label(signing.account == nil ? L("Sign in with Apple ID…") : L("Sign in again…"), systemImage: "person.crop.circle")
                     }
                 }
                 if let appleID = signing.account?.appleID {
@@ -832,7 +832,7 @@ struct SigningRefreshOffer: ViewModifier {
     @ObservedObject private var signing = SigningRefresh.shared
 
     private var title: String {
-        if case .failed = signing.prompt { return "Couldn't Refresh Madeira" }
+        if case .failed = signing.prompt { return L("Couldn't Refresh Madeira") }
         return "Madeira's signing \(signing.summary)"
     }
 
@@ -868,7 +868,7 @@ struct SigningRefreshOffer: ViewModifier {
                 } else if signing.prompt == .expiring, !signing.signInRefused {
                     Button("Refresh Now") { signing.refresh() }
                 }
-                Button(signing.prompt == .expiring ? "Later" : "OK", role: .cancel) {}
+                Button(signing.prompt == .expiring ? L("Later") : L("OK"), role: .cancel) {}
             } message: {
                 Text(message)
             }

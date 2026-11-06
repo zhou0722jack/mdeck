@@ -65,7 +65,7 @@ struct ItchGamesSection: View {
         let others = items.filter { $0.installed == nil && itch.downloads[$0.id] == nil }
         let collapsible = SteamGamesSection.collapsible
         VStack(alignment: .leading, spacing: 14) {
-            LibrarySectionHeader(title: "itch.io", count: mine.count, collapsed: collapsible ? $hidden : nil) {
+            LibrarySectionHeader(title: L("itch.io"), count: mine.count, collapsed: collapsible ? $hidden : nil) {
                 if itch.refreshing { ProgressView().accessibilityLabel("Refreshing itch.io library") }
             }
             if !(hidden && collapsible) {
@@ -87,7 +87,7 @@ struct ItchGamesSection: View {
                 if !mine.isEmpty {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if itch.signedIn && !itch.refreshing && others.isEmpty && search.isEmpty {
-                    Text(itch.libraryUpdated == nil ? "Pull down to load your itch.io library."
+                    Text(itch.libraryUpdated == nil ? L("Pull down to load your itch.io library.")
                          : "No Windows games yet. Games you buy or claim on itch.io show here, and so do the games in your itch.io collections. For a free game, use Find a game.")
                         .foregroundStyle(.secondary)
                 }
@@ -249,7 +249,7 @@ struct ItchGameCell: View {
         if let download {
             badge(ItchDownloadStatus.state(download))
         } else if item.installed != nil, let entry {
-            LibraryBadges(entry: entry, note: itch.updateAvailable(item.id) ? "Update" : item.installed?.setup != nil ? "Installer" : nil)
+            LibraryBadges(entry: entry, note: itch.updateAvailable(item.id) ? L("Update") : item.installed?.setup != nil ? "Installer" : nil)
                 .foregroundStyle(.secondary)
         } else if item.installed == nil {
             badge("Not installed")
@@ -288,10 +288,10 @@ struct ItchDownloadStatus: View {
 
     static func state(_ download: ItchLibrary.Download) -> String {
         switch download.state {
-        case .queued: return "Waiting"
+        case .queued: return L("Waiting")
         case .active: return download.progress.phase == .unpacking ? "Unpacking" : "Downloading \(Int(download.progress.fraction * 100))%"
-        case .paused: return "Paused"
-        case .failed: return "Download failed"
+        case .paused: return L("Paused")
+        case .failed: return L("Download failed")
         }
     }
 
@@ -305,15 +305,15 @@ struct ItchDownloadStatus: View {
     private var caption: String {
         let p = download.progress
         switch download.state {
-        case .queued: return "Waiting for the other itch.io download to finish…"
-        case .paused: return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
+        case .queued: return L("Waiting for the other itch.io download to finish…")
+        case .paused: return p.totalBytes > 0 ? LF("Paused at %@%%", String(describing: (Int(p.fraction * 100)))) : "Paused"
         case .failed(let message): return message
         case .active:
             switch p.phase {
-            case .preparing: return "Finding the game's Windows download…"
+            case .preparing: return L("Finding the game's Windows download…")
             case .unpacking: return p.totalBytes > 0 ? "Unpacking… \(Int(p.fraction * 100))%" : "Unpacking…"
             case .downloading:
-                var parts = ["\(Int(p.fraction * 100))%", "\(itchBytes(p.doneBytes)) of \(itchBytes(p.totalBytes))"]
+                var parts = ["\(Int(p.fraction * 100))%", LF("%@ of %@", String(describing: (itchBytes(p.doneBytes))), String(describing: (itchBytes(p.totalBytes))))]
                 if p.bytesPerSecond > 0 {
                     parts.append("\(itchBytes(UInt64(p.bytesPerSecond)))/s")
                     let left = Double(p.totalBytes - min(p.doneBytes, p.totalBytes)) / p.bytesPerSecond
@@ -392,7 +392,7 @@ struct ItchGameSheet: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } else {
-                    ContentUnavailableView("Game unavailable", systemImage: "questionmark.square.dashed",
+                    ContentUnavailableView(L("Game unavailable"), systemImage: "questionmark.square.dashed",
                                            description: Text("Refresh your itch.io library and try again."))
                 }
             }
@@ -424,7 +424,7 @@ struct ItchGameSheet: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: installed.setup != nil ? "shippingbox.fill" : "play.fill")
-                    Text(installed.setup != nil ? "Run installer" : "Open").fontWeight(.semibold)
+                    Text(installed.setup != nil ? L("Run installer") : L("Open")).fontWeight(.semibold)
                 }.frame(minWidth: 100, minHeight: 30)
             }.buttonStyle(.borderedProminent)
         } else if item.owned != nil {
@@ -465,7 +465,7 @@ struct ItchEntrySection: View {
             }
             if let record {
                 if !record.version.isEmpty { LabeledContent("Version", value: record.version) }
-                LabeledContent(record.setup != nil ? "Installer" : "Program", value: record.launchExe)
+                LabeledContent(record.setup != nil ? L("Installer") : L("Program"), value: record.launchExe)
             }
             LabeledContent("itch.io game ID", value: "\(id)")
             if record != nil, download == nil {
@@ -511,7 +511,7 @@ struct ItchFindView: View {
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .submitLabel(.search).onSubmit(run)
                     Button { run() } label: {
-                        HStack { Label(ItchLibrary.isLink(text) ? "Open this link" : "Search itch.io", systemImage: "magnifyingglass"); if busy { Spacer(); ProgressView() } }
+                        HStack { Label(ItchLibrary.isLink(text) ? L("Open this link") : L("Search itch.io"), systemImage: "magnifyingglass"); if busy { Spacer(); ProgressView() } }
                     }.disabled(busy || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } footer: {
                     Text("Free games (and pay-what-you-want ones) install without buying. A paid game needs buying on itch.io first; it then shows in the library by itself, as do the games in your itch.io collections.")
@@ -540,7 +540,7 @@ struct ItchFindView: View {
             }.frame(width: 63, height: 50).clipShape(RoundedRectangle(cornerRadius: 6))
             VStack(alignment: .leading, spacing: 3) {
                 Text(game.title).font(.headline).lineLimit(2)
-                Text([game.author, inLibrary != nil ? "In your library" : free ? "Free" : "Paid"]
+                Text([game.author, inLibrary != nil ? L("In your library") : free ? L("Free") : L("Paid")]
                         .compactMap { $0 }.joined(separator: " · "))
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -583,7 +583,7 @@ struct ItchSettingsSection: View {
     var body: some View {
         Section {
             if itch.signedIn {
-                LabeledContent("Signed in as", value: itch.accountName ?? "itch.io account")
+                LabeledContent("Signed in as", value: itch.accountName ?? L("itch.io account"))
                 Button("Sign out of itch.io", role: .destructive) { confirmSignOut = true }
             } else {
                 Button { showSignIn = true } label: { Label("Sign in to itch.io", systemImage: "person.crop.circle.badge.plus") }

@@ -48,7 +48,7 @@ struct DepotManifest {
     /// filenames may be base64(AES-CBC depot-key) — pass depotKey to decode them.
     static func parse(depotID: UInt32, manifestGID: UInt64, data: Data, depotKey: Data? = nil) throws -> DepotManifest {
         guard data.count >= 4 else {
-            throw SteamError.manifestFetchFailed("Manifest data too small")
+            throw SteamError.manifestFetchFailed(L("Manifest data too small"))
         }
 
         // ContentManifestPayload starts with tag 0x0a (field 1, length-delimited).
@@ -125,7 +125,7 @@ struct DepotManifest {
             SteamLog.trace("filename decrypt failed (\(why))")
             return name
         }
-        guard let depotKey else { return fail("no key") }
+        guard let depotKey else { return fail(L("no key")) }
         guard let cipher = Data(base64Encoded: stripped, options: .ignoreUnknownCharacters),
               cipher.count > 16 else { return fail("b64") }
         guard let plain = try? ContentDecryptor.decryptChunk(encryptedData: cipher, depotKey: depotKey) else { return fail("aes") }

@@ -289,12 +289,12 @@ final class SteamWorkshopModel: ObservableObject {
         guard let url = URL(string: text), url.scheme == "https", let host = url.host?.lowercased(),
               host.hasSuffix(".steamusercontent.com") || host.hasSuffix(".steamstatic.com") || host.hasSuffix(".steampowered.com")
                 || host.hasSuffix(".akamaihd.net") else {
-            throw SteamError.chunkDownloadFailed("Steam gave no usable download address for this item.")
+            throw SteamError.chunkDownloadFailed(L("Steam gave no usable download address for this item."))
         }
         let (temporary, response) = try await URLSession.shared.download(from: url)
         defer { try? FileManager.default.removeItem(at: temporary) }
         guard let status = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(status) else {
-            throw SteamError.chunkDownloadFailed("Steam returned HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0) for this item.")
+            throw SteamError.chunkDownloadFailed(LF("Steam returned HTTP %@ for this item.", String(describing: ((response as? HTTPURLResponse)?.statusCode ?? 0))))
         }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let target = folder.appendingPathComponent(SteamWorkshopRecord.legacyFileName(item))
@@ -310,12 +310,12 @@ final class SteamWorkshopModel: ObservableObject {
         let eresult: Int32
         var errorDescription: String? {
             switch eresult {
-            case 2: return "Steam could not do this right now (generic failure). Try again later."
-            case 9: return "Steam does not know this item. It may have been removed."
-            case 15: return "Steam refused: this item is not available to this account."
-            case 25: return "Steam's subscription limit was reached."
-            case 84: return "Steam is limiting requests. Wait a minute and try again."
-            default: return "Steam refused the request (error \(eresult))."
+            case 2: return L("Steam could not do this right now (generic failure). Try again later.")
+            case 9: return L("Steam does not know this item. It may have been removed.")
+            case 15: return L("Steam refused: this item is not available to this account.")
+            case 25: return L("Steam's subscription limit was reached.")
+            case 84: return L("Steam is limiting requests. Wait a minute and try again.")
+            default: return LF("Steam refused the request (error %@).", String(describing: (eresult)))
             }
         }
     }
@@ -371,7 +371,7 @@ struct SteamWorkshopItemRow: View {
         case .active(let progress):
             VStack(alignment: .leading, spacing: 2) {
                 ProgressView(value: progress.fraction)
-                Text(progress.totalBytes > 0 ? "\(Int(progress.fraction * 100))% of \(workshopBytes(progress.totalBytes))" : "Preparing…")
+                Text(progress.totalBytes > 0 ? LF("%@%% of %@", String(describing: (Int(progress.fraction * 100))), String(describing: (workshopBytes(progress.totalBytes)))) : L("Preparing…"))
                     .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
         case .failed(let message):
@@ -382,17 +382,17 @@ struct SteamWorkshopItemRow: View {
     }
 
     private var caption: String {
-        if item.isCollection { return "Collection: subscribe to its items on Steam" }
-        if item.banned { return "Removed by Steam" }
-        if item.result != 1 && item.result != 0 { return "Not available on Steam" }
-        if !item.isContent { return "Not game content" }
+        if item.isCollection { return L("Collection: subscribe to its items on Steam") }
+        if item.banned { return L("Removed by Steam") }
+        if item.result != 1 && item.result != 0 { return L("Not available on Steam") }
+        if !item.isContent { return L("Not game content") }
         let record = model.record(appID)
         if model.isOnDisk(item, appID: appID) {
             let size = record.entries[item.id]?.size ?? 0
             let installed = size > 0 ? "Installed · \(workshopBytes(size))" : "Installed"
-            return record.needsUpdate(item) ? installed + " · Update available" : installed
+            return record.needsUpdate(item) ? installed + L(" · Update available") : installed
         }
-        return item.fileSize > 0 ? "Not downloaded · \(workshopBytes(item.fileSize))" : "Not downloaded"
+        return item.fileSize > 0 ? LF("Not downloaded · %@", String(describing: (workshopBytes(item.fileSize)))) : L("Not downloaded")
     }
 
     private var captionIsWarning: Bool {
@@ -430,7 +430,7 @@ struct SteamWorkshopSections: View {
                 Button {
                     model.downloadAll(appID)
                 } label: {
-                    Label(pending.count == 1 ? "Download 1 item" : "Download \(pending.count) items", systemImage: "arrow.down.circle")
+                    Label(pending.count == 1 ? L("Download 1 item") : LF("Download %@ items", String(describing: (pending.count))), systemImage: "arrow.down.circle")
                 }.disabled(!steam.workshopReady)
             }
             if let url = URL(string: "https://steamcommunity.com/app/\(appID)/workshop/") {
@@ -455,7 +455,7 @@ struct SteamWorkshopSections: View {
                 }
             }
         } header: {
-            Text(subscribed.map { "Subscribed (\($0.count))" } ?? "Subscribed")
+            Text(subscribed.map { LF("Subscribed (%@)", String(describing: ($0.count))) } ?? L("Subscribed"))
         }
         if let others = model.unsubscribedInstalled[appID], !others.isEmpty {
             Section {
@@ -484,7 +484,7 @@ struct SteamWorkshopSections: View {
             }
             .swipeActions(edge: .leading) {
                 if job == nil, item.downloadable, !onDisk || model.record(appID).needsUpdate(item) {
-                    Button(onDisk ? "Update" : "Download") { model.download(item, appID: appID) }.tint(.accentColor)
+                    Button(onDisk ? L("Update") : L("Download")) { model.download(item, appID: appID) }.tint(.accentColor)
                 }
             }
     }
@@ -495,7 +495,7 @@ struct SteamWorkshopSections: View {
                 Button { model.download(item, appID: appID) } label: { Label("Download", systemImage: "arrow.down.circle") }
             } else {
                 Button { model.download(item, appID: appID) } label: {
-                    Label(model.record(appID).needsUpdate(item) ? "Update" : "Download again", systemImage: "arrow.triangle.2.circlepath")
+                    Label(model.record(appID).needsUpdate(item) ? L("Update") : L("Download again"), systemImage: "arrow.triangle.2.circlepath")
                 }
             }
         }
@@ -564,14 +564,14 @@ struct SteamWorkshopBrowseView: View {
                 } else if items.count < total, failure == nil {
                     Button("Load more") { Task { await load(reset: false) } }
                 } else if items.isEmpty, failure == nil, page > 0 {
-                    Text(order == .search ? "Nothing found." : "This game's Workshop has no items to show.").foregroundStyle(.secondary)
+                    Text(order == .search ? L("Nothing found.") : L("This game's Workshop has no items to show.")).foregroundStyle(.secondary)
                 }
             } footer: {
-                if total > 0 { Text("\(items.count) of \(total)") }
+                if total > 0 { Text(LF("%@ of %@", String(describing: (items.count)), String(describing: (total)))) }
             }
         }
         .navigationTitle("\(title) Workshop").navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $search, prompt: "Search the Workshop")
+        .searchable(text: $search, prompt: L("Search the Workshop"))
         .onSubmit(of: .search) {
             // A new order loads through .task(id:); a new search in Search loads here.
             if order == .search { Task { await load(reset: true) } } else { order = .search }
@@ -629,7 +629,7 @@ struct SteamWorkshopHub: View {
         NavigationStack {
             List {
                 if !steam.workshopReady {
-                    Text(steam.signedIn ? "Not available while a game runs." : "Sign in to Steam (Settings › Steam) to use the Workshop.")
+                    Text(steam.signedIn ? L("Not available while a game runs.") : L("Sign in to Steam (Settings › Steam) to use the Workshop."))
                         .foregroundStyle(.secondary)
                 }
                 if installed.isEmpty {
@@ -669,10 +669,10 @@ struct SteamWorkshopHub: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6)).accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(game.name)
-                    Text(count == 0 ? "No items installed" : count == 1 ? "1 item installed" : "\(count) items installed")
+                    Text(count == 0 ? L("No items installed") : count == 1 ? L("1 item installed") : LF("%@ items installed", String(describing: (count))))
                         .font(.caption).foregroundStyle(.secondary)
                     if pending > 0 {
-                        Text(pending == 1 ? "1 item to download" : "\(pending) items to download")
+                        Text(pending == 1 ? L("1 item to download") : LF("%@ items to download", String(describing: (pending))))
                             .font(.caption).foregroundStyle(.orange)
                     }
                 }

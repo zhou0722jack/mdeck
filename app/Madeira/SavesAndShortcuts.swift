@@ -133,16 +133,16 @@ struct SaveZipReader {
         data = b
         func fail(_ m: String) -> Error { LibraryError.message(m) }
         func u16(_ o: Int) throws -> Int {
-            guard o >= 0, o + 2 <= b.count else { throw fail("The zip is truncated.") }
+            guard o >= 0, o + 2 <= b.count else { throw fail(L("The zip is truncated.")) }
             return Int(b[b.startIndex + o]) | Int(b[b.startIndex + o + 1]) << 8
         }
         func u32(_ o: Int) throws -> Int { let lo = try u16(o), hi = try u16(o + 2); return lo | hi << 16 }
         func u64(_ o: Int) throws -> Int {
             let lo = try u32(o), hi = try u32(o + 4)
-            guard hi < 0x10000 else { throw fail("The zip is too large.") }
+            guard hi < 0x10000 else { throw fail(L("The zip is too large.")) }
             return lo | hi << 32
         }
-        guard b.count >= 22 else { throw fail("Not a zip file.") }
+        guard b.count >= 22 else { throw fail(L("Not a zip file.")) }
         var eocd = -1
         var p = b.count - 22
         let lowest = max(0, b.count - 22 - 65_535)
@@ -150,27 +150,27 @@ struct SaveZipReader {
             if try u32(p) == 0x0605_4b50 { eocd = p; break }
             p -= 1
         }
-        guard eocd >= 0 else { throw fail("Not a zip file.") }
+        guard eocd >= 0 else { throw fail(L("Not a zip file.")) }
         var count = try u16(eocd + 10)
         var cdOffset = try u32(eocd + 16)
         if count == 0xFFFF || cdOffset == 0xFFFF_FFFF {
             let loc = eocd - 20
-            guard try u32(loc) == 0x0706_4b50 else { throw fail("Broken zip64 record.") }
+            guard try u32(loc) == 0x0706_4b50 else { throw fail(L("Broken zip64 record.")) }
             let z = try u64(loc + 8)
-            guard try u32(z) == 0x0606_4b50 else { throw fail("Broken zip64 record.") }
+            guard try u32(z) == 0x0606_4b50 else { throw fail(L("Broken zip64 record.")) }
             count = try u64(z + 32)
             cdOffset = try u64(z + 48)
         }
         var list: [Entry] = []
         var q = cdOffset
         for _ in 0..<count {
-            guard try u32(q) == 0x0201_4b50 else { throw fail("Broken zip directory.") }
+            guard try u32(q) == 0x0201_4b50 else { throw fail(L("Broken zip directory.")) }
             let method = try u16(q + 10)
             var csize = try u32(q + 20)
             var usize = try u32(q + 24)
             let nlen = try u16(q + 28), elen = try u16(q + 30), clen = try u16(q + 32)
             var loff = try u32(q + 42)
-            guard q + 46 + nlen <= b.count else { throw fail("The zip is truncated.") }
+            guard q + 46 + nlen <= b.count else { throw fail(L("The zip is truncated.")) }
             let start = b.startIndex + q + 46
             let name = String(decoding: b[start..<(start + nlen)], as: UTF8.self)
             // zip64 extra field: the 0xFFFFFFFF fields, in this order.
@@ -198,12 +198,12 @@ struct SaveZipReader {
         guard o >= 0, o + 30 <= b.count,
               b[b.startIndex + o] == 0x50, b[b.startIndex + o + 1] == 0x4b,
               b[b.startIndex + o + 2] == 0x03, b[b.startIndex + o + 3] == 0x04 else {
-            throw LibraryError.message("Broken zip entry \(e.name).")
+            throw LibraryError.message(LF("Broken zip entry %@.", String(describing: (e.name))))
         }
         let nlen = Int(b[b.startIndex + o + 26]) | Int(b[b.startIndex + o + 27]) << 8
         let elen = Int(b[b.startIndex + o + 28]) | Int(b[b.startIndex + o + 29]) << 8
         let start = o + 30 + nlen + elen
-        guard e.compressedSize >= 0, start + e.compressedSize <= b.count else { throw LibraryError.message("The zip is truncated.") }
+        guard e.compressedSize >= 0, start + e.compressedSize <= b.count else { throw LibraryError.message(L("The zip is truncated.")) }
         let src = b.subdata(in: (b.startIndex + start)..<(b.startIndex + start + e.compressedSize))
         switch e.method {
         case 0:
@@ -218,10 +218,10 @@ struct SaveZipReader {
                     return compression_decode_buffer(d, e.size, sp, s.count, nil, COMPRESSION_ZLIB)
                 }
             }
-            guard written == e.size else { throw LibraryError.message("\(e.name) could not be decompressed.") }
+            guard written == e.size else { throw LibraryError.message(LF("%@ could not be decompressed.", String(describing: (e.name)))) }
             return out
         default:
-            throw LibraryError.message("\(e.name) uses zip method \(e.method), which is not supported.")
+            throw LibraryError.message(LF("%@ uses zip method %@, which is not supported.", String(describing: (e.name)), String(describing: (e.method))))
         }
     }
 }
@@ -247,7 +247,7 @@ enum SaveBackup {
         let fm = FileManager.default
         let drive = LibraryModel.drive
         let users = drive.appendingPathComponent("users", isDirectory: true)
-        guard fm.fileExists(atPath: users.path) else { throw LibraryError.message("There is no Windows drive yet.") }
+        guard fm.fileExists(atPath: users.path) else { throw LibraryError.message(L("There is no Windows drive yet.")) }
         let stamp = DateFormatter(); stamp.dateFormat = "yyyy-MM-dd_HH-mm"
         let out = fm.temporaryDirectory.appendingPathComponent("Madeira-saves-\(stamp.string(from: Date())).zip")
         try? fm.removeItem(at: out)
@@ -296,7 +296,7 @@ enum SaveBackup {
             try zip.extract(e).write(to: dst, options: .atomic)
             n += 1
         }
-        if n == 0 { throw LibraryError.message("That zip holds no saves (nothing under users/).") }
+        if n == 0 { throw LibraryError.message(L("That zip holds no saves (nothing under users/).")) }
         LogStore.shared.log("[saves] restored \(n) files from \(url.lastPathComponent)")
         return n
     }
@@ -373,7 +373,7 @@ struct SavesSection: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.zip]) { r in
             if case .success(let url) = r { pendingRestore = url }
         }
-        .confirmationDialog("Restore saves from \(pendingRestore?.lastPathComponent ?? "the backup")?",
+        .confirmationDialog(LF("Restore saves from %@?", String(describing: (pendingRestore?.lastPathComponent ?? "the backup"))),
                             isPresented: Binding(get: { pendingRestore != nil }, set: { if !$0 { pendingRestore = nil } }),
                             titleVisibility: .visible) {
             Button("Restore", role: .destructive) {
@@ -385,7 +385,7 @@ struct SavesSection: View {
                     DispatchQueue.main.async {
                         busy = false
                         switch r {
-                        case .success(let n): message = "\(n) files restored."
+                        case .success(let n): message = LF("%@ files restored.", String(describing: (n)))
                         case .failure(let e): message = e.localizedDescription
                         }
                     }

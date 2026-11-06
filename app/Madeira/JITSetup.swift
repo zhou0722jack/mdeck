@@ -14,9 +14,9 @@ enum JITMethod: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .automatic: return "Automatic"
-        case .stikDebug: return "StikDebug"
-        case .builtIn: return "Built-in StikJIT"
+        case .automatic: return L("Automatic")
+        case .stikDebug: return L("StikDebug")
+        case .builtIn: return L("Built-in StikJIT")
         }
     }
 }
@@ -170,7 +170,7 @@ final class JITCoordinator: ObservableObject {
             case .vpn:
                 return L("Madeira couldn't reach this device. Connect LocalDevVPN, then try again.")
             case .pairing:
-                return "This device closed the connection, which usually means it no longer accepts Madeira's pairing. Pair again, and check that LocalDevVPN is connected."
+                return L("This device closed the connection, which usually means it no longer accepts Madeira's pairing. Pair again, and check that LocalDevVPN is connected.")
             }
         }
     }
@@ -259,7 +259,7 @@ final class JITCoordinator: ObservableObject {
                                        vpnWasUp ? 1 : 0, probe.detail))
             self?.loopbackAnswered = probe.reachable
             guard let self, !probe.reachable, JITNetworkShortcut.shared.enabled else { proceed(false); return }
-            status = "Running the \(JITNetworkShortcut.name) shortcut…"
+            status = LF("Running the %@ shortcut…", String(describing: (JITNetworkShortcut.name)))
             JITNetworkShortcut.shared.start { [weak self] outcome in
                 if case .failed(let why) = outcome {
                     stopped("Your \(JITNetworkShortcut.name) shortcut stopped: \(why) Check its steps in Shortcuts, then try again.")
@@ -286,12 +286,12 @@ final class JITCoordinator: ObservableObject {
     func connectWithShortcut() {
         busy = true
         error = nil
-        status = "Running the \(JITNetworkShortcut.name) shortcut…"
+        status = LF("Running the %@ shortcut…", String(describing: (JITNetworkShortcut.name)))
         JITNetworkShortcut.shared.start { [weak self] outcome in
             if case .failed(let why) = outcome {
                 self?.busy = false
                 self?.status = nil
-                self?.error = "The \(JITNetworkShortcut.name) shortcut did not run: \(why)."
+                self?.error = LF("The %@ shortcut did not run: %@.", String(describing: (JITNetworkShortcut.name)), String(describing: (why)))
                 return
             }
             LoopbackProbe.waitUntilReachable(within: 15) { [weak self] probe in
@@ -663,7 +663,7 @@ struct JITSetupView: View {
                 }
 
                 if coordinator.busy {
-                    Section { HStack { ProgressView(); Text(coordinator.status ?? "Working…") } }
+                    Section { HStack { ProgressView(); Text(coordinator.status ?? L("Working…")) } }
                 } else if let error = coordinator.error {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)

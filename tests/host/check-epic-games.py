@@ -323,7 +323,7 @@ try:
     (work / 'main.swift').write_text(DRIVER)
     exe = work / 'driver'
     build = subprocess.run([SWIFTC, '-swift-version', '5', '-O', '-o', str(exe), str(epic / 'EpicFormats.swift'),
-                            str(epic / 'EpicDownloader.swift'), str(work / 'main.swift')], capture_output=True, text=True)
+                            str(epic / 'EpicDownloader.swift'), str(epic.parent / 'Localization.swift'), str(work / 'main.swift')], capture_output=True, text=True)
     require(build.returncode == 0, 'production EpicFormats.swift and EpicDownloader.swift compile' + ('' if build.returncode == 0 else ':\n' + build.stderr[-3000:]))
     if build.returncode != 0:
         sys.exit(1)

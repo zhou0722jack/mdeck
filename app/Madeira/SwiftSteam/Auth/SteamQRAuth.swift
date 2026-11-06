@@ -57,7 +57,7 @@ class SteamQRAuth {
 
         guard !response.challengeURL.isEmpty else {
             authState = .failed("No challenge URL received")
-            throw SteamError.authenticationFailed("Empty challenge URL from Steam")
+            throw SteamError.authenticationFailed(L("Empty challenge URL from Steam"))
         }
 
         clientID = response.clientID

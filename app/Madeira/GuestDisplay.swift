@@ -33,10 +33,10 @@ enum DisplayMode: String, CaseIterable {
 
     var label: String {
         switch self {
-        case .fit:       return "Fit"
-        case .fill:      return "Fill"
-        case .stretch:   return "Stretch"
-        case .aspect:    return "Aspect"
+        case .fit:       return L("Fit")
+        case .fill:      return L("Fill")
+        case .stretch:   return L("Stretch")
+        case .aspect:    return L("Aspect")
         }
     }
     var symbol: String {
@@ -254,11 +254,11 @@ enum ResolutionChoices {
         if native.w <= 3840, native.h <= 2160, !own.contains(where: { $0.w == native.w && $0.h == native.h }) {
             own.append(Choice(w: native.w, h: native.h, label: "\(native.w)×\(native.h) · native"))
         }
-        var out = [Group(title: "This screen's shape", choices: own)]
+        var out = [Group(title: L("This screen's shape"), choices: own)]
         for (name, sizes) in [("16:9 widescreen", widescreen), ("4:3 classic", classic)] {
             let (w0, h0) = sizes[0]
             let r = Double(w0) / Double(h0) / aspect(s)
-            let note = fills(w0, h0, screen: s) ? "fills this screen" : (r > 1 ? "bars above and below" : "bars at the sides")
+            let note = fills(w0, h0, screen: s) ? L("fills this screen") : (r > 1 ? L("bars above and below") : L("bars at the sides"))
             // A size already offered in this screen's shape (1280x720 on a 16:9 phone) is listed once.
             let rest = sizes.filter { size in !own.contains(where: { $0.w == size.0 && $0.h == size.1 }) }
             if !rest.isEmpty {
@@ -274,7 +274,7 @@ enum ResolutionChoices {
     static func metalFX(for s: Screen = screen, in groups: [Group]) -> Choice? {
         let w = Int((480 * aspect(s) / 8).rounded()) * 8
         guard (640...4096).contains(w), !groups.contains(where: { $0.choices.contains { $0.w == w && $0.h == 480 } }) else { return nil }
-        return Choice(w: w, h: 480, label: "\(w)×480 · for MetalFX 1.5×")
+        return Choice(w: w, h: 480, label: LF("%@×480 · for MetalFX 1.5×", String(describing: (w))))
     }
 
     /// A stored "WxH" that none of `groups` offers (a size chosen on another

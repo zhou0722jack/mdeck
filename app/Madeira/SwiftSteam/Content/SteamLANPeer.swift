@@ -618,12 +618,12 @@ final class SteamPeerChunkSource: @unchecked Sendable {
     /// The chunk's bytes as the PC sends them (see `ChunkResponse.encrypted` / `.compressed`).
     /// Callers may wait on several at once: the requests share one connection.
     func fetch(depotID: UInt32, sha: Data) async throws -> SteamLANPeer.ChunkResponse {
-        guard usable else { throw SteamError.chunkDownloadFailed("The PC on this network is no longer used.") }
+        guard usable else { throw SteamError.chunkDownloadFailed(L("The PC on this network is no longer used.")) }
         let request = [UInt8](SteamLANPeer.chunkRequest(appID: appID, depotID: depotID, sha: sha, accessToken: accessToken))
         return try await withCheckedThrowingContinuation { continuation in
             writeQueue.async {
                 guard self.usable else {
-                    continuation.resume(throwing: SteamError.chunkDownloadFailed("The PC on this network is no longer used."))
+                    continuation.resume(throwing: SteamError.chunkDownloadFailed(L("The PC on this network is no longer used.")))
                     return
                 }
                 let link: Connection
@@ -707,18 +707,18 @@ final class SteamPeerChunkSource: @unchecked Sendable {
                     if closed { return }
                     if idle { idleSince = Date(); continue }
                     if Date().timeIntervalSince(idleSince) < Self.answerTimeout { continue }
-                    throw SteamError.chunkDownloadFailed("The PC stopped answering.")
+                    throw SteamError.chunkDownloadFailed(L("The PC stopped answering."))
                 }
                 idleSince = Date()
-                guard Array(header[4..<8]) == SteamLANPeer.tcpMagic else { throw SteamError.chunkDownloadFailed("Unexpected data from the PC.") }
+                guard Array(header[4..<8]) == SteamLANPeer.tcpMagic else { throw SteamError.chunkDownloadFailed(L("Unexpected data from the PC.")) }
                 let length = Int(SteamLANPeer.read32(header, 0))
                 guard length >= 8, length <= ContentDecryptor.maximumChunkBytes + 4096 else {
-                    throw SteamError.chunkDownloadFailed("Unexpected message size from the PC.")
+                    throw SteamError.chunkDownloadFailed(L("Unexpected message size from the PC."))
                 }
                 guard let payload = try Self.receive(link.fd, length, allowIdle: false) else { continue }
                 let eMsg = SteamLANPeer.read32(payload, 0) & 0x7FFF_FFFF
                 let headerLength = Int(SteamLANPeer.read32(payload, 4))
-                guard 8 + headerLength <= payload.count else { throw SteamError.chunkDownloadFailed("Unexpected message from the PC.") }
+                guard 8 + headerLength <= payload.count else { throw SteamError.chunkDownloadFailed(L("Unexpected message from the PC.")) }
                 guard eMsg == SteamLANPeer.peerChunkResponse else { continue }
                 let response = try SteamLANPeer.parseChunkResponse(Data(payload[(8 + headerLength)...]))
                 lock.lock()
@@ -740,13 +740,13 @@ final class SteamPeerChunkSource: @unchecked Sendable {
         var address = sockaddr_in()
         address.sin_family = sa_family_t(AF_INET)
         address.sin_port = port.bigEndian
-        guard inet_pton(AF_INET, host, &address.sin_addr) == 1 else { throw SteamError.chunkDownloadFailed("Bad PC address.") }
+        guard inet_pton(AF_INET, host, &address.sin_addr) == 1 else { throw SteamError.chunkDownloadFailed(L("Bad PC address.")) }
         #if canImport(Darwin)
         let s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         #else
         let s = socket(AF_INET, Int32(SOCK_STREAM.rawValue), Int32(IPPROTO_TCP))
         #endif
-        guard s >= 0 else { throw SteamError.chunkDownloadFailed("No socket (errno \(errno)).") }
+        guard s >= 0 else { throw SteamError.chunkDownloadFailed(LF("No socket (errno %@).", String(describing: (errno)))) }
         var yes: Int32 = 1
         setsockopt(s, Int32(IPPROTO_TCP), TCP_NODELAY, &yes, socklen_t(MemoryLayout<Int32>.size))
         #if canImport(Darwin)
@@ -797,7 +797,7 @@ final class SteamPeerChunkSource: @unchecked Sendable {
                 #endif
             }
             if n < 0, errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR { continue }
-            guard n > 0 else { throw SteamError.chunkDownloadFailed("The PC closed the connection (errno \(errno)).") }
+            guard n > 0 else { throw SteamError.chunkDownloadFailed(LF("The PC closed the connection (errno %@).", String(describing: (errno)))) }
             sent += n
         }
     }
@@ -813,10 +813,10 @@ final class SteamPeerChunkSource: @unchecked Sendable {
                 if got == 0, allowIdle { return nil }
                 stalls += 1
                 // Inside a message: the 2 s receive timeout, up to answerTimeout in all.
-                if Double(stalls) * 2 >= answerTimeout { throw SteamError.chunkDownloadFailed("The PC stopped mid-answer.") }
+                if Double(stalls) * 2 >= answerTimeout { throw SteamError.chunkDownloadFailed(L("The PC stopped mid-answer.")) }
                 continue
             }
-            guard n > 0 else { throw SteamError.chunkDownloadFailed("The PC closed the connection (errno \(errno)).") }
+            guard n > 0 else { throw SteamError.chunkDownloadFailed(LF("The PC closed the connection (errno %@).", String(describing: (errno)))) }
             got += n
         }
         return buffer

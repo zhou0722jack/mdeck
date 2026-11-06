@@ -349,8 +349,8 @@ import UserNotifications
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
             let content = UNMutableNotificationContent()
-            content.title = "Your game is paused"
-            content.body = "Madeira kept it running for \(minutes) minutes in the background. Open Madeira to carry on."
+            content.title = L("Your game is paused")
+            content.body = LF("Madeira kept it running for %@ minutes in the background. Open Madeira to carry on.", String(describing: (minutes)))
             UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "madeira.background-run",
                                                                          content: content, trigger: nil))
         }

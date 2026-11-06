@@ -1099,7 +1099,7 @@ enum GameRecommendations {
     /// back: Madeira Dock spun on "Loading Steam" before Thumper. The game lists that
     /// were tested with those defaults keep them. No switches.
     static let standard = GameRecommendation(
-        id: "standard", title: "games without a list of their own", version: 3,
+        id: "standard", title: L("games without a list of their own"), version: 3,
         config: """
         # Madeira's recommended settings for a game without a list of its own.
         # Reset to Recommended, at the bottom of the game's settings, brings them back.

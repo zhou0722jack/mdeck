@@ -410,7 +410,7 @@ struct SteamAchievementsSection: View {
             let unlocked = game.achievements.filter { $0.unlocked != nil }
             Section {
                 ProgressView(value: Double(unlocked.count), total: Double(max(game.achievements.count, 1))) {
-                    Text("\(unlocked.count) of \(game.achievements.count) unlocked")
+                    Text(LF("%@ of %@ unlocked", String(describing: (unlocked.count)), String(describing: (game.achievements.count))))
                 }
             }
             Section {

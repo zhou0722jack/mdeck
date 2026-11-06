@@ -196,6 +196,7 @@
 		A1000911 /* GameRecommendations.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000911 /* GameRecommendations.swift */; };
 		A1000912 /* GameRecommendationsApply.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000912 /* GameRecommendationsApply.swift */; };
 		A1000400 /* Library.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000400 /* Library.swift */; };
+		D9A10001 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9A20001 /* Localization.swift */; };
 		A1000977 /* LibraryCoverSpot.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000977 /* LibraryCoverSpot.swift */; };
 		A1000976 /* LibraryGridZoomStart.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000976 /* LibraryGridZoomStart.swift */; };
 		A1000975 /* LibraryGridZoomIdle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000975 /* LibraryGridZoomIdle.swift */; };
@@ -492,6 +493,7 @@
 		A2000911 /* GameRecommendations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRecommendations.swift; sourceTree = "<group>"; };
 		A2000912 /* GameRecommendationsApply.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRecommendationsApply.swift; sourceTree = "<group>"; };
 		A2000400 /* Library.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Library.swift; sourceTree = "<group>"; };
+		D9A20001 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		A2000977 /* LibraryCoverSpot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryCoverSpot.swift"; sourceTree = "<group>"; };
 		A2000976 /* LibraryGridZoomStart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryGridZoomStart.swift"; sourceTree = "<group>"; };
 		A2000975 /* LibraryGridZoomIdle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryGridZoomIdle.swift"; sourceTree = "<group>"; };
@@ -735,6 +737,7 @@
 				A2000911 /* GameRecommendations.swift */,
 				A2000912 /* GameRecommendationsApply.swift */,
 				A2000400 /* Library.swift */,
+				D9A20001 /* Localization.swift */,
 				A2000977 /* LibraryCoverSpot.swift */,
 				A2000976 /* LibraryGridZoomStart.swift */,
 				A2000975 /* LibraryGridZoomIdle.swift */,
@@ -1200,6 +1203,7 @@
 				A1000911 /* GameRecommendations.swift in Sources */,
 				A1000912 /* GameRecommendationsApply.swift in Sources */,
 				A1000400 /* Library.swift in Sources */,
+				D9A10001 /* Localization.swift in Sources */,
 				A1000977 /* LibraryCoverSpot.swift in Sources */,
 				A1000976 /* LibraryGridZoomStart.swift in Sources */,
 				A1000975 /* LibraryGridZoomIdle.swift in Sources */,

@@ -68,7 +68,7 @@ struct SteamCloudListing: Equatable, Sendable {
                     }
                 }
                 raw.append((file, prefixIndex))
-                if raw.count > 20_000 { throw SteamFileError.invalid("Too many Steam Cloud files.") }
+                if raw.count > 20_000 { throw SteamFileError.invalid(L("Too many Steam Cloud files.")) }
             default: try decoder.skip(wireType: tag.wireType)
             }
         }
@@ -660,25 +660,25 @@ enum SteamCloudTransfer {
     /// Fetches one cloud file's bytes and checks them against the SHA-1 the
     /// cloud's own list gives. Throws rather than return anything unverified.
     static func fetch(_ info: SteamCloudDownloadInfo, expectedSHA: Data) async throws -> Data {
-        guard !info.encrypted else { throw SteamFileError.invalid("This Steam Cloud file is encrypted, which is not supported.") }
+        guard !info.encrypted else { throw SteamFileError.invalid(L("This Steam Cloud file is encrypted, which is not supported.")) }
         guard let url = info.url, info.fileSize <= UInt64(maxFileBytes), info.rawSize <= UInt64(maxFileBytes) else {
-            throw SteamFileError.invalid("Steam gave no usable address for this Steam Cloud file.")
+            throw SteamFileError.invalid(L("Steam gave no usable address for this Steam Cloud file."))
         }
         var request = URLRequest(url: url)
         for header in info.headers { request.setValue(header.value, forHTTPHeaderField: header.name) }
         let (body, response) = try await http.data(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
-            throw SteamFileError.invalid("Steam Cloud download failed (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)).")
+            throw SteamFileError.invalid(LF("Steam Cloud download failed (HTTP %@).", String(describing: ((response as? HTTPURLResponse)?.statusCode ?? 0))))
         }
         var file = body
         if info.fileSize != info.rawSize || (body.count != Int(info.rawSize) && body.starts(with: [0x50, 0x4b, 0x03, 0x04])) {
             guard let unpacked = unzipFirstEntry(body, rawSize: Int(info.rawSize)) else {
-                throw SteamFileError.invalid("A Steam Cloud file could not be unpacked.")
+                throw SteamFileError.invalid(L("A Steam Cloud file could not be unpacked."))
             }
             file = unpacked
         }
         guard Data(Insecure.SHA1.hash(data: file)) == expectedSHA else {
-            throw SteamFileError.invalid("A Steam Cloud file did not match its checksum.")
+            throw SteamFileError.invalid(L("A Steam Cloud file did not match its checksum."))
         }
         return file
     }
@@ -960,7 +960,7 @@ struct SteamCloudUploadBlock: Sendable {
                     }
                 }
                 blocks.append(block)
-                if blocks.count > 4096 { throw SteamFileError.invalid("Steam asked for too many upload parts.") }
+                if blocks.count > 4096 { throw SteamFileError.invalid(L("Steam asked for too many upload parts.")) }
             default: try decoder.skip(wireType: tag.wireType)
             }
         }
@@ -981,12 +981,12 @@ extension SteamCloudTransfer {
     static func send(_ file: Data, blocks: [SteamCloudUploadBlock]) async throws -> [Int] {
         var statuses: [Int] = []
         for block in blocks {
-            guard let url = block.url else { throw SteamFileError.invalid("Steam gave no usable address for an upload.") }
+            guard let url = block.url else { throw SteamFileError.invalid(L("Steam gave no usable address for an upload.")) }
             var body = block.explicitBody
             if body.isEmpty {
                 let start = Int(min(block.offset, UInt64(file.count)))
                 let end = Int(min(block.offset + block.length, UInt64(file.count)))
-                guard end - start == Int(block.length) else { throw SteamFileError.invalid("Steam asked for a part outside the file.") }
+                guard end - start == Int(block.length) else { throw SteamFileError.invalid(L("Steam asked for a part outside the file.")) }
                 body = file.subdata(in: start..<end)
             }
             var request = URLRequest(url: url)

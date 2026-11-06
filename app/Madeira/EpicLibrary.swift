@@ -296,8 +296,8 @@ struct EpicInstalledGame: Codable, Sendable {
 
     private func enqueue(_ app: String, kind: Download.Kind) {
         guard Self.enabled else { return }
-        guard signedIn else { error = "Sign in to Epic Games to download games."; return }
-        guard !EpicCloud.shared.isBusy else { error = "Wait for Epic save sync to finish, then try again."; return }
+        guard signedIn else { error = L("Sign in to Epic Games to download games."); return }
+        guard !EpicCloud.shared.isBusy else { error = L("Wait for Epic save sync to finish, then try again."); return }
         if active?.app == app || queue.contains(app) { return }
         if inSession { resumeAfterSession.insert(app); downloads[app] = Download(kind: kind, state: .paused); return }
         var item = downloads[app] ?? Download(kind: kind, state: .queued)
@@ -381,7 +381,7 @@ struct EpicInstalledGame: Codable, Sendable {
             let manifest = try await Task.detached(priority: .userInitiated) { try EpicManifest.parse(data, secrets: location.secrets) }.value
             let launch = manifest.launchExe.replacingOccurrences(of: "\\", with: "/").trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             guard !launch.isEmpty, EpicManifest.components(launch) != nil else {
-                throw EpicFormatError.unsupported("no start program in the manifest")
+                throw EpicFormatError.unsupported(L("no start program in the manifest"))
             }
             let record = installed[app]
             let folder = record?.folder ?? (Self.installRoot + "/" + game.folderName)

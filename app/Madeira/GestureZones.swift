@@ -347,9 +347,9 @@ private struct GestureZoneEditBox: View {
 
     private var caption: String {
         switch zone.kind {
-        case .stick: return "Stick: " + GestureZonePanel.name(zone.stick)
-        case .look:  return "Look"
-        case .swipe: return "Swipe: " + zone.directions.title
+        case .stick: return L("Stick: ") + GestureZonePanel.name(zone.stick)
+        case .look:  return L("Look")
+        case .swipe: return L("Swipe: ") + zone.directions.title
         }
     }
 }
@@ -372,8 +372,8 @@ struct GestureZonePanel: View {
         switch a {
         case .pad(let n): return PadBindings.displayName(n)
         case .joystickWASD: return "WASD"
-        case .joystickArrows: return "Arrows"
-        case .none: return "None"
+        case .joystickArrows: return L("Arrows")
+        case .none: return L("None")
         default: return a.label
         }
     }
@@ -417,7 +417,7 @@ struct GestureZonePanel: View {
             LayerButtons { mv in if let i { mv.apply(&z.zones, i) } }
             Text("Zones always sit under buttons.").font(.caption).foregroundStyle(.white.opacity(0.6))
             HStack {
-                Text(zone.kind == .swipe ? "Swipe length" : "Sensitivity").font(.subheadline)
+                Text(zone.kind == .swipe ? L("Swipe length") : L("Sensitivity")).font(.subheadline)
                 Slider(value: binding(\.sensitivity), in: 0.25...3)
             }
         }
@@ -483,8 +483,8 @@ enum LayerMove: CaseIterable {
     }
     var label: String {
         switch self {
-        case .front: "Bring to front"; case .forward: "Bring forward"
-        case .backward: "Send backward"; case .back: "Send to back"
+        case .front: L("Bring to front"); case .forward: L("Bring forward")
+        case .backward: L("Send backward"); case .back: L("Send to back")
         }
     }
     func apply<T>(_ a: inout [T], _ i: Int) {

@@ -46,13 +46,13 @@ enum MadeiraBuiltInJIT {
 
     static var unavailableReason: String? {
 #if targetEnvironment(simulator)
-        return "Built-in JIT is available only on a physical device."
+        return L("Built-in JIT is available only on a physical device.")
 #else
         guard #available(iOS 26.0, *) else {
-            return "Built-in JIT requires iOS 26 or later."
+            return L("Built-in JIT requires iOS 26 or later.")
         }
         if getenv("LC_HOME_PATH") != nil {
-            return "Built-in JIT is unavailable inside LiveContainer. Choose StikDebug instead."
+            return L("Built-in JIT is unavailable inside LiveContainer. Choose StikDebug instead.")
         }
         return nil
 #endif
@@ -135,7 +135,7 @@ private final class HelperRequest {
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.returned(payload) } }
         }
         shim.setRequestCancellationBlock { [weak self] _, error in
-            let message = error?.localizedDescription ?? "the request was cancelled"
+            let message = error?.localizedDescription ?? L("the request was cancelled")
             DispatchQueue.main.async { MainActor.assumeIsolated {
                 self?.end(.failure(Self.error(5, "Madeira's JIT helper stopped: \(message)")))
             } }

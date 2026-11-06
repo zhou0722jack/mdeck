@@ -25,9 +25,9 @@ enum EpicDownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .diskSpace(let needed):
-            return "Not enough free space on this device: this download needs about \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)) more. Free some space, then try again."
-        case .chunk(let reason): return "A game file could not be downloaded from Epic (\(reason)). Try again to continue."
-        case .noServers: return "Epic did not name a download server for this game."
+            return LF("Not enough free space on this device: this download needs about %@ more. Free some space, then try again.", String(describing: (ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))))
+        case .chunk(let reason): return LF("A game file could not be downloaded from Epic (%@). Try again to continue.", String(describing: (reason)))
+        case .noServers: return L("Epic did not name a download server for this game.")
         }
     }
 }
@@ -132,7 +132,7 @@ final class EpicDownloader: @unchecked Sendable {
         for item in needed {
             for part in item.file.parts {
                 guard let info = manifest.chunks[part.guid], UInt64(part.offset) + UInt64(part.size) <= UInt64(info.windowSize) else {
-                    throw EpicFormatError.unsupported("file part without its chunk")
+                    throw EpicFormatError.unsupported(L("file part without its chunk"))
                 }
                 if position[part.guid] == nil { position[part.guid] = order.count; order.append(part.guid) }
                 uses[part.guid, default: 0] += 1

@@ -32,18 +32,18 @@ enum EpicAPIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .signedOut: return "Sign in to Epic Games to continue."
+        case .signedOut: return L("Sign in to Epic Games to continue.")
         case .epic(let code, let message):
             if code.hasSuffix("invalid_grant") || code.hasSuffix("authorization_code_not_found") {
-                return "Epic did not accept this sign-in code. Codes work once and expire after a few minutes: sign in again."
+                return L("Epic did not accept this sign-in code. Codes work once and expire after a few minutes: sign in again.")
             }
             if code.hasSuffix("corrective_action_required") {
-                return "Epic needs you to act on your account first (for example to accept new terms). Sign in at epicgames.com, then try again."
+                return L("Epic needs you to act on your account first (for example to accept new terms). Sign in at epicgames.com, then try again.")
             }
-            return message.isEmpty ? "Epic refused the request (\(code))." : message
-        case .http(let status): return "Epic's server answered with HTTP \(status). Try again later."
-        case .invalid(let what): return "Epic sent an unexpected answer (\(what))."
-        case .manifestHash: return "The game's file list from Epic failed its checksum. Try again."
+            return message.isEmpty ? LF("Epic refused the request (%@).", String(describing: (code))) : message
+        case .http(let status): return LF("Epic's server answered with HTTP %@. Try again later.", String(describing: (status)))
+        case .invalid(let what): return LF("Epic sent an unexpected answer (%@).", String(describing: (what)))
+        case .manifestHash: return L("The game's file list from Epic failed its checksum. Try again.")
         }
     }
 
@@ -175,7 +175,7 @@ actor EpicAPI {
     static func correctiveMessage(_ action: String) -> String {
         let what = action.contains("EULA") ? "accept Epic's license agreement"
             : action.contains("PRIVACY") ? "accept Epic's privacy policy" : "complete a step on your account"
-        return "Epic needs you to \(what) before it gives Madeira a sign-in code. Sign in at store.epicgames.com in Safari and accept it (or sign in once with the Epic Games Launcher on a computer), then reload this page."
+        return LF("Epic needs you to %@ before it gives Madeira a sign-in code. Sign in at store.epicgames.com in Safari and accept it (or sign in once with the Epic Games Launcher on a computer), then reload this page.", String(describing: (what)))
     }
 
     private let http: URLSession

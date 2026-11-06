@@ -82,7 +82,7 @@ enum JITPoolMeter {
         let totalMB = (total >> 20) + (total & ((1 << 20) - 1) >= 1 << 19 ? 1 : 0)
         let usedMB = (used >> 20) + (used & ((1 << 20) - 1) >= 1 << 19 ? 1 : 0)
         let notes = [s.shrunk ? "small" : nil, s.holes.isEmpty ? nil : "split"].compactMap { $0 }
-        if s.exhausted > 0 { return "JIT FULL \(totalMB) MB" + (s.holes.isEmpty ? "" : " (split)") }
+        if s.exhausted > 0 { return LF("JIT FULL %@ MB", String(describing: (totalMB))) + (s.holes.isEmpty ? "" : " (split)") }
         return "JIT \(usedMB)/\(totalMB) MB" + (notes.isEmpty ? "" : " (" + notes.joined(separator: ", ") + ")")
     }
 

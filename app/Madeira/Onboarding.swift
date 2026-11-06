@@ -232,7 +232,7 @@ struct OnboardingView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     if let position = OnboardingRules.position(of: model.step, in: model.steps), position.count > 1 {
-                        Text("Step \(position.number) of \(position.count)")
+                        Text(LF("Step %@ of %@", String(describing: (position.number)), String(describing: (position.count))))
                             .font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                     }
                     switch model.step {
@@ -326,7 +326,7 @@ struct OnboardingView: View {
                 Text("Since you last ran setup, Madeira has something new to set up:").font(.title3)
             } else {
                 Text("Welcome to Madeira").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
-                Text("Madeira runs Windows games on your \(UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone").")
+                Text(LF("Madeira runs Windows games on your %@.", String(describing: (UIDevice.current.userInterfaceIdiom == .pad ? "iPad" : "iPhone"))))
                     .font(.title3)
                 Text("A few optional steps get you ready:").foregroundStyle(.secondary)
             }
@@ -355,7 +355,7 @@ struct OnboardingView: View {
             if localDevVPNInstalled {
                 Label("LocalDevVPN is installed", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
-                primary("Continue", symbol: "arrow.right") { model.next() }
+                primary(L("Continue"), symbol: "arrow.right") { model.next() }
             } else {
                 primary("Get LocalDevVPN", symbol: "arrow.down.app") {
                     LogStore.shared.log("[onboarding] LocalDevVPN app-store")
@@ -387,15 +387,15 @@ struct OnboardingView: View {
             Text("JIT lets Madeira run Windows code. Choose how your \(device) gets it.")
             VStack(spacing: 12) {
                 jitChoice("In-app", symbol: "iphone.radiowaves.left.and.right",
-                          detail: !OnDevicePairing.isSupported ? "Needs iOS 27 or later."
+                          detail: !OnDevicePairing.isSupported ? L("Needs iOS 27 or later.")
                               : pairedOnDevice ? "Paired on this \(device)."
                               : "Pair this \(device) with Madeira in Settings. No computer needed.",
                           done: pairedOnDevice, enabled: OnDevicePairing.isSupported) { choose(.onDevice) }
                 jitChoice("In-app with pairing file", symbol: "doc.badge.plus",
-                          detail: fileImported ? "Pairing file imported." : "Use a pairing file made on a computer.",
+                          detail: fileImported ? "Pairing file imported." : L("Use a pairing file made on a computer."),
                           done: fileImported) { choose(.pairingFile) }
                 jitChoice("StikDebug", symbol: "ant",
-                          detail: "Enable JIT with the StikDebug app.",
+                          detail: L("Enable JIT with the StikDebug app."),
                           done: jit.method == .stikDebug) { choose(.stikDebug) }
             }
             secondary("I'll do this later") { model.next() }
@@ -417,7 +417,7 @@ struct OnboardingView: View {
                 Label("Paired on this \(device)", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
                 vpnNote
-                primary("Continue", symbol: "arrow.right") { useBuiltIn() }
+                primary(L("Continue"), symbol: "arrow.right") { useBuiltIn() }
                 secondary("Pair again") { startPairing() }
             } else {
                 primary("Start pairing", symbol: "dot.radiowaves.left.and.right") { startPairing() }
@@ -443,7 +443,7 @@ struct OnboardingView: View {
                 Label("Pairing file imported", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
                 vpnNote
-                primary("Continue", symbol: "arrow.right") { useBuiltIn() }
+                primary(L("Continue"), symbol: "arrow.right") { useBuiltIn() }
                 secondary("Choose another pairing file") { importPairingFile() }
             } else {
                 primary("Choose pairing file", symbol: "folder") { importPairingFile() }
@@ -583,7 +583,7 @@ struct OnboardingView: View {
                 .padding(.horizontal, 14).padding(.vertical, 10)
                 .background(Color(uiColor: .secondarySystemGroupedBackground),
                             in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            primary("Continue", symbol: "arrow.right") {
+            primary(L("Continue"), symbol: "arrow.right") {
                 LogStore.shared.log("[onboarding] JIT shortcut on=\(shortcut.enabled ? 1 : 0)")
                 model.next()
             }
@@ -595,14 +595,14 @@ struct OnboardingView: View {
             header("Sign in to Steam", symbol: "person.crop.circle.badge.checkmark")
             Text(model.steps.contains(.dockClient)
                  ? "When you start a game with Madeira Dock, Madeira hands this sign-in to Valve's own Steam client, which signs in and checks your license."
-                 : "Madeira keeps a Steam sign-in so it can start your Steam games with your own account.")
+                 : L("Madeira keeps a Steam sign-in so it can start your Steam games with your own account."))
             VStack(alignment: .leading, spacing: 10) {
                 Label("Your password goes only to Steam and is never saved.", systemImage: "lock.fill")
                 Label("The sign-in is kept in this device's Keychain until you sign out.", systemImage: "iphone")
             }.font(.subheadline).foregroundStyle(.secondary)
             if let name = signIn.accountName {
                 Label("Signed in as \(name)", systemImage: "checkmark.circle.fill").font(.headline).foregroundStyle(.green)
-                primary("Continue", symbol: "arrow.right") { model.next() }
+                primary(L("Continue"), symbol: "arrow.right") { model.next() }
                 secondary("Use a different account") {
                     LogStore.shared.log("[onboarding] sign-in replaced")
                     signIn.signOut(); showSignIn = true
@@ -621,7 +621,7 @@ struct OnboardingView: View {
             if dock.clientInstalled {
                 Label("Valve's client components are installed.", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
-                primary("Continue", symbol: "arrow.right") { model.next() }
+                primary(L("Continue"), symbol: "arrow.right") { model.next() }
             } else {
                 Text("About 73 MB from Valve's update servers, checked against pinned SHA-256 sums. No Windows session runs for this.")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -631,7 +631,7 @@ struct OnboardingView: View {
                     if let error = dock.error {
                         Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
                     }
-                    primary(dock.error == nil ? "Download components" : "Try again", symbol: "arrow.down.circle.fill") {
+                    primary(dock.error == nil ? L("Download components") : "Try again", symbol: "arrow.down.circle.fill") {
                         LogStore.shared.log("[onboarding] components download")
                         dock.prepareClient()
                     }
@@ -651,7 +651,7 @@ struct OnboardingView: View {
             if mono.installed {
                 Label("Wine Mono is installed.", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
-                primary("Continue", symbol: "arrow.right") { model.next() }
+                primary(L("Continue"), symbol: "arrow.right") { model.next() }
             } else {
                 Text("Madeira downloads it from WineHQ: about 42 MB, about 130 MB once installed. Most games do not need it; you can also add it later in Settings.")
                     .font(.subheadline).foregroundStyle(.secondary)
@@ -665,7 +665,7 @@ struct OnboardingView: View {
                     if let error = mono.error {
                         Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
                     }
-                    primary(mono.error == nil ? "Download Wine Mono" : "Try again", symbol: "arrow.down.circle.fill") {
+                    primary(mono.error == nil ? L("Download Wine Mono") : "Try again", symbol: "arrow.down.circle.fill") {
                         LogStore.shared.log("[onboarding] Wine Mono download")
                         mono.install()
                     }
@@ -686,9 +686,9 @@ struct OnboardingView: View {
             if redist.complete {
                 Label("The Visual C++ 2015-2022 runtime is installed.", systemImage: "checkmark.circle.fill")
                     .font(.headline).foregroundStyle(.green)
-                primary("Continue", symbol: "arrow.right") { model.next() }
+                primary(L("Continue"), symbol: "arrow.right") { model.next() }
             } else {
-                Text("About \(VCRedistPin.totalMegabytes) MB from Microsoft's download servers, checked against pinned SHA-256 sums. No Windows session runs for this. The files stay as Microsoft shipped them, under Microsoft's licence terms for the redistributable.")
+                Text(LF("About %@ MB from Microsoft's download servers, checked against pinned SHA-256 sums. No Windows session runs for this. The files stay as Microsoft shipped them, under Microsoft's licence terms for the redistributable.", String(describing: (VCRedistPin.totalMegabytes))))
                     .font(.subheadline).foregroundStyle(.secondary)
                 switch redist.phase {
                 case .downloading(let f), .installing(let f):
@@ -700,7 +700,7 @@ struct OnboardingView: View {
                     if let error = redist.error {
                         Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
                     }
-                    primary(redist.error == nil ? "Download and install" : "Try again", symbol: "arrow.down.circle.fill") {
+                    primary(redist.error == nil ? L("Download and install") : "Try again", symbol: "arrow.down.circle.fill") {
                         LogStore.shared.log("[onboarding] Visual C++ runtime install")
                         redist.install()
                     }
@@ -765,7 +765,7 @@ struct SteamSettingsSection: View {
                 Button { open(.steamSignIn) } label: { Label("Sign in to Steam", systemImage: "person.crop.circle.badge.plus") }
             }
             Picker("Game language", selection: $language) {
-                Text("Device language (\(SteamLanguage.name(SteamLanguage.device)))").tag("")
+                Text(LF("Device language (%@)", String(describing: (SteamLanguage.name(SteamLanguage.device))))).tag("")
                 ForEach(SteamLanguage.all, id: \.code) { Text($0.name).tag($0.code) }
             }
             .pickerStyle(.navigationLink)

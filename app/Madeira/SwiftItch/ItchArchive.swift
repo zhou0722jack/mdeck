@@ -21,10 +21,10 @@ enum ItchArchiveError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notZip: return "This download is not a .zip archive."
-        case .damaged(let what): return "The downloaded archive is damaged (\(what)). Download it again."
-        case .unsupported(let what): return "Madeira cannot unpack this archive yet (\(what))."
-        case .unsafeName(let name): return "The archive has a file Madeira will not unpack (\(name))."
+        case .notZip: return L("This download is not a .zip archive.")
+        case .damaged(let what): return LF("The downloaded archive is damaged (%@). Download it again.", String(describing: (what)))
+        case .unsupported(let what): return LF("Madeira cannot unpack this archive yet (%@).", String(describing: (what)))
+        case .unsafeName(let name): return LF("The archive has a file Madeira will not unpack (%@).", String(describing: (name)))
         }
     }
 
@@ -88,7 +88,7 @@ enum ItchArchive {
         guard let eocd = stride(from: tailSize - 22, through: 0, by: -1).first(where: { u32(tail, $0) == 0x06054b50 }) else {
             throw ItchArchiveError.notZip
         }
-        guard u16(tail, eocd + 4) == 0, u16(tail, eocd + 6) == 0 else { throw ItchArchiveError.unsupported("split archive") }
+        guard u16(tail, eocd + 4) == 0, u16(tail, eocd + 6) == 0 else { throw ItchArchiveError.unsupported(L("split archive")) }
         var count = u16(tail, eocd + 10), directorySize = u32(tail, eocd + 12), directoryOffset = u32(tail, eocd + 16)
         // ZIP64: the locator sits right before the end record and points at the ZIP64 end record.
         let eocdOffset = length - UInt64(tailSize) + UInt64(eocd)
@@ -136,7 +136,7 @@ enum ItchArchive {
                 extra += 4 + length
             }
             cursor = next
-            guard flags & 1 == 0 else { throw ItchArchiveError.unsupported("encrypted files") }
+            guard flags & 1 == 0 else { throw ItchArchiveError.unsupported(L("encrypted files")) }
             let directoryEntry = raw.hasSuffix("/") || raw.hasSuffix("\\")
             // Unix "made by" with a link mode: a symbolic link.
             if madeBy == 3, (external >> 16) & 0xf000 == 0xa000 { throw ItchArchiveError.unsafeName(raw) }
@@ -145,7 +145,7 @@ enum ItchArchive {
                 if directoryEntry { continue }
                 throw ItchArchiveError.unsafeName(name)
             }
-            if !directoryEntry { guard method == 0 || method == 8 else { throw ItchArchiveError.unsupported("compression method \(method)") } }
+            if !directoryEntry { guard method == 0 || method == 8 else { throw ItchArchiveError.unsupported(LF("compression method %@", String(describing: (method)))) } }
             entries.append(Entry(name: name, directory: directoryEntry, method: method, crc: crc,
                                  compressed: compressed, size: size, localOffset: local))
         }
@@ -275,7 +275,7 @@ extension ItchArchive {
         case I7Z_NOT_7Z: return .damaged("not-7z")
         case I7Z_UNSUPPORTED:
             return .unsupported(reason == "encrypted" ? "a password-protected .7z" : ".7z " + reason)
-        case I7Z_MEMORY: return .unsupported(".7z needs more memory than this device gives (\(reason))")
+        case I7Z_MEMORY: return .unsupported(LF(".7z needs more memory than this device gives (%@)", String(describing: (reason))))
         case I7Z_IO: return .damaged("7z-read")
         default: return .damaged("7z-" + reason)
         }

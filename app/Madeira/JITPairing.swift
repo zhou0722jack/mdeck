@@ -96,7 +96,7 @@ import UserNotifications
         }
         beginBackground()
         deadline = Timer.scheduledTimer(withTimeInterval: Self.timeout, repeats: false) { _ in
-            MainActor.assumeIsolated { OnDevicePairing.shared.cancel(reason: "Pairing timed out. Try again when you are ready to pair from Settings.") }
+            MainActor.assumeIsolated { OnDevicePairing.shared.cancel(reason: L("Pairing timed out. Try again when you are ready to pair from Settings.")) }
         }
 
         DispatchQueue.global(qos: .userInitiated).async {
@@ -133,11 +133,11 @@ import UserNotifications
         phase = .pin(pin)
         log("code shown")
         if #available(iOS 26.0, *), let task = continued as? BGContinuedProcessingTask {
-            task.updateTitle("Pairing code \(pin)", subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
+            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
             task.progress.completedUnitCount = 1
         }
         if UIApplication.shared.applicationState != .active {
-            notify("Madeira pairing code: \(pin)", body: "Enter this code on your \(Self.deviceKind) to finish pairing.")
+            notify("Madeira pairing code: \(pin)", body: LF("Enter this code on your %@ to finish pairing.", String(describing: (Self.deviceKind))))
         }
     }
 
@@ -155,7 +155,7 @@ import UserNotifications
                 phase = .paired(device: device ?? "this \(Self.deviceKind)")
                 log("paired")
                 if UIApplication.shared.applicationState != .active {
-                    notify("Paired with Madeira", body: "Return to Madeira to finish setting up JIT.")
+                    notify("Paired with Madeira", body: L("Return to Madeira to finish setting up JIT."))
                 }
                 endBackground(success: true)
             } catch {
@@ -241,7 +241,7 @@ import UserNotifications
             MainActor.assumeIsolated {
                 let pairing = OnDevicePairing.shared
                 if pairing.continued == nil && pairing.active {
-                    pairing.cancel(reason: "iOS stopped Madeira in the background before pairing finished. Try again, and pair from Settings straight away.")
+                    pairing.cancel(reason: L("iOS stopped Madeira in the background before pairing finished. Try again, and pair from Settings straight away."))
                 }
                 pairing.endGrace()
             }
@@ -260,7 +260,7 @@ import UserNotifications
             guard ok else { log("register refused"); backgroundLimited = true; return }
             registered = identifier
         }
-        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: "Pairing with Madeira",
+        let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: L("Pairing with Madeira"),
                                                        subtitle: "Settings › Privacy & Security › Developer Mode")
         request.strategy = .fail
         do {
@@ -278,13 +278,13 @@ import UserNotifications
         continued = task
         task.progress.totalUnitCount = 2
         if case .pin(let pin) = phase {
-            task.updateTitle("Pairing code \(pin)", subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
+            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
             task.progress.completedUnitCount = 1
         }
         task.expirationHandler = {
             DispatchQueue.main.async {
                 OnDevicePairing.shared.continued = nil
-                OnDevicePairing.shared.cancel(reason: "iOS stopped the pairing in the background. Try again.")
+                OnDevicePairing.shared.cancel(reason: L("iOS stopped the pairing in the background. Try again."))
             }
         }
         log("continued-processing running")
@@ -352,7 +352,7 @@ struct OnDevicePairingPanel: View {
                 Text("Enter this code on your \(device)").font(.subheadline)
                 Text(pin).font(.system(size: 40, weight: .bold, design: .monospaced)).tracking(6)
                     .textSelection(.enabled)
-                    .accessibilityLabel("Pairing code \(pin.map(String.init).joined(separator: " "))")
+                    .accessibilityLabel(LF("Pairing code %@", String(describing: (pin.map(String.init).joined(separator: " ")))))
                 cancel
             }
             .frame(maxWidth: .infinity)

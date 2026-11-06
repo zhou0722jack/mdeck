@@ -27,6 +27,8 @@ jobs:
       ipaenv: ${{ steps.sdk.outputs.ipa }}
     steps:
       - uses: actions/checkout@v4
+      - name: Check Simplified Chinese localization
+        run: python3 tests/host/check-localization.py
       - name: Check build reuse rules
         run: |
           python3 tests/host/check-build-inputs.py

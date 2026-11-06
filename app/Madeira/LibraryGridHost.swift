@@ -1116,7 +1116,7 @@ final class LibraryGridSizeElement: UIAccessibilityElement {
     weak var host: LibraryGridHostController?
     override init(accessibilityContainer container: Any) {
         super.init(accessibilityContainer: container)
-        accessibilityLabel = "Card size"
+        accessibilityLabel = L("Card size")
         accessibilityTraits = .adjustable
     }
     override var accessibilityValue: String? { get { host?.cardSizeDescription } set {} }

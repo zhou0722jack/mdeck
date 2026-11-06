@@ -141,11 +141,11 @@ enum VCRedistInstaller {
 
     /// Checks one DLL from the installer against its name and architecture.
     static func check(_ data: Data, name: String, package: VCRedistPin.Package) throws {
-        guard let facts = peFacts(data) else { throw VCRedistError.message("\(name) in the installer is not a Windows DLL.") }
+        guard let facts = peFacts(data) else { throw VCRedistError.message(LF("%@ in the installer is not a Windows DLL.", String(describing: (name)))) }
         let machine: UInt16 = package.arch == "x86" ? 0x14c : 0x8664
-        guard facts.machine == machine else { throw VCRedistError.message("\(name) in the installer is for another architecture.") }
-        guard facts.signed else { throw VCRedistError.message("\(name) in the installer carries no signature.") }
-        guard atLeastPinned(facts.version) else { throw VCRedistError.message("\(name) in the installer is version \(facts.version), older than the pinned \(VCRedistPin.version).") }
+        guard facts.machine == machine else { throw VCRedistError.message(LF("%@ in the installer is for another architecture.", String(describing: (name)))) }
+        guard facts.signed else { throw VCRedistError.message(LF("%@ in the installer carries no signature.", String(describing: (name)))) }
+        guard atLeastPinned(facts.version) else { throw VCRedistError.message(LF("%@ in the installer is version %@, older than the pinned %@.", String(describing: (name)), String(describing: (facts.version)), String(describing: (VCRedistPin.version)))) }
     }
 
     /// The installer's DLLs for one architecture: every cabinet in the file is opened, every
@@ -154,7 +154,7 @@ enum VCRedistInstaller {
     static func extract(installer: URL, package: VCRedistPin.Package, progress: (Double) -> Void = { _ in }) throws -> [String: Data] {
         let exe = try Data(contentsOf: installer, options: .alwaysMapped)
         guard exe.count > 0x40, exe[exe.startIndex] == 0x4D, exe[exe.startIndex + 1] == 0x5A else {
-            throw VCRedistError.message("\(package.fileName) is not a Windows program.")
+            throw VCRedistError.message(LF("%@ is not a Windows program.", String(describing: (package.fileName))))
         }
         var found: [String: Data] = [:]
         let wanted = Set(VCRedistPin.expectedNames(package.arch))
@@ -178,7 +178,7 @@ enum VCRedistInstaller {
                     var payload = Data(count: size)
                     let rc = payload.withUnsafeMutableBytes { madeira_cab_extract(outer, index, $0.baseAddress, $0.count) }
                     guard rc == Int32(MADEIRA_CAB_OK) else {
-                        throw VCRedistError.message("\(package.fileName) is damaged (\(String(cString: madeira_cab_strerror(rc)))).")
+                        throw VCRedistError.message(LF("%@ is damaged (%@).", String(describing: (package.fileName)), String(describing: (String(cString: madeira_cab_strerror(rc))))))
                     }
                     guard payload.starts(with: marker) else { continue }
                     try payload.withUnsafeBytes { (inner: UnsafeRawBufferPointer) in
@@ -189,11 +189,11 @@ enum VCRedistInstaller {
                             guard let stored = madeira_cab_file_name(cab, entry),
                                   let name = dllName(entry: String(cString: stored), package: package), found[name] == nil else { continue }
                             let bytes = Int(madeira_cab_file_size(cab, entry))
-                            guard bytes > 0, bytes <= 64 << 20 else { throw VCRedistError.message("\(name) in the installer has an impossible size.") }
+                            guard bytes > 0, bytes <= 64 << 20 else { throw VCRedistError.message(LF("%@ in the installer has an impossible size.", String(describing: (name)))) }
                             var dll = Data(count: bytes)
                             let rc = dll.withUnsafeMutableBytes { madeira_cab_extract(cab, entry, $0.baseAddress, $0.count) }
                             guard rc == Int32(MADEIRA_CAB_OK) else {
-                                throw VCRedistError.message("\(name) could not be unpacked (\(String(cString: madeira_cab_strerror(rc)))).")
+                                throw VCRedistError.message(LF("%@ could not be unpacked (%@).", String(describing: (name)), String(describing: (String(cString: madeira_cab_strerror(rc))))))
                             }
                             try check(dll, name: name, package: package)
                             found[name] = dll
@@ -206,7 +206,7 @@ enum VCRedistInstaller {
         }
         let missing = wanted.subtracting(found.keys).sorted()
         guard missing.isEmpty else {
-            throw VCRedistError.message("\(package.fileName) did not hold \(missing.joined(separator: ", ")). Microsoft may have changed the installer; this build pins \(VCRedistPin.version).")
+            throw VCRedistError.message(LF("%@ did not hold %@. Microsoft may have changed the installer; this build pins %@.", String(describing: (package.fileName)), String(describing: (missing.joined(separator: ", "))), String(describing: (VCRedistPin.version))))
         }
         return found
     }
@@ -285,15 +285,15 @@ enum VCRedistInstaller {
     var complete: Bool { Self.packages.allSatisfy { installed[$0.arch].map { VCRedistInstaller.atLeastPinned($0) } ?? false } }
     var status: String {
         switch phase {
-        case .downloading(let f): return "Downloading… \(Int((f * 100).rounded()))%"
-        case .installing(let f): return "Unpacking and checking… \(Int((f * 100).rounded()))%"
+        case .downloading(let f): return LF("Downloading… %@%%", String(describing: (Int((f * 100).rounded()))))
+        case .installing(let f): return LF("Unpacking and checking… %@%%", String(describing: (Int((f * 100).rounded()))))
         case .idle:
             if complete {
                 let versions = Set(installed.values)
-                return "Installed" + (versions.count == 1 ? " (\(versions.first!))" : "")
+                return L("Installed") + (versions.count == 1 ? " (\(versions.first!))" : "")
             }
-            if installed.isEmpty { return "Not installed" }
-            return "Installed for " + installed.keys.sorted().joined(separator: ", ") + " only"
+            if installed.isEmpty { return L("Not installed") }
+            return L("Installed for ") + installed.keys.sorted().joined(separator: ", ") + " only"
         }
     }
 
@@ -314,7 +314,7 @@ enum VCRedistInstaller {
     func install() {
         guard !busy else { return }
         guard wine_process_is_running() == 0, wineserver_is_running() == 0, LibraryModel.shared.current == nil else {
-            error = "A session is running. Try again when it has ended."; return
+            error = L("A session is running. Try again when it has ended."); return
         }
         error = nil
         phase = .downloading(0)
@@ -395,11 +395,11 @@ enum VCRedistInstaller {
         let attrs = try FileManager.default.attributesOfItem(atPath: temp.path)
         guard (attrs[.size] as? Int64) == package.bytes else {
             try? FileManager.default.removeItem(at: temp)
-            throw VCRedistError.message("\(package.fileName) has an unexpected size (\(attrs[.size] ?? 0) bytes). Microsoft may have published a new version; this build pins \(VCRedistPin.version).")
+            throw VCRedistError.message(LF("%@ has an unexpected size (%@ bytes). Microsoft may have published a new version; this build pins %@.", String(describing: (package.fileName)), String(describing: (attrs[.size] ?? 0)), String(describing: (VCRedistPin.version))))
         }
         guard try WineMonoInstaller.sha256(of: temp) == package.sha256 else {
             try? FileManager.default.removeItem(at: temp)
-            throw VCRedistError.message("\(package.fileName) does not match its pinned SHA-256. Nothing was installed.")
+            throw VCRedistError.message(LF("%@ does not match its pinned SHA-256. Nothing was installed.", String(describing: (package.fileName))))
         }
         log("\(package.fileName): \(package.bytes) bytes, SHA-256 verified")
         return temp
@@ -437,7 +437,7 @@ struct VCRedistSettingsSection: View {
             }
             if !redist.busy {
                 Button { redist.install() } label: {
-                    Label(redist.complete ? "Install again" : (redist.error == nil ? "Download and install" : "Try again"),
+                    Label(redist.complete ? L("Install again") : (redist.error == nil ? L("Download and install") : L("Try again")),
                           systemImage: "arrow.down.circle")
                 }
                 if !redist.installed.isEmpty {
@@ -447,7 +447,7 @@ struct VCRedistSettingsSection: View {
         } header: {
             Text("Visual C++ runtimes")
         } footer: {
-            Text("Many Windows games need Microsoft's Visual C++ 2015-2022 runtime. Madeira downloads Microsoft's installers (about \(VCRedistPin.totalMegabytes) MB, version \(VCRedistPin.version)) and takes the runtime DLLs out of them on this device, as Microsoft shipped them, for 64-bit and 32-bit games. No Windows session runs and nothing restarts: the next game start uses them. Microsoft's licence terms for the redistributable apply to the files.")
+            Text(LF("Many Windows games need Microsoft's Visual C++ 2015-2022 runtime. Madeira downloads Microsoft's installers (about %@ MB, version %@) and takes the runtime DLLs out of them on this device, as Microsoft shipped them, for 64-bit and 32-bit games. No Windows session runs and nothing restarts: the next game start uses them. Microsoft's licence terms for the redistributable apply to the files.", String(describing: (VCRedistPin.totalMegabytes)), String(describing: (VCRedistPin.version))))
         }
         .confirmationDialog("Remove the Visual C++ runtime?", isPresented: $confirmRemove, titleVisibility: .visible) {
             Button("Remove", role: .destructive) { redist.remove() }

@@ -35,10 +35,10 @@ enum SteamRuntimeFiles {
         case invalidPackage, conflict, activeSession, prefixMissing
         var errorDescription: String? {
             switch self {
-            case .invalidPackage: return "Steam's components could not be verified. Try downloading them again."
-            case .conflict: return "Existing Steam files need attention. They were kept. Use the desktop setup option."
-            case .activeSession: return "Close the running session before preparing Steam's components."
-            case .prefixMissing: return "Madeira could not prepare its Windows environment."
+            case .invalidPackage: return L("Steam's components could not be verified. Try downloading them again.")
+            case .conflict: return L("Existing Steam files need attention. They were kept. Use the desktop setup option.")
+            case .activeSession: return L("Close the running session before preparing Steam's components.")
+            case .prefixMissing: return L("Madeira could not prepare its Windows environment.")
             }
         }
     }

@@ -237,10 +237,10 @@ enum IniSettingHelp {
         let chars = Array(key)
         guard chars.count > 1, chars[1].isUppercase else { return nil }
         switch chars[0] {
-        case "b": return "A switch: 1 is on, 0 is off."
-        case "i": return "A whole number."
-        case "u": return "A whole number, 0 or more."
-        case "f": return "A number that can have a decimal point."
+        case "b": return L("A switch: 1 is on, 0 is off.")
+        case "i": return L("A whole number.")
+        case "u": return L("A whole number, 0 or more.")
+        case "f": return L("A number that can have a decimal point.")
         case "s", "S": return "Text."
         default: return nil
         }
@@ -348,7 +348,7 @@ struct IniFilePicker: View {
             if let found {
                 let shown = query.isEmpty ? found : found.filter { $0.localizedCaseInsensitiveContains(query) }
                 if shown.isEmpty {
-                    Text(found.isEmpty ? "No .ini files in the game's folder or Documents › My Games yet. A game often writes its files the first time it runs." : "No file matches.")
+                    Text(found.isEmpty ? L("No .ini files in the game's folder or Documents › My Games yet. A game often writes its files the first time it runs.") : L("No file matches."))
                         .foregroundStyle(.secondary)
                 }
                 ForEach(shown, id: \.self) { file in
@@ -370,7 +370,7 @@ struct IniFilePicker: View {
                 HStack { ProgressView(); Text("Looking for .ini files").foregroundStyle(.secondary) }
             }
         }
-        .searchable(text: $query, prompt: "File name")
+        .searchable(text: $query, prompt: L("File name"))
         .navigationTitle("Add .ini file").navigationBarTitleDisplayMode(.inline)
         .task {
             guard found == nil else { return }
@@ -406,7 +406,7 @@ struct IniFileEditor: View {
                 ForEach(document.sections, id: \.name) { group in
                     let rows = query.isEmpty ? group.settings : group.settings.filter { $0.key.localizedCaseInsensitiveContains(query) || group.name.localizedCaseInsensitiveContains(query) }
                     if !rows.isEmpty {
-                        Section(group.name.isEmpty ? "Settings" : "[\(group.name)]") {
+                        Section(group.name.isEmpty ? L("Settings") : "[\(group.name)]") {
                             ForEach(rows) { setting in row(setting) }
                         }
                     }
@@ -415,7 +415,7 @@ struct IniFileEditor: View {
                 ProgressView()
             }
         }
-        .searchable(text: $query, prompt: "Setting or section")
+        .searchable(text: $query, prompt: L("Setting or section"))
         .navigationTitle(title).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) { Button("Save") { save() }.disabled(!changed) }
@@ -425,7 +425,7 @@ struct IniFileEditor: View {
             Button("OK") {}
         } message: { setting in
             let section = setting.section.isEmpty ? "" : "In [\(setting.section)]. "
-            Text(section + (IniSettingHelp.describe(key: setting.key) ?? "No description for this setting yet."))
+            Text(section + (IniSettingHelp.describe(key: setting.key) ?? L("No description for this setting yet.")))
         }
     }
 
@@ -451,7 +451,7 @@ struct IniFileEditor: View {
             Text(setting.key).font(.callout.monospaced())
             Button { info = setting } label: { Image(systemName: "info.circle") }
                 .buttonStyle(.borderless).foregroundStyle(.blue)
-                .accessibilityLabel("About \(setting.key)")
+                .accessibilityLabel(LF("About %@", String(describing: (setting.key))))
         }
     }
 
@@ -463,14 +463,14 @@ struct IniFileEditor: View {
 
     private func load() {
         guard let data = try? Data(contentsOf: url), let decoded = IniFileText(data: data) else {
-            error = "This file could not be read. It may have been moved or deleted."
+            error = L("This file could not be read. It may have been moved or deleted.")
             return
         }
         original = data; encoding = decoded
         document = IniDocument(text: decoded.text)
         changed = false
         if let saved = GameIniFiles.savedFingerprint(file), saved != GameIniFiles.fingerprint(data) {
-            note = "The game changed this file after it was last saved here. Check your changes are still set."
+            note = L("The game changed this file after it was last saved here. Check your changes are still set.")
         }
     }
 
@@ -478,7 +478,7 @@ struct IniFileEditor: View {
         guard let document, let encoding, let out = encoding.data(document.text) else { return }
         // A game running (or another app) may have written it since it opened here.
         if let now = try? Data(contentsOf: url), now != original {
-            error = "The file changed while it was open here, so nothing was saved. Go back and open it again."
+            error = L("The file changed while it was open here, so nothing was saved. Go back and open it again.")
             return
         }
         do {
@@ -487,7 +487,7 @@ struct IniFileEditor: View {
             GameIniFiles.setSavedFingerprint(GameIniFiles.fingerprint(out), for: file)
             LogStore.shared.log("[ini-editor] saved \(file)")
         } catch {
-            self.error = "Not saved: \(error.localizedDescription)"
+            self.error = LF("Not saved: %@", String(describing: (error.localizedDescription)))
         }
     }
 }

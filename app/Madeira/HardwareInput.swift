@@ -2658,7 +2658,7 @@ struct HardwareInputSettings: View {
                 .cornerRadius(6)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(hw.pointerLocked ? "Unlock pointer (Ctrl+Alt+P)" : "Lock pointer (Ctrl+Alt+P)")
+        .accessibilityLabel(hw.pointerLocked ? L("Unlock pointer (Ctrl+Alt+P)") : L("Lock pointer (Ctrl+Alt+P)"))
     }
 
     /// The one thing the app cannot do for the user: on iPhone every pointer

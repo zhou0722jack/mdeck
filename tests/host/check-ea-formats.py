@@ -41,7 +41,7 @@ def build(work):
     args = [swiftc, "-O", "-swift-version", "5", "-o", str(work / "driver")]
     if sys.platform != "darwin":
         args.append("-static-stdlib")
-    args += [str(SRC), str(HERE / "HostDigest.swift"), str(HERE / "main.swift")]
+    args += [str(ROOT / "app/Madeira/Localization.swift"), str(SRC), str(HERE / "HostDigest.swift"), str(HERE / "main.swift")]
     r = subprocess.run(args, capture_output=True, text=True)
     if r.returncode:
         print(r.stdout[-3000:], r.stderr[-6000:])

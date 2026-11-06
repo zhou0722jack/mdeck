@@ -31,6 +31,7 @@ struct MadeiraApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.locale, AppLanguage.locale)
                 .background(InteractionFrameRateInstaller())   // touch frame-rate request (New library grid)
                 .modifier(ClaimGamepadEvents())
                 .onAppear {

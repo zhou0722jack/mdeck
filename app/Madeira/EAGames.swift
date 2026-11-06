@@ -72,7 +72,7 @@ struct EAGamesSection: View {
         let others = items.filter { $0.installed == nil && ea.downloads[$0.id] == nil }
         let collapsible = SteamGamesSection.collapsible
         VStack(alignment: .leading, spacing: 14) {
-            LibrarySectionHeader(title: "EA app", count: mine.count, collapsed: collapsible ? $hidden : nil) {
+            LibrarySectionHeader(title: L("EA app"), count: mine.count, collapsed: collapsible ? $hidden : nil) {
                 if ea.refreshing { ProgressView().accessibilityLabel("Refreshing EA library") }
             }
             if !(hidden && collapsible) {
@@ -82,7 +82,7 @@ struct EAGamesSection: View {
                 if !mine.isEmpty {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if ea.signedIn && !ea.refreshing && others.isEmpty && search.isEmpty {
-                    Text(ea.libraryUpdated == nil ? "Pull down to load your EA library."
+                    Text(ea.libraryUpdated == nil ? L("Pull down to load your EA library.")
                          : "No PC games were found in this EA account.").foregroundStyle(.secondary)
                 }
                 if ea.signedIn && !others.isEmpty {
@@ -242,7 +242,7 @@ struct EAGameCell: View {
         if let download {
             badge(state(download))
         } else if item.installed != nil, let entry {
-            LibraryBadges(entry: entry, note: ea.updateAvailable(item.id) ? "Update" : nil).foregroundStyle(.secondary)
+            LibraryBadges(entry: entry, note: ea.updateAvailable(item.id) ? L("Update") : nil).foregroundStyle(.secondary)
         } else if item.installed == nil {
             badge(item.owned?.downloadable == false ? "Not downloadable" : "Not installed")
         }
@@ -250,10 +250,10 @@ struct EAGameCell: View {
 
     private func state(_ download: EALibrary.Download) -> String {
         switch download.state {
-        case .queued: return "Waiting"
-        case .active: return download.progress.phase == .verifying ? "Checking files" : "Downloading \(Int(download.progress.fraction * 100))%"
-        case .paused: return "Paused"
-        case .failed: return "Download failed"
+        case .queued: return L("Waiting")
+        case .active: return download.progress.phase == .verifying ? L("Checking files") : "Downloading \(Int(download.progress.fraction * 100))%"
+        case .paused: return L("Paused")
+        case .failed: return L("Download failed")
         }
     }
 
@@ -302,16 +302,16 @@ struct EADownloadStatus: View {
     private var caption: String {
         let p = download.progress
         switch download.state {
-        case .queued: return "Waiting for the other EA download to finish…"
-        case .paused: return p.totalBytes > 0 ? "Paused at \(Int(p.fraction * 100))%" : "Paused"
+        case .queued: return L("Waiting for the other EA download to finish…")
+        case .paused: return p.totalBytes > 0 ? LF("Paused at %@%%", String(describing: (Int(p.fraction * 100)))) : "Paused"
         case .failed(let message): return message
         case .active:
             switch p.phase {
-            case .preparing: return p.step.map { $0 + "…" } ?? "Preparing download…"
-            case .verifying: return "Checking installed files… \(Int(p.fraction * 100))%"
-            case .finishing: return "Finishing…"
+            case .preparing: return p.step.map { $0 + "…" } ?? L("Preparing download…")
+            case .verifying: return LF("Checking installed files… %@%%", String(describing: (Int(p.fraction * 100))))
+            case .finishing: return L("Finishing…")
             case .downloading:
-                var parts = ["\(Int(p.fraction * 100))%", "\(eaBytes(p.doneBytes)) of \(eaBytes(p.totalBytes))"]
+                var parts = ["\(Int(p.fraction * 100))%", LF("%@ of %@", String(describing: (eaBytes(p.doneBytes))), String(describing: (eaBytes(p.totalBytes))))]
                 if p.bytesPerSecond > 0 {
                     parts.append("\(eaBytes(UInt64(p.bytesPerSecond)))/s")
                     let left = Double(p.totalBytes - min(p.doneBytes, p.totalBytes)) / p.bytesPerSecond
@@ -362,8 +362,8 @@ struct EAGameSheet: View {
                         if item.installed == nil {
                             switch ea.sizes[offerID] {
                             case .known(let download, let install):
-                                if download > 0 { LabeledContent("Download size", value: "About " + ByteCountFormatter.string(fromByteCount: download, countStyle: .file)) }
-                                if install > 0 { LabeledContent("Size on this device", value: "About " + ByteCountFormatter.string(fromByteCount: install, countStyle: .file)) }
+                                if download > 0 { LabeledContent("Download size", value: L("About ") + ByteCountFormatter.string(fromByteCount: download, countStyle: .file)) }
+                                if install > 0 { LabeledContent("Size on this device", value: L("About ") + ByteCountFormatter.string(fromByteCount: install, countStyle: .file)) }
                             case .unavailable(let reason):
                                 Text(reason).font(.caption).foregroundStyle(.secondary)
                             case nil:
@@ -375,7 +375,7 @@ struct EAGameSheet: View {
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                 } else {
-                    ContentUnavailableView("Game unavailable", systemImage: "questionmark.square.dashed",
+                    ContentUnavailableView(L("Game unavailable"), systemImage: "questionmark.square.dashed",
                                            description: Text("Refresh your EA library and try again."))
                 }
             }
@@ -385,7 +385,7 @@ struct EAGameSheet: View {
                 freeSpace = EADownloader.freeSpace(at: URL.documentsDirectory)
             }
             .task(id: offerID) { await ea.loadSize(offerID) }
-            .confirmationDialog(ea.installed[offerID] == nil ? "Cancel this download? Downloaded files are deleted." : "Stop this download?",
+            .confirmationDialog(ea.installed[offerID] == nil ? L("Cancel this download? Downloaded files are deleted.") : L("Stop this download?"),
                                 isPresented: $confirmCancel, titleVisibility: .visible) {
                 Button("Cancel download", role: .destructive) { ea.cancel(offerID) }
                 Button("Keep downloading", role: .cancel) {}
@@ -487,7 +487,7 @@ struct EASettingsSection: View {
     var body: some View {
         Section {
             if ea.signedIn {
-                LabeledContent("Signed in as", value: ea.accountName ?? "EA account")
+                LabeledContent("Signed in as", value: ea.accountName ?? L("EA account"))
                 Button("Sign out of EA", role: .destructive) { confirmSignOut = true }
             } else {
                 Button { open(.eaSignIn) } label: { Label("Sign in to EA", systemImage: "person.crop.circle.badge.plus") }
@@ -524,7 +524,7 @@ struct EASignInView: View {
             Group {
                 if ea.signedIn {
                     Form {
-                        LabeledContent("Signed in as", value: ea.accountName ?? "EA account")
+                        LabeledContent("Signed in as", value: ea.accountName ?? L("EA account"))
                         Button("Sign out", role: .destructive) { ea.signOut() }
                     }
                 } else {
@@ -566,7 +566,7 @@ struct EASignInView: View {
     private func submit(_ text: String) {
         guard !busy else { return }
         guard let code = EAAPI.authorizationCode(in: text) else {
-            failure = "This is not an EA sign-in address. Copy the address of the page EA opens after you sign in."
+            failure = L("This is not an EA sign-in address. Copy the address of the page EA opens after you sign in.")
             return
         }
         busy = true

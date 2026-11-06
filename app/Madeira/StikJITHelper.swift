@@ -16,13 +16,13 @@ enum StikJITHelper {
         var errorDescription: String? {
             switch self {
             case .scriptMissing:
-                return "Madeira's JIT script is missing from this installation. Reinstall Madeira."
+                return L("Madeira's JIT script is missing from this installation. Reinstall Madeira.")
             case .invalidRequest:
-                return "Madeira could not create the StikDebug request."
+                return L("Madeira could not create the StikDebug request.")
             case .unavailable:
-                return "StikDebug is not installed. Install it, or configure Built-in StikJIT."
+                return L("StikDebug is not installed. Install it, or configure Built-in StikJIT.")
             case .timedOut:
-                return "StikDebug did not attach to Madeira within 90 seconds. Check its pairing file and LocalDevVPN, then try again."
+                return L("StikDebug did not attach to Madeira within 90 seconds. Check its pairing file and LocalDevVPN, then try again.")
             }
         }
     }

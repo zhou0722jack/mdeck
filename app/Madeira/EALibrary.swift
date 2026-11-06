@@ -271,7 +271,7 @@ struct EAInstalledGame: Codable, Sendable {
     func repair(_ id: String) { enqueue(id, kind: .repair) }
 
     private func enqueue(_ id: String, kind: Download.Kind) {
-        guard signedIn || installed[id] != nil else { error = "Sign in to EA to download games."; return }
+        guard signedIn || installed[id] != nil else { error = L("Sign in to EA to download games."); return }
         guard signedIn else { error = EAAPIError.signedOut.localizedDescription; return }
         if let current = downloads[id], current.state == .active || current.state == .queued { return }
         downloads[id] = Download(kind: kind, state: .queued)
@@ -477,7 +477,7 @@ struct EAInstalledGame: Codable, Sendable {
         let folder = Self.drive.appendingPathComponent(record.folder, isDirectory: true)
         let activation = EALicense.activation(gameFolder: folder)
         if activation.required {
-            guard !record.contentID.isEmpty else { throw EAAPIError.license("the game's content id is unknown") }
+            guard !record.contentID.isEmpty else { throw EAAPIError.license(L("the game's content id is unknown")) }
             let (hash, _) = profile.machineHash(version: activation.hashVersion)
             let current = EALicense.current(contentID: record.contentID, drive: Self.drive)
             if EALicense.needsRenewal(current, machineHash: hash, userID: session.userID) {

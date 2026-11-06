@@ -92,10 +92,10 @@ extension GameRecommendations {
 
     /// The line under Reset to Recommended. `desktop`: the Desktop entry's page.
     static func note(_ rec: GameRecommendation?, desktop: Bool = false) -> String {
-        guard let rec else { return "Madeira has no recommended settings for this game yet; resetting empties this game's config." }
+        guard let rec else { return L("Madeira has no recommended settings for this game yet; resetting empties this game's config.") }
         let lines = GameProfile.parse(rec.fileText).count
         if rec.id == standard.id {
-            return (desktop ? "Madeira recommends its standard settings for the Desktop: "
+            return (desktop ? L("Madeira recommends its standard settings for the Desktop: ")
                             : "Madeira has no list for this game yet, so it recommends its standard settings: ")
                 + "\(lines) config line\(lines == 1 ? "" : "s") (the emulator's code-patch report off, without which many games "
                 + "close at start). Resetting replaces "
@@ -103,16 +103,16 @@ extension GameRecommendations {
         }
         let summary = rec.switchSummary
         let switches = summary.isEmpty ? "" : "; " + summary
-        return "Madeira's recommended settings for \(rec.title): \(lines) config lines\(switches). Resetting replaces this game's config and these switches with them."
+        return LF("Madeira's recommended settings for %@: %@ config lines%@. Resetting replaces this game's config and these switches with them.", String(describing: (rec.title)), String(describing: (lines)), String(describing: (switches)))
     }
 
     /// The question before a reset.
     static func question(_ rec: GameRecommendation?, desktop: Bool = false) -> String {
-        guard let rec else { return "Madeira has no recommended settings for this game yet. Empty this game's config?" }
+        guard let rec else { return L("Madeira has no recommended settings for this game yet. Empty this game's config?") }
         if rec.id == standard.id {
-            return "Replace \(desktop ? "the Desktop's" : "this game's") config with Madeira's standard settings? Changes you made to it are lost."
+            return LF("Replace %@ config with Madeira's standard settings? Changes you made to it are lost.", String(describing: (desktop ? "the Desktop's" : "this game's")))
         }
-        return "Replace this game's config and switches with Madeira's recommended settings for \(rec.title)? Changes you made to them are lost."
+        return LF("Replace this game's config and switches with Madeira's recommended settings for %@? Changes you made to them are lost.", String(describing: (rec.title)))
     }
 
     // MARK: -

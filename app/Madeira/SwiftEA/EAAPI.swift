@@ -35,15 +35,15 @@ enum EAAPIError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .signedOut: return "Sign in to EA to continue."
+        case .signedOut: return L("Sign in to EA to continue.")
         case .http(let status):
-            if status == 401 || status == 403 { return "EA refused the request (HTTP \(status)). Sign in again in Settings › EA app." }
-            return "EA's server answered with HTTP \(status). Try again later."
-        case .graphQL(let message): return "EA's server declined the request: \(message)"
-        case .invalid(let what): return "EA sent an unexpected answer (\(what))."
-        case .noBuild: return "EA has no PC build of this game for Madeira to download."
-        case .noLauncher: return "The game's files downloaded, but they do not say which program starts the game (__Installer/installerdata.xml). Add the game with + and choose its .exe."
-        case .license(let reason): return "EA did not give this game a licence (\(reason)). Check that your account owns it and try again."
+            if status == 401 || status == 403 { return LF("EA refused the request (HTTP %@). Sign in again in Settings › EA app.", String(describing: (status))) }
+            return LF("EA's server answered with HTTP %@. Try again later.", String(describing: (status)))
+        case .graphQL(let message): return LF("EA's server declined the request: %@", String(describing: (message)))
+        case .invalid(let what): return LF("EA sent an unexpected answer (%@).", String(describing: (what)))
+        case .noBuild: return L("EA has no PC build of this game for Madeira to download.")
+        case .noLauncher: return L("The game's files downloaded, but they do not say which program starts the game (__Installer/installerdata.xml). Add the game with + and choose its .exe.")
+        case .license(let reason): return LF("EA did not give this game a licence (%@). Check that your account owns it and try again.", String(describing: (reason)))
         }
     }
 
@@ -435,7 +435,7 @@ final class EAAPI: @unchecked Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: ["operationName": operation, "query": query, "variables": variables])
         let json = try await object(try await authorized(request), method: method)
         if let errors = json["errors"] as? [[String: Any]], let first = errors.first {
-            let message = (first["message"] as? String) ?? "unknown error"
+            let message = (first["message"] as? String) ?? L("unknown error")
             EALog.event("[ea-api] \(method) failed reason=graphql")
             throw EAAPIError.graphQL(message)
         }
@@ -666,7 +666,7 @@ final class EAAPI: @unchecked Sendable {
             EALog.event("[ea-license] request failed reason=http-\(http.statusCode)")
             throw EAAPIError.license("HTTP \(http.statusCode)")
         }
-        guard let signature = http.value(forHTTPHeaderField: "X-Signature") else { throw EAAPIError.license("no signature") }
+        guard let signature = http.value(forHTTPHeaderField: "X-Signature") else { throw EAAPIError.license(L("no signature")) }
         guard let xml = EALicenseFile.decrypt(data) else { throw EAAPIError.license("unreadable") }
         return (xml, signature)
     }

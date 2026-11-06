@@ -29,13 +29,13 @@ struct ContentDecryptor {
     /// that IV.
     static func decryptChunk(encryptedData: Data, depotKey: Data) throws -> Data {
         guard depotKey.count == 32 else {
-            throw SteamError.decryptionFailed("Invalid depot key size: \(depotKey.count), expected 32")
+            throw SteamError.decryptionFailed(LF("Invalid depot key size: %@, expected 32", String(describing: (depotKey.count))))
         }
         // CBC ciphertext must contain complete AES blocks. CommonCrypto can
         // return decoded prefix bytes for some truncated inputs; reject them
         // before asking the platform crypto implementation to decrypt.
         guard encryptedData.count >= 32, (encryptedData.count - 16) % kCCBlockSizeAES128 == 0 else {
-            throw SteamError.decryptionFailed("Encrypted data is not a complete AES payload")
+            throw SteamError.decryptionFailed(L("Encrypted data is not a complete AES payload"))
         }
 
         let ivCipher = encryptedData.prefix(16)
@@ -53,7 +53,7 @@ struct ContentDecryptor {
             }
         }
         guard ivStatus == kCCSuccess, ivLen == 16 else {
-            throw SteamError.decryptionFailed("IV derivation failed: \(ivStatus)")
+            throw SteamError.decryptionFailed(LF("IV derivation failed: %@", String(describing: (ivStatus))))
         }
 
         let outputBufferSize = ciphertext.count + kCCBlockSizeAES128
@@ -80,7 +80,7 @@ struct ContentDecryptor {
         }
 
         guard status == kCCSuccess else {
-            throw SteamError.decryptionFailed("AES decryption failed with status: \(status)")
+            throw SteamError.decryptionFailed(LF("AES decryption failed with status: %@", String(describing: (status))))
         }
 
         decryptedData.count = decryptedLength

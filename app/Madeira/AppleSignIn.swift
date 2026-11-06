@@ -203,15 +203,15 @@ private let secondFactorCallback: MadeiraAppleTwoFactorCallback = { context, req
         /// The sign-in Madeira keeps, for the team this copy was signed by: a profile
         /// from any other team does not renew it.
         func account(appleID: String, signedBy team: String?, through servers: [String]) throws -> SigningAccount {
-            guard let team else { throw Failure.failed("This copy of Madeira has no provisioning profile to renew.") }
+            guard let team else { throw Failure.failed(L("This copy of Madeira has no provisioning profile to renew.")) }
             guard teams.contains(where: { $0.id == team }) else {
-                throw Failure.failed("That is not the Apple ID this copy of Madeira was signed with (team \(team)). "
-                    + "Sign in with the Apple ID it was installed with.")
+                throw Failure.failed(LF("That is not the Apple ID this copy of Madeira was signed with (team %@). ", String(describing: (team)))
+                    + L("Sign in with the Apple ID it was installed with."))
             }
             let account = SigningAccount(version: SigningAccount.version, teamID: team, adsID: adsID, token: token,
                                          tokenExpires: tokenExpires, anisetteIdentifier: anisetteIdentifier,
                                          anisetteProvisioning: anisetteProvisioning, anisetteServers: servers, appleID: appleID)
-            guard account.usable else { throw Failure.failed("Apple's answer held no sign-in Madeira can use.") }
+            guard account.usable else { throw Failure.failed(L("Apple's answer held no sign-in Madeira can use.")) }
             return account
         }
     }
@@ -225,7 +225,7 @@ private let secondFactorCallback: MadeiraAppleTwoFactorCallback = { context, req
         var errorDescription: String? {
             switch self {
             case .cancelled: return nil
-            case .anisette(let why): return "No anisette server gave an answer Apple takes (\(why)). Try again later."
+            case .anisette(let why): return LF("No anisette server gave an answer Apple takes (%@). Try again later.", String(describing: (why)))
             case .failed(let why): return why
             }
         }
@@ -273,7 +273,7 @@ private let secondFactorCallback: MadeiraAppleTwoFactorCallback = { context, req
         // The held identity gets its own two servers, then a new one gets them all.
         var attempts = held.map { held in servers(after: held.anisetteServers).prefix(2).map { ($0, Optional(held)) } } ?? []
         attempts += servers(after: []).map { ($0, nil) }
-        var failure = Failure.anisette("none was tried")
+        var failure = Failure.anisette(L("none was tried"))
         let context = Unmanaged.passUnretained(bridge).toOpaque()
         for (server, identity) in attempts {
             var result: UnsafeMutablePointer<CChar>?
@@ -283,12 +283,12 @@ private let secondFactorCallback: MadeiraAppleTwoFactorCallback = { context, req
             let code = madeira_apple_sign_in(appleID, password, server, identifier, identifier?.count ?? 0,
                                              provisioning, provisioning?.count ?? 0, secondFactorCallback, context, &result, &error)
             let answer = result.map { String(cString: $0) }
-            let why = error.map { String(cString: $0) } ?? "no reason given"
+            let why = error.map { String(cString: $0) } ?? L("no reason given")
             madeira_rppairing_string_free(result)
             madeira_rppairing_string_free(error)
             switch code {
             case 0:
-                guard let answer = answer.flatMap(Answer.init(json:)) else { throw Failure.failed("Apple's answer held no sign-in Madeira can use.") }
+                guard let answer = answer.flatMap(Answer.init(json:)) else { throw Failure.failed(L("Apple's answer held no sign-in Madeira can use.")) }
                 return (answer, server)
             case 1: throw Failure.cancelled
             case 2: failure = .anisette(why)
@@ -323,7 +323,7 @@ private let secondFactorCallback: MadeiraAppleTwoFactorCallback = { context, req
         case .success(let account):
             guard SigningAccountStore.store(account) else {
                 phase = .entering
-                failure = "Madeira couldn't keep the sign-in in this device's Keychain."
+                failure = L("Madeira couldn't keep the sign-in in this device's Keychain.")
                 LogStore.shared.log("[signing] sign-in failed: keychain", level: .error)
                 return
             }
@@ -373,7 +373,7 @@ struct AppleSignInSheet: View {
             Form {
                 if let prompt { secondFactor(prompt) } else { credentials }
             }
-            .navigationTitle(prompt.map { $0.expectsCode ? "Two-Factor Code" : "Choose How to Get a Code" } ?? "Apple ID")
+            .navigationTitle(prompt.map { $0.expectsCode ? L("Two-Factor Code") : L("Choose How to Get a Code") } ?? L("Apple ID"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -427,7 +427,7 @@ struct AppleSignInSheet: View {
                 Label(failure, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
             }
         } footer: {
-            Text("Sign in with the Apple ID this copy of Madeira was installed with. Madeira signs in to Apple itself: your password does not leave this device and is not kept. What is kept, in this device's Keychain, is a token for Apple's developer service. An anisette server (\(URL(string: AppleSignIn.anisetteServers[0])?.host ?? "") first) supplies the device data Apple asks for, and sees neither your Apple ID nor your password.")
+            Text(LF("Sign in with the Apple ID this copy of Madeira was installed with. Madeira signs in to Apple itself: your password does not leave this device and is not kept. What is kept, in this device's Keychain, is a token for Apple's developer service. An anisette server (%@ first) supplies the device data Apple asks for, and sees neither your Apple ID nor your password.", String(describing: (URL(string: AppleSignIn.anisetteServers[0])?.host ?? ""))))
         }
         .disabled(signIn.working)
     }
@@ -464,8 +464,8 @@ struct AppleSignInSheet: View {
         Section {
             // Every other way to a code, leaving out the one in use.
             switch prompt.method {
-            case .device: option("Send a new code to my devices", "arrow.clockwise", .resend)
-            case .sms: option("Text me a new code", "arrow.clockwise", .resend)
+            case .device: option(L("Send a new code to my devices"), "arrow.clockwise", .resend)
+            case .sms: option(L("Text me a new code"), "arrow.clockwise", .resend)
             case .choose: EmptyView()
             }
             if prompt.method != .device {
@@ -488,18 +488,18 @@ struct AppleSignInSheet: View {
 
     private func instructions(for prompt: TwoFactorPrompt) -> String {
         switch prompt.method {
-        case .device: return "Enter the code Apple just sent to your trusted devices."
-        case .sms: return "Enter the code Apple texted to \(prompt.selectedNumber?.number ?? "your phone")."
-        case .choose: return "Choose how Apple should send your verification code."
+        case .device: return L("Enter the code Apple just sent to your trusted devices.")
+        case .sms: return LF("Enter the code Apple texted to %@.", String(describing: (prompt.selectedNumber?.number ?? "your phone")))
+        case .choose: return L("Choose how Apple should send your verification code.")
         }
     }
 
     private func status(for answer: TwoFactorAnswer, in prompt: TwoFactorPrompt) -> String {
         switch answer {
-        case .code: return "Checking the code…"
-        case .resend: return "Requesting a new code…"
-        case .devices: return "Sending a code to your devices…"
-        case .sms(let id): return "Texting a code to \(prompt.numbers.first { $0.id == id }?.number ?? "your phone")…"
+        case .code: return L("Checking the code…")
+        case .resend: return L("Requesting a new code…")
+        case .devices: return L("Sending a code to your devices…")
+        case .sms(let id): return LF("Texting a code to %@…", String(describing: (prompt.numbers.first { $0.id == id }?.number ?? "your phone")))
         }
     }
 }

@@ -169,18 +169,18 @@ enum MadeiraDock {
 
     /// Everything a launch needs, checked before any sign-in is handed over.
     static func validate(_ game: DockGame, drive: URL, bundled: Bool = MadeiraDock.bundled) throws {
-        guard bundled else { throw DockError.message("Madeira Dock is not built into this app. Run build/madeira-dock/build.sh.") }
+        guard bundled else { throw DockError.message(L("Madeira Dock is not built into this app. Run build/madeira-dock/build.sh.")) }
         guard validAppID(game.id), validFolderName(game.installDir) else {
-            throw DockError.message("This game's Steam install record is invalid.")
+            throw DockError.message(L("This game's Steam install record is invalid."))
         }
         guard FileManager.default.fileExists(atPath: drive.appendingPathComponent(SteamRuntimeFiles.relativeRoot + "/steamclient64.dll").path) else {
-            throw DockError.message("Steam's client files are missing. Download Valve's client components first.")
+            throw DockError.message(L("Steam's client files are missing. Download Valve's client components first."))
         }
         var isFolder: ObjCBool = false
         guard game.installed,
               FileManager.default.fileExists(atPath: drive.appendingPathComponent(game.library + "/common/" + game.installDir).path, isDirectory: &isFolder),
               isFolder.boolValue else {
-            throw DockError.message("Steam does not list this game as fully installed.")
+            throw DockError.message(L("Steam does not list this game as fully installed."))
         }
     }
 
@@ -195,7 +195,7 @@ enum MadeiraDock {
               secret.allSatisfy({ (65...90).contains($0) || (97...122).contains($0) || (48...57).contains($0) || [45, 46, 95].contains($0) }),
               steamID >> 56 == 1, (steamID >> 52) & 15 == 1, (steamID >> 32) & 0xfffff == 1,
               steamID & 0xffffffff != 0, validAppID(appID) else {
-            throw DockError.message("Your Steam sign-in cannot be handed to Dock. Sign in to Steam again in Madeira.")
+            throw DockError.message(L("Your Steam sign-in cannot be handed to Dock. Sign in to Steam again in Madeira."))
         }
         var data = Data("MDOCK001".utf8)
         func append(_ value: UInt64, bytes: Int) {
@@ -210,15 +210,15 @@ enum MadeiraDock {
     /// The JWT subject selects the account; it is deliberately not treated as
     /// authenticated identity. Only Valve accepting the token can establish it.
     static func subject(_ token: String) throws -> UInt64 {
-        guard token.utf8.count <= 8192 else { throw DockError.message("Steam sign-in is too large.") }
+        guard token.utf8.count <= 8192 else { throw DockError.message(L("Steam sign-in is too large.")) }
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 3 else { throw DockError.message("Steam sign-in needs renewal.") }
+        guard parts.count == 3 else { throw DockError.message(L("Steam sign-in needs renewal.")) }
         var encoded = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
         encoded += String(repeating: "=", count: (4 - encoded.count % 4) % 4)
         guard let data = Data(base64Encoded: encoded),
               let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let text = json["sub"] as? String, let id = UInt64(text) else {
-            throw DockError.message("Steam sign-in needs renewal.")
+            throw DockError.message(L("Steam sign-in needs renewal."))
         }
         return id
     }
@@ -240,9 +240,9 @@ enum MadeiraDock {
             guard let result, result != 0 else { return nil }
             if result == 30 {
                 if fields["session-unsupported-client"] == "1" || fields["session-user-method-mismatch"] != nil {
-                    return "Madeira Dock does not support this Steam client build. Dock only drives client builds it has verified; the log has the client fingerprint and the failed check."
+                    return L("Madeira Dock does not support this Steam client build. Dock only drives client builds it has verified; the log has the client fingerprint and the failed check.")
                 }
-                return "Madeira Dock could not initialize the Steam session (code 30). Export the log to identify the failed check."
+                return L("Madeira Dock could not initialize the Steam session (code 30). Export the log to identify the failed check.")
             }
             // The host waits 90 s after sign-in for Valve's client to count the game
             // among the account's subscriptions (madeira-dock src/session.c).
@@ -252,72 +252,72 @@ enum MadeiraDock {
                     : "Steam did not finish signing in. Check the connection and try again."
             }
             if result == 54, fields["launch-user-arguments-invalid"] != nil {
-                return "The game's launch arguments are invalid or too long. Edit them in Game details and try again."
+                return L("The game's launch arguments are invalid or too long. Edit them in Game details and try again.")
             }
-            if result == 35 { return "Steam did not confirm a license for this game on the signed-in account." }
+            if result == 35 { return L("Steam did not confirm a license for this game on the signed-in account.") }
             // Offline start (madeira-dock docs/OFFLINE.md): Valve's client decides.
             if result == 50 {
                 return fields["session-offline-abi"] == "0"
                     ? "There is no connection, and this Steam client build cannot be started offline by Madeira Dock. Connect to the internet and try again."
                     : "There is no connection, and Steam has nothing saved to sign this account in offline. Start a game once while online; Steam then allows offline starts until its offline sign-in expires."
             }
-            if result == 51 { return "There is no connection, and Steam refused to sign in offline. Connect to the internet and start the game once. Export the log if it happens again." }
-            if result == 52 { return "Steam signed in offline, but what it has saved does not list this game. Start this game once while online, then it can be played offline." }
+            if result == 51 { return L("There is no connection, and Steam refused to sign in offline. Connect to the internet and start the game once. Export the log if it happens again.") }
+            if result == 52 { return L("Steam signed in offline, but what it has saved does not list this game. Start this game once while online, then it can be played offline.") }
             if result == 37 {
                 if fields["session-native-handoff-app-mismatch"] == "1" {
-                    return "Madeira Dock received a sign-in transfer for a different launch. Close the session and try again."
+                    return L("Madeira Dock received a sign-in transfer for a different launch. Close the session and try again.")
                 }
-                return "Madeira Dock could not read the one-use Steam sign-in transfer. Steam has not checked the login yet. Export the log before trying again."
+                return L("Madeira Dock could not read the one-use Steam sign-in transfer. Steam has not checked the login yet. Export the log before trying again.")
             }
             // Valve's client could not prepare the game's per-user executable.
             if result == 49 {
                 switch fields["ceg-result"].flatMap(Int.init) {
-                case -1: return "Steam took too long to prepare this game's executable. Check the connection and try again."
-                case 0: return "Steam did not start preparing this game's executable. Verify the game's files with Steam, then try again."
-                case 10: return "Steam is busy with this game (updating or running). Try again in a moment."
-                case -4: return "Steam's Windows service manager could not be started, so Steam could not prepare this game's executable."
-                case -5: return "Steam's Windows service is not installed in Madeira's Windows setup, so Steam could not prepare this game's executable."
-                default: return "Steam could not prepare this game's executable for your account (code \(fields["ceg-result"] ?? "?"))."
+                case -1: return L("Steam took too long to prepare this game's executable. Check the connection and try again.")
+                case 0: return L("Steam did not start preparing this game's executable. Verify the game's files with Steam, then try again.")
+                case 10: return L("Steam is busy with this game (updating or running). Try again in a moment.")
+                case -4: return L("Steam's Windows service manager could not be started, so Steam could not prepare this game's executable.")
+                case -5: return L("Steam's Windows service is not installed in Madeira's Windows setup, so Steam could not prepare this game's executable.")
+                default: return LF("Steam could not prepare this game's executable for your account (code %@).", String(describing: (fields["ceg-result"] ?? "?")))
                 }
             }
             if result == 45 || result == 48, fields["launch-option-missing"] != nil || fields["launch-option-invalid"] != nil {
-                return "Steam rejected this game's launch option. Refresh the Steam library and try again."
+                return L("Steam rejected this game's launch option. Refresh the Steam library and try again.")
             }
             if result == 45 || result == 48, let error = fields["launch-client-error"].flatMap(Int.init),
                (22...23).contains(error), fields["launch-config-wait"] != nil {
-                return "Steam did not finish loading this game's configuration after signing in. Wait a minute and start the game again."
+                return L("Steam did not finish loading this game's configuration after signing in. Wait a minute and start the game again.")
             }
             // The host asked again for up to three minutes while Steam still counted
             // another session of this account as playing (refusal 35); it still did.
             if result == 45 || result == 48, fields["launch-client-error"] == "35", fields["launch-session-wait"] != nil {
-                return "Steam still says this account is playing in another session. Close the game on your other device (or wait a few minutes after a closed session) and start it again."
+                return L("Steam still says this account is playing in another session. Close the game on your other device (or wait a few minutes after a closed session) and start it again.")
             }
             if result == 45 || result == 48, let error = fields["launch-client-error"].flatMap(Int.init),
                let reason = Self.launchRefusal(error, waited: result == 48) {
                 return reason
             }
-            return "Madeira Dock could not complete the Steam launch (code \(result)). Export the log before trying again."
+            return LF("Madeira Dock could not complete the Steam launch (code %@). Export the log before trying again.", String(describing: (result)))
         }
 
         /// Valve's own launch refusal (EAppUpdateError) in words. Numbers only
         /// come from the host report; nothing here changes what Steam decided.
         static func launchRefusal(_ error: Int, waited: Bool) -> String? {
             switch error {
-            case 5: return "Steam did not confirm a license for this game on the signed-in account."
-            case 6, 21: return "Steam could not reach its servers to start this game. Check the connection and try again."
-            case 16: return "Steam reports this game is already running. Close it, then try again."
+            case 5: return L("Steam did not confirm a license for this game on the signed-in account.")
+            case 6, 21: return L("Steam could not reach its servers to start this game. Check the connection and try again.")
+            case 16: return L("Steam reports this game is already running. Close it, then try again.")
             case 17, 19, 20:
                 return waited
                     ? "Steam could not finish installing content this game needs. Try again later."
                     : "Steam needs to install or update content this game depends on before it can start. Start the game again to let Madeira Dock wait for Steam."
-            case 18: return "Steam does not see this game as installed."
-            case 28: return "Steam could not find the game's executable."
+            case 18: return L("Steam does not see this game as installed.")
+            case 28: return L("Steam could not find the game's executable.")
             // Steam's CreateProcess for the game failed: Madeira could not load the program.
-            case 29: return "Steam started this game's program, but Madeira could not load it (Steam reports an invalid platform). Export the log: it names the reason."
-            case 22, 23, 24: return "Steam could not read this game's configuration. Try again."
-            case 25: return "Steam says this game is not released yet."
-            case 26: return "Steam says this game is not available in your region."
-            case 35: return "Steam says this account is playing in another session. Close the game on your other device and start it again."
+            case 29: return L("Steam started this game's program, but Madeira could not load it (Steam reports an invalid platform). Export the log: it names the reason.")
+            case 22, 23, 24: return L("Steam could not read this game's configuration. Try again.")
+            case 25: return L("Steam says this game is not released yet.")
+            case 26: return L("Steam says this game is not available in your region.")
+            case 35: return L("Steam says this account is playing in another session. Close the game on your other device and start it again.")
             default: return nil
             }
         }
@@ -426,7 +426,7 @@ enum MadeiraDock {
         lastReport = Report()
         let report = drive.appendingPathComponent("madeira-dock.txt")
         if FileManager.default.fileExists(atPath: report.path) { try FileManager.default.removeItem(at: report) }
-        guard let url = transferURL else { throw DockError.message("Dock's private transfer folder is unavailable.") }
+        guard let url = transferURL else { throw DockError.message(L("Dock's private transfer folder is unavailable.")) }
         var data = try envelope(account: account, token: token, steamID: subject(token), appID: appID)
         defer { data.resetBytes(in: data.startIndex..<data.endIndex) }
         let fm = FileManager.default
@@ -434,12 +434,12 @@ enum MadeiraDock {
         try fm.createDirectory(at: folder, withIntermediateDirectories: true,
                                attributes: [.posixPermissions: 0o700, .protectionKey: FileProtectionType.complete])
         guard try folder.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else {
-            throw DockError.message("Dock's transfer folder is invalid.")
+            throw DockError.message(L("Dock's transfer folder is invalid."))
         }
         var values = URLResourceValues(); values.isExcludedFromBackup = true
         try folder.setResourceValues(values)
         let descriptor = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard descriptor >= 0 else { throw DockError.message("Madeira could not create Dock's private sign-in transfer.") }
+        guard descriptor >= 0 else { throw DockError.message(L("Madeira could not create Dock's private sign-in transfer.")) }
         let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         do {
             try fm.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)

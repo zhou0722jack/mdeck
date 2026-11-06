@@ -87,7 +87,7 @@ final class MadeiraDockModel: ObservableObject {
     /// without one, then removes any unconsumed sign-in transfer.
     func watchReport() {
         watch?.cancel()
-        let starting = DockInstallers.installsOnly ? "Running this game's one-time installs…"
+        let starting = DockInstallers.installsOnly ? L("Running this game's one-time installs…")
                                                    : "Madeira Dock is starting. Valve's client signs in and checks the license."
         let plan = DockInstallers.note
         status = plan.map { $0 + "\n" + starting } ?? starting
@@ -108,7 +108,7 @@ final class MadeiraDockModel: ObservableObject {
                         status = failure
                         LogStore.shared.log("[madeira-dock] " + failure, level: .error)
                     } else {
-                        status = "Madeira Dock finished normally."
+                        status = L("Madeira Dock finished normally.")
                         LogStore.shared.log("[madeira-dock] host finished (result 0)")
                     }
                     break
@@ -116,13 +116,13 @@ final class MadeiraDockModel: ObservableObject {
                 // Steam still counts another session of this account as playing
                 // (launch refusal 35); the host asks again for up to three minutes.
                 if report.fields["launch-session-wait"] != nil, report.fields["launch-client-error"] == "35" {
-                    status = "Steam says this account is still playing in another session. Waiting for Steam to end it (up to 3 minutes)…"
+                    status = L("Steam says this account is still playing in another session. Waiting for Steam to end it (up to 3 minutes)…")
                 }
                 // The session starts after the JIT pool is set up; count only once it ran.
                 let running = wine_process_is_running() != 0 || wineserver_is_running() != 0
                 if running { started = true; idle = 0 } else { idle += 1 }
                 if !started && idle >= 150 {
-                    status = "The Dock session did not start. See the log."
+                    status = L("The Dock session did not start. See the log.")
                     break
                 }
                 // madeira-bcd: a program an installer started (a launcher, a helper) can keep a
@@ -131,7 +131,7 @@ final class MadeiraDockModel: ObservableObject {
                 if DockInstallers.installsOnly, running, !offered, let finished = DockInstallers.finishedAt,
                    Date().timeIntervalSince(finished) >= 45 {
                     offered = true
-                    let ended = DockInstallers.poll(drive: MadeiraDock.drive) ?? "One-time installs finished."
+                    let ended = DockInstallers.poll(drive: MadeiraDock.drive) ?? L("One-time installs finished.")
                     status = ended + "\n" + DockInstallers.restartWords
                     LogStore.shared.log("[dock-installers] the session still runs 45 s after the installs ended (a program they started); the restart is offered now")
                     LibraryModel.shared.restartNotice = DockInstallers.restartNotice(ended)
@@ -141,12 +141,12 @@ final class MadeiraDockModel: ObservableObject {
                         // madeira-bcd: a session of one-time installs ends after its batch, and the
                         // game starts in the next app run (DockInstallers.installsOnly). The
                         // wineserver has stopped by now, so the registry is on disk.
-                        let ended = DockInstallers.poll(drive: MadeiraDock.drive) ?? "One-time installs ended."
+                        let ended = DockInstallers.poll(drive: MadeiraDock.drive) ?? L("One-time installs ended.")
                         status = ended + "\n" + DockInstallers.restartWords
                         LogStore.shared.log("[dock-installers] the installs-only session ended; the game starts after Madeira is restarted")
                         LibraryModel.shared.restartNotice = DockInstallers.restartNotice(DockInstallers.poll(drive: MadeiraDock.drive))
                     } else {
-                        status = "Madeira Dock stopped before reporting a result. Export the log."
+                        status = L("Madeira Dock stopped before reporting a result. Export the log.")
                         LogStore.shared.log("[madeira-dock] session ended without a host result", level: .error)
                     }
                     break
@@ -258,7 +258,7 @@ struct DockInstallRequestRows: View {
         Group {
             if let request = dock.installRequest[appID] {
                 HStack {
-                    Text(request == .record ? "Next start: one-time installs recorded as done."
+                    Text(request == .record ? L("Next start: one-time installs recorded as done.")
                          : request == .resetSignOut ? "Next start: one-time installs and Rockstar sign-in removed, then installed again."
                          : "Next start: one-time installs removed, then installed again.")
                         .font(.caption).foregroundStyle(.secondary)

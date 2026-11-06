@@ -1355,7 +1355,7 @@ struct ContentView: View {
             } message: { Text(library.jitNotice ?? "") }
             .sheet(isPresented: $jitCoordinator.showSetup) { JITSetupView() }
             // A Steam game's saves may not be the latest (cloudClear).
-            .alert(library.cloudNotice?.title ?? "Steam Cloud", isPresented: Binding(get: { library.cloudNotice != nil },
+            .alert(library.cloudNotice?.title ?? L("Steam Cloud"), isPresented: Binding(get: { library.cloudNotice != nil },
                                                                                      set: { if !$0 { library.cloudNotice = nil } })) {
                 if let notice = library.cloudNotice {
                     switch notice.kind {
@@ -1608,7 +1608,7 @@ struct ContentView: View {
             else { input.relative.toggle() }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
         } label: {
-            Text(input.touchMode ? "Touch" : input.relative ? "Relative" : "Absolute")
+            Text(input.touchMode ? L("Touch") : input.relative ? L("Relative") : L("Absolute"))
                 .font(.system(size: 13, weight: .semibold))
                 .frame(minWidth: 82, minHeight: 32)
                 .background((input.relative ? Color.accentColor : Color.secondary).opacity(0.28))
@@ -2284,11 +2284,11 @@ struct ContentView: View {
 
     private var statusText: String {
         switch jitStatus {
-        case .unknown: return "Not tested"
-        case .testing: return "Testing..."
-        case .available: return "Available"
-        case .mappingOnly: return "Needs debugger"
-        case .unavailable: return "Unavailable"
+        case .unknown: return L("Not tested")
+        case .testing: return L("Testing...")
+        case .available: return L("Available")
+        case .mappingOnly: return L("Needs debugger")
+        case .unavailable: return L("Unavailable")
         }
     }
 
@@ -2454,7 +2454,7 @@ struct ContentView: View {
         guard started, StikJITHelper.ready, library.current == nil, wine_process_is_running() == 0 else {
             logStore.log("[jit-on-play] JIT did not come on: the game was not started")
             // A failure has its own error; this one closes the details page as well.
-            if started, library.current == nil { library.error = "JIT is on, but the game could not start. Tap Play again." }
+            if started, library.current == nil { library.error = L("JIT is on, but the game could not start. Tap Play again.") }
             return
         }
         logStore.log("[jit-on-play] JIT is on: starting the game")
@@ -2482,7 +2482,7 @@ struct ContentView: View {
             if inLibrary { library.jitNotice = StikJITHelper.noDebuggerMessage }
         } else {
             logStore.log("JIT not enabled. Press 'Enable JIT' first.", level: .error)
-            if inLibrary { library.error = "Enable JIT before playing." }
+            if inLibrary { library.error = L("Enable JIT before playing.") }
         }
         return false
     }
@@ -2505,15 +2505,15 @@ struct ContentView: View {
     private func cloudNotice(_ appID: Int, name: String, hold: SteamOwnedLibrary.CloudHold) -> LibraryModel.CloudNotice {
         switch hold {
         case .syncing, .stale:
-            return .init(appID: appID, kind: .syncing, title: "Steam Cloud is still syncing",
-                         message: "\(name)'s saves are still being checked or downloaded. Starting now may leave you on older saves.")
+            return .init(appID: appID, kind: .syncing, title: L("Steam Cloud is still syncing"),
+                         message: LF("%@'s saves are still being checked or downloaded. Starting now may leave you on older saves.", String(describing: (name))))
         case .unchecked(let why):
-            return .init(appID: appID, kind: .unchecked, title: "Steam Cloud could not be checked",
-                         message: "Madeira does not know whether \(name)'s saves on this device are the latest."
-                            + (why.map { " (\($0))" } ?? "") + " If another device has newer saves, starting now means choosing between them later.")
+            return .init(appID: appID, kind: .unchecked, title: L("Steam Cloud could not be checked"),
+                         message: LF("Madeira does not know whether %@'s saves on this device are the latest.", String(describing: (name)))
+                            + (why.map { " (\($0))" } ?? "") + L(" If another device has newer saves, starting now means choosing between them later."))
         case .conflict(let count):
-            return .init(appID: appID, kind: .conflict, title: "Saves differ from Steam Cloud",
-                         message: "\(count) of \(name)'s save\(count == 1 ? "" : "s") differ\(count == 1 ? "s" : "") between this device and Steam Cloud. Choose which to keep on the game's page, or start with this device's saves.")
+            return .init(appID: appID, kind: .conflict, title: L("Saves differ from Steam Cloud"),
+                         message: LF("%@ saves for %@ differ between this device and Steam Cloud. Choose which to keep on the game's page, or start with this device's saves.", String(count), name))
         }
     }
 
@@ -2558,7 +2558,7 @@ struct ContentView: View {
             launchLibraryEntry(entry); return
         }
         LogStore.shared.log("[shortcut] \(exe) is not in the library: not started", level: .error)
-        library.error = "This shortcut's game is not in the library. Add it to the library, then use the shortcut again."
+        library.error = L("This shortcut's game is not in the library. Add it to the library, then use the shortcut again.")
     }
 
     /// Play in the library (Library.swift): checks that a session can start,
@@ -2575,7 +2575,7 @@ struct ContentView: View {
         // any library game (SteamDirectStart).
         if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
             guard let game = MadeiraDock.games(drive: MadeiraDock.drive).first(where: { $0.id == appID }) else {
-                library.error = "Steam no longer lists this game as installed. Refresh the library and try again."; return
+                library.error = L("Steam no longer lists this game as installed. Refresh the library and try again."); return
             }
             LogStore.shared.log("[steam-games] play app=\(appID)")
             // madeira-bcd: the game's own options (AVX, NVIDIA, Wine's C++ runtime, its
@@ -2587,13 +2587,13 @@ struct ContentView: View {
         if let appID = entry.steamAppID {
             guard cloudClear(appID, name: entry.title, retry: { launchLibraryEntry(entry) }) else { return }
             guard entry.steamProgram?.isEmpty == false else {
-                library.error = "Choose the program to start in Game details › Steam › Program."; return
+                library.error = L("Choose the program to start in Game details › Steam › Program."); return
             }
             LogStore.shared.log("[steam-start] app=\(appID) direct source=\(entry.steamProgramSource ?? "-") " +
                                 "args=\(entry.launchArguments.isEmpty ? 0 : 1) folder=\(entry.steamWorkingWindowsPath == nil ? "program" : "steam")")
         }
         guard wine_process_is_running() == 0, wineserver_is_running() == 0, library.current == nil else {
-            library.error = "A session is already running."; return
+            library.error = L("A session is already running."); return
         }
         // One Wine session per app run (see LibraryModel.sessionsThisRun).
         if LibraryModel.sessionsThisRun > 0, MadeiraConfig.flag("MADEIRA_ONE_SESSION_PER_RUN") {
@@ -2614,7 +2614,7 @@ struct ContentView: View {
     /// service (EALibrary.prepareLaunch); every other launch starts without that environment.
     private func startLibraryEntry(_ entry: LibraryEntry, epicReady: Bool = false, eaReady: Bool = false) {
         guard !EpicCloud.shared.isBusy else {
-            library.error = "Wait for Epic Cloud save sync to finish before starting a game."
+            library.error = L("Wait for Epic Cloud save sync to finish before starting a game.")
             return
         }
         if entry.eaOfferID == nil { EALibrary.clearEnvironment() }
@@ -2625,7 +2625,7 @@ struct ContentView: View {
                     startLibraryEntry(entry, epicReady: epicReady, eaReady: true)
                 } catch {
                     LogStore.shared.log("[ea-launch] offer=\(offer) not started: \(error.localizedDescription)", level: .error)
-                    library.error = "This EA game could not be prepared: \(error.localizedDescription)"
+                    library.error = LF("This EA game could not be prepared: %@", String(describing: (error.localizedDescription)))
                 }
             }
             return
@@ -2638,14 +2638,14 @@ struct ContentView: View {
                     startLibraryEntry(entry, epicReady: true)
                 } catch {
                     LogStore.shared.log("[epic-launch] app=\(app) not started: no sign-in arguments", level: .error)
-                    library.error = "This Epic game could not get its sign-in from Epic: \(error.localizedDescription)"
+                    library.error = LF("This Epic game could not get its sign-in from Epic: %@", String(describing: (error.localizedDescription)))
                 }
             }
             return
         }
         // ml2021: Big Picture's batch exists only once written; the preflight checks the file.
         if entry.bigPicture == true, !LibraryEntry.writeBigPictureBatch() {
-            library.error = "Big Picture needs Madeira Dock's Steam components (Settings › Steam) to start from."
+            library.error = L("Big Picture needs Madeira Dock's Steam components (Settings › Steam) to start from.")
             return
         }
         // A GOG game's install-script registry values (The Witcher's launcher needs its
@@ -2670,7 +2670,7 @@ struct ContentView: View {
         guard entry.launchWindowsPath.utf8.count < 1024, entry.launchArguments.utf8.count < 4096 else {
             LibraryEntry.setTransientArguments(nil, for: entry.id)
             GOGGalaxy.shared.stop()
-            library.error = "The executable path or launch arguments are too long."; return
+            library.error = L("The executable path or launch arguments are too long."); return
         }
         entry.configureLaunch()
         // madeira-bcd: the game's own options (LibraryBCD.swift).
@@ -3509,7 +3509,7 @@ struct ContentView: View {
         guard cloudClear(game.id, name: game.name, retry: { startDock(game, compactPool: compactPool, profile: profile) }) else { return }
         guard wine_process_is_running() == 0, wineserver_is_running() == 0, !inLibrary || library.current == nil else {
             logStore.log("[madeira-dock] a session already ran in this app run; restart Madeira first", level: .error)
-            if inLibrary { library.error = "A session is already running." }
+            if inLibrary { library.error = L("A session is already running.") }
             return
         }
         if inLibrary, LibraryModel.sessionsThisRun > 0, MadeiraConfig.flag("MADEIRA_ONE_SESSION_PER_RUN") {
@@ -3527,7 +3527,7 @@ struct ContentView: View {
         do {
             try MadeiraDock.validate(game, drive: MadeiraDock.drive)
             try profile?.validate()
-            guard SteamSignIn.isSignedIn else { throw DockError.message("Sign in to Steam in Madeira before starting Dock.") }
+            guard SteamSignIn.isSignedIn else { throw DockError.message(L("Sign in to Steam in Madeira before starting Dock.")) }
         } catch { fail(error); return }
         // Only one sign-in of the account may be online: the app's own Steam connection
         // (library, playtime, downloads) logs off and its socket closes before the sign-in
@@ -3559,10 +3559,10 @@ struct ContentView: View {
                 // The launch state may have changed while the connection closed.
                 guard StikJITHelper.ready, wine_process_is_running() == 0, wineserver_is_running() == 0,
                       !inLibrary || library.current == nil else {
-                    throw DockError.message("The launch state changed. Enable JIT and try again.")
+                    throw DockError.message(L("The launch state changed. Enable JIT and try again."))
                 }
                 guard let signIn = SteamSignIn.credentialsForDock() else {
-                    throw DockError.message("Sign in to Steam in Madeira before starting Dock.")
+                    throw DockError.message(L("Sign in to Steam in Madeira before starting Dock."))
                 }
                 try MadeiraDock.writeHandoff(account: signIn.accountName, token: signIn.refreshToken, appID: game.id)
             } catch { fail(error); return }
@@ -3782,7 +3782,7 @@ struct ContentView: View {
             }
             if let custom { pick(custom) }
         } label: {
-            Label("\(cw)×\(ch)" + (pending ? " · next launch" : ""), systemImage: "rectangle.dashed")
+            Label("\(cw)×\(ch)" + (pending ? L(" · next launch") : ""), systemImage: "rectangle.dashed")
         }
         .buttonStyle(.bordered)
     }
@@ -3889,27 +3889,27 @@ struct SetupGuideView: View {
                 Section("Requirements") {
                     guideRow(
                         icon: "cpu",
-                        title: "JIT Compilation",
-                        detail: "Required for x86 code translation. On iOS 26, StikDebug must stay attached — assign the 'universal' or 'MeloNX' JIT script to Madeira in StikDebug."
+                        title: L("JIT Compilation"),
+                        detail: L("Required for x86 code translation. On iOS 26, StikDebug must stay attached — assign the 'universal' or 'MeloNX' JIT script to Madeira in StikDebug.")
                     )
                     guideRow(
                         icon: "memorychip",
-                        title: "Increased Memory Limit",
-                        detail: "Raises the Jetsam memory threshold. Included in the app entitlements. If not detected, use GetMoreRam to inject it."
+                        title: L("Increased Memory Limit"),
+                        detail: L("Raises the Jetsam memory threshold. Included in the app entitlements. If not detected, use GetMoreRam to inject it.")
                     )
                     guideRow(
                         icon: "arrow.up.left.and.arrow.down.right",
-                        title: "Extended Virtual Addressing",
-                        detail: "Expands virtual address space to ~64GB. Required for large games. Must be injected via GetMoreRam (free accounts can't provision this)."
+                        title: L("Extended Virtual Addressing"),
+                        detail: L("Expands virtual address space to ~64GB. Required for large games. Must be injected via GetMoreRam (free accounts can't provision this).")
                     )
                 }
 
                 Section("Setup Steps") {
-                    stepRow(number: 1, text: "Install Madeira via SideStore or Xcode")
-                    stepRow(number: 2, text: "Install GetMoreRam and run it to inject memory entitlements into your App ID")
-                    stepRow(number: 3, text: "Reinstall Madeira with the same IPA to apply injected entitlements")
-                    stepRow(number: 4, text: "In StikDebug, assign the 'universal' JIT script to Madeira and launch it")
-                    stepRow(number: 5, text: "Launch Madeira and tap 'Test JIT' to verify")
+                    stepRow(number: 1, text: L("Install Madeira via SideStore or Xcode"))
+                    stepRow(number: 2, text: L("Install GetMoreRam and run it to inject memory entitlements into your App ID"))
+                    stepRow(number: 3, text: L("Reinstall Madeira with the same IPA to apply injected entitlements"))
+                    stepRow(number: 4, text: L("In StikDebug, assign the 'universal' JIT script to Madeira and launch it"))
+                    stepRow(number: 5, text: L("Launch Madeira and tap 'Test JIT' to verify"))
                 }
 
                 Section("About") {
@@ -4036,8 +4036,8 @@ enum ControlAction: Codable, Equatable, Hashable {
     /// layout stores; the buttons themselves read START/SELECT.
     var padFaceLabel: String {
         switch padName {
-        case "Menu": return "START"
-        case "View": return "SELECT"
+        case "Menu": return L("START")
+        case "View": return L("SELECT")
         default:     return label
         }
     }
@@ -4074,7 +4074,7 @@ enum ControlAction: Codable, Equatable, Hashable {
         case 0x09: return "⇥"
         case 0x10: return "⇧"
         case 0x11: return "Ctl"
-        case 0x12: return "Alt"
+        case 0x12: return L("Alt")
         case 0x25: return "←"
         case 0x26: return "↑"
         case 0x27: return "→"
@@ -4664,7 +4664,7 @@ struct TouchControlButton: View {
                     Circle().fill(.white.opacity(isDown ? 0.55 : 0.25))
                         .frame(width: diameter * 0.42, height: diameter * 0.42)
                         .offset(x: padVector.width * diameter * 0.29, y: padVector.height * diameter * 0.29)
-                    Text(control.action.label).font(.caption).foregroundStyle(.white.opacity(0.8))
+                    Text(L(control.action.label)).font(.caption).foregroundStyle(.white.opacity(0.8))
                 }
                 .frame(width: diameter, height: diameter)
                 .glassFace(GlassShape(circle: true, solid: solid))
@@ -4685,7 +4685,7 @@ struct TouchControlButton: View {
             } else {
                 // The label is the glass's content (see glassFace), so it is drawn
                 // on top of the glass rather than blurred underneath it.
-                Text(control.action.label)
+                Text(L(control.action.label))
                     .font(.system(size: diameter * (control.action.label.count > 2 ? 0.22 : 0.34),
                                   weight: .medium))
                     .foregroundStyle(.white.opacity(isDown ? 1.0 : 0.85))
@@ -4861,7 +4861,7 @@ struct MappingPanel: View {
                         .frame(width: 44, height: 36)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(control.locked == true ? "Unlock control" : "Lock control")
+                .accessibilityLabel(control.locked == true ? L("Unlock control") : L("Lock control"))
             }
             HStack(spacing: 8) {
                 Text("Size").font(.system(size: 12))
@@ -5050,7 +5050,7 @@ struct MappingPanel: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         if let i = m.index(of: control.id) { m.controls[i].padBinding = on ? nil : name }
                     } label: {
-                        Text(name == "Menu" ? "Start" : name == "View" ? "Select" : name)
+                        Text(name == "Menu" ? L("Start") : name == "View" ? "Select" : name)
                             .font(.system(size: 12, weight: .medium)).lineLimit(1).minimumScaleFactor(0.55)
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity, minHeight: 30)

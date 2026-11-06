@@ -363,7 +363,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-itch-') as tmp:
         build = subprocess.run([SWIFTC, '-parse-as-library', '-swift-version', '5', *extra,
                                 '-import-objc-header', str(app / 'SwiftItch/itch_7z.h'), '-o', str(exe),
                                 str(tmp / 'stubs.swift'), str(tmp / 'api.swift'), str(app / 'SwiftItch/ItchArchive.swift'),
-                                str(tmp / 'program.swift'), str(tmp / 'checks.swift'), str(reader), *lzma, '-lz'])
+                                str(tmp / 'program.swift'), str(tmp / 'checks.swift'), str(app / 'Localization.swift'), str(reader), *lzma, '-lz'])
         require(build.returncode == 0, 'the itch.io sources compile on the host')
         if build.returncode == 0:
             run = subprocess.run([str(exe), str(work)])

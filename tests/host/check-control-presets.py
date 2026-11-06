@@ -293,7 +293,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-presets-') as tmp:
     # its members (midX, width, ...); Linux's Foundation still does.
     header = 'import Foundation\n#if canImport(CoreGraphics)\nimport CoreGraphics\n#endif\n#if canImport(SwiftUI)\nimport SwiftUI\n#endif\n'
     src.write_text(header + actions + pure_touch + pure + tests)
-    subprocess.run([os.environ.get('SWIFTC', 'swiftc'), str(src), '-o', str(exe)], check=True)
+    subprocess.run([os.environ.get('SWIFTC', 'swiftc'), str(src), str(app / 'Localization.swift'), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
 
 # ---------------------------------------------------------------- Part B

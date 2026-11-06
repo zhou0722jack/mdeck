@@ -144,7 +144,7 @@ actor Harness {
 '''
 with tempfile.TemporaryDirectory() as d:
  p=Path(d);(p/'test.swift').write_text(error+'\n'+servers+'\n'+h)
- subprocess.run([os.environ.get('SWIFTC','swiftc'),'-swift-version','5','-warnings-as-errors','-parse-as-library',str(p/'test.swift'),'-o',str(p/'test')],check=True)
+ subprocess.run([os.environ.get('SWIFTC','swiftc'),'-swift-version','5','-warnings-as-errors','-parse-as-library',str(p/'test.swift'),str(r/'app/Madeira/Localization.swift'),'-o',str(p/'test')],check=True)
  subprocess.run([str(p/'test')],check=True,timeout=30)
 assert 'cont.resume(throwing: error)' in s
 assert 'guard webSocketTask === task else { return }' in s

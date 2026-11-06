@@ -153,7 +153,7 @@ struct SteamOwnedDLC: Codable, Identifiable, Hashable, Sendable {
             let download = total(depots) { $0.publicDownloadBytes > 0 ? $0.publicDownloadBytes : $0.maxSize }
             let install = total(depots) { $0.publicSizeBytes > 0 ? $0.publicSizeBytes : ($0.publicDownloadBytes > 0 ? $0.publicDownloadBytes : $0.maxSize) }
             let name = owned[id]?.name ?? ""
-            return SteamOwnedDLC(id: Int(id), name: name.isEmpty ? "DLC \(id)" : name,
+            return SteamOwnedDLC(id: Int(id), name: name.isEmpty ? LF("DLC %@", String(describing: (id))) : name,
                                  depots: depots.map { Int($0.depotID) }, downloadBytes: download, installBytes: install)
         }.sorted { a, b in
             let order = a.name.localizedStandardCompare(b.name)
@@ -173,14 +173,14 @@ struct SteamPlaytime: Codable, Equatable, Sendable {
 
     var played: String? {
         guard minutes > 0 else { return nil }
-        if minutes < 60 { return "\(minutes) min played" }
+        if minutes < 60 { return LF("%@ min played", String(describing: (minutes))) }
         let hours = Double(minutes) / 60
-        return hours < 10 ? String(format: "%.1f hrs played", hours) : "\(Int(hours.rounded())) hrs played"
+        return hours < 10 ? String(format: L("%.1f hrs played"), hours) : LF("%@ hrs played", String(describing: (Int(hours.rounded()))))
     }
 
     func lastPlayedText(formatter: DateFormatter = SteamPlaytime.dayFormatter) -> String? {
         guard lastPlayed > 0 else { return nil }
-        return "Last played " + formatter.string(from: Date(timeIntervalSince1970: TimeInterval(lastPlayed)))
+        return L("Last played ") + formatter.string(from: Date(timeIntervalSince1970: TimeInterval(lastPlayed)))
     }
 
     /// "12.5 hrs played · Last played Yesterday"
@@ -544,7 +544,7 @@ final class SteamOwnedLibrary: ObservableObject {
 
     private func handleSessionError(_ error: Error, context: String, report: Bool = true) {
         if case SteamError.logonDenied(let code) = error, SteamError.signInExpiredCodes.contains(code) {
-            self.error = "Your Steam sign-in is no longer valid. Sign out and sign in again in Settings › Steam."
+            self.error = L("Your Steam sign-in is no longer valid. Sign out and sign in again in Settings › Steam.")
             SteamLog.event("[steam-account] stored sign-in rejected code=\(code)")
             return
         }
@@ -858,7 +858,7 @@ final class SteamOwnedLibrary: ObservableObject {
         var done = 0, backedUp = 0
         var settled: [String: String] = [:]
         do {
-            guard let context = try await cloudContext(appID) else { throw SteamFileError.invalid("This game's save folders could not be found.") }
+            guard let context = try await cloudContext(appID) else { throw SteamFileError.invalid(L("This game's save folders could not be found.")) }
             for entry in wanted {
                 guard !inSession, Self.cloudEnabled else { throw CancellationError() }
                 guard let place = context.paths.location(cloudPath: entry.path) else { continue }
@@ -919,7 +919,7 @@ final class SteamOwnedLibrary: ObservableObject {
             _ = try? await session.callServiceMethod(method: .cloudCompleteAppUploadBatch, body: request.data, timeout: 30)
         }
         do {
-            guard let context = try await cloudContext(appID) else { throw SteamFileError.invalid("This game's save folders could not be found.") }
+            guard let context = try await cloudContext(appID) else { throw SteamFileError.invalid(L("This game's save folders could not be found.")) }
             // Steam keeps no copy of a cloud file an upload replaces: keep one here
             // first. If one cannot be fetched (or the cloud changed since the check),
             // nothing is uploaded.
@@ -947,13 +947,13 @@ final class SteamOwnedLibrary: ObservableObject {
             while let tag = try batch.readTag() {
                 if tag.fieldNumber == 1, tag.wireType == .varint { batchID = try batch.readVarint() } else { try batch.skip(wireType: tag.wireType) }
             }
-            guard batchID != 0 else { throw SteamFileError.invalid("Steam did not open an upload for this game.") }
+            guard batchID != 0 else { throw SteamFileError.invalid(L("Steam did not open an upload for this game.")) }
             for entry in wanted {
                 guard !cloudBlocked, Self.cloudEnabled else { throw CancellationError() }
                 guard let place = context.paths.location(cloudPath: entry.path) else { continue }
                 let url = try context.paths.resolve(base: place.base, parts: place.parts)
                 let file = try Data(contentsOf: url)
-                guard file.count <= SteamCloudTransfer.maxFileBytes else { throw SteamFileError.invalid("A save is too large to upload.") }
+                guard file.count <= SteamCloudTransfer.maxFileBytes else { throw SteamFileError.invalid(L("A save is too large to upload.")) }
                 let sha = Data(Insecure.SHA1.hash(data: file))
                 let time = UInt64(max(0, (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate?.timeIntervalSince1970 ?? Date().timeIntervalSince1970))
                 var request = ProtobufEncoder()
@@ -968,7 +968,7 @@ final class SteamOwnedLibrary: ObservableObject {
                 request.writeUInt64(fieldNumber: 13, value: batchID)                 // upload_batch_id
                 let answer = try SteamCloudUploadBlock.parse(
                     try await session.callServiceMethod(method: .cloudClientBeginFileUpload, body: request.data, timeout: 30))
-                guard !answer.encrypt else { throw SteamFileError.invalid("Steam asked for an encrypted upload, which is not supported.") }
+                guard !answer.encrypt else { throw SteamFileError.invalid(L("Steam asked for an encrypted upload, which is not supported.")) }
                 var sent = true
                 var statuses: [Int] = []
                 do { statuses = try await SteamCloudTransfer.send(file, blocks: answer.blocks) } catch {
@@ -986,7 +986,7 @@ final class SteamOwnedLibrary: ObservableObject {
                     if tag.fieldNumber == 1, tag.wireType == .varint { committed = try reply.readVarint() != 0 } else { try reply.skip(wireType: tag.wireType) }
                 }
                 SteamLog.event("[steam-cloud] app=\(appID) upload file=\(done + 1)/\(wanted.count) bytes=\(file.count) parts=\(answer.blocks.count) http=\(statuses.map(String.init).joined(separator: ",")) committed=\(committed ? 1 : 0)")
-                guard sent, committed else { throw SteamFileError.invalid("Steam did not accept a save file.") }
+                guard sent, committed else { throw SteamFileError.invalid(L("Steam did not accept a save file.")) }
                 done += 1
                 state.phase = .uploading(done: done, of: wanted.count); cloud[appID] = state
             }
@@ -1003,7 +1003,7 @@ final class SteamOwnedLibrary: ObservableObject {
 
     // MARK: Before Play
 
-    private static let cloudNoFolders = "This game's save folders could not be found."
+    private static let cloudNoFolders = L("This game's save folders could not be found.")
 
     /// Why a game should not start yet: its saves may not be the latest.
     /// `env.MADEIRA_STEAM_CLOUD_PLAY_CHECK = 0` starts games without asking.
@@ -1092,7 +1092,7 @@ final class SteamOwnedLibrary: ObservableObject {
         }
         func failure() -> String {
             if case .failed(let message)? = cloud[appID]?.phase { return message }
-            return cloud[appID]?.problem ?? "Steam Cloud could not be reached."
+            return cloud[appID]?.problem ?? L("Steam Cloud could not be reached.")
         }
         // The game is still running and may be writing: go on once two looks,
         // 2 s apart, find the same device files.
@@ -1272,8 +1272,8 @@ final class SteamOwnedLibrary: ObservableObject {
     func enterBetaCode(_ code: String, appID: Int) async -> (branches: [String], problem: String?) {
         let code = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !code.isEmpty, code.utf8.count <= 256, appID > 0, appID <= Int(UInt32.max) else { return ([], nil) }
-        guard Self.enabled, signedIn else { return ([], "Sign in to Steam to enter a beta code.") }
-        guard !inSession else { return ([], "Close the game first: Steam checks the code over Madeira's own connection.") }
+        guard Self.enabled, signedIn else { return ([], L("Sign in to Steam to enter a beta code.")) }
+        guard !inSession else { return ([], L("Close the game first: Steam checks the code over Madeira's own connection.")) }
         do {
             let opened = try await fetcher.checkBetaCode(appID: UInt32(appID), code: code).keys.sorted()
             if !opened.isEmpty {
@@ -1298,11 +1298,11 @@ final class SteamOwnedLibrary: ObservableObject {
     func install(_ appID: Int, library: String? = nil) {
         guard Self.enabled else { return }
         guard !deleting.contains(appID), GameMover.shared.moving == nil else { error = "Wait for the file operation to finish."; return }
-        guard signedIn else { error = "Sign in to Steam to download games."; return }
+        guard signedIn else { error = L("Sign in to Steam to download games."); return }
         if active?.id == appID || queue.contains(appID) { return }
         let installed = SteamGamesModel.shared.games.first(where: { $0.id == appID })?.library
         let target = ExternalInstallTarget.select(existing: targets[appID], installed: installed, requested: library, fallback: Self.installLibrary)
-        guard SteamInstallPaths.isManaged(library: target) else { error = "The install library is invalid."; return }
+        guard SteamInstallPaths.isManaged(library: target) else { error = L("The install library is invalid."); return }
         setTarget(appID, target)
         if inSession {
             resumeAfterSession.insert(appID); downloads[appID] = Download(state: .paused); return
@@ -1329,7 +1329,7 @@ final class SteamOwnedLibrary: ObservableObject {
     /// an update of an installed game is only paused, never deleted.
     func cancelInstall(_ appID: Int, installed: Bool) {
         guard !deleting.contains(appID), !cloudBusy.contains(appID), cloud[appID]?.phase != .checking,
-              GameMover.shared.moving == nil else { error = "Wait for the file operation to finish."; return }
+              GameMover.shared.moving == nil else { error = L("Wait for the file operation to finish."); return }
         let running = active?.id == appID ? active?.task : nil
         pause(appID)
         downloads[appID] = nil
@@ -1344,7 +1344,7 @@ final class SteamOwnedLibrary: ObservableObject {
                 try SteamInstallFiles.delete(appID: appID, folderName: game.folderName, steamApps: apps)
                 setTarget(appID, nil)
                 SteamLog.event("[steam-depot] cancelled app=\(appID) partial-files-removed=1")
-            } catch { self.error = "The partial install was kept: " + error.localizedDescription }
+            } catch { self.error = L("The partial install was kept: ") + error.localizedDescription }
         }
     }
 
@@ -1361,7 +1361,7 @@ final class SteamOwnedLibrary: ObservableObject {
     func uninstall(_ game: DockGame) {
         guard SteamInstallPaths.isManaged(library: game.library), !inSession else { return }
         guard !deleting.contains(game.id), !cloudBusy.contains(game.id), cloud[game.id]?.phase != .checking,
-              GameMover.shared.moving == nil else { error = "Wait for the file operation to finish."; return }
+              GameMover.shared.moving == nil else { error = L("Wait for the file operation to finish."); return }
         let running = active?.id == game.id ? active?.task : nil
         pause(game.id); downloads[game.id] = nil
         deleting.insert(game.id)
@@ -1378,7 +1378,7 @@ final class SteamOwnedLibrary: ObservableObject {
                 setTarget(game.id, nil)
                 SteamGamesModel.shared.refresh()
                 SteamLog.event("[steam-depot] uninstalled app=\(game.id)")
-            } catch { self.error = "The install could not be removed: " + error.localizedDescription }
+            } catch { self.error = L("The install could not be removed: ") + error.localizedDescription }
         }
     }
 
@@ -1452,7 +1452,7 @@ final class SteamOwnedLibrary: ObservableObject {
                 handleSessionError(error, context: "depot")
                 outcome = .failed(SteamSignIn.message(error))
             } else if let missing = error as? SteamDriveMissing {
-                let message = "\(missing.name) is not connected. Plug it in and restart Madeira, or choose This iPhone under Settings › External drives."
+                let message = LF("%@ is not connected. Plug it in and restart Madeira, or choose This iPhone under Settings › External drives.", String(describing: (missing.name)))
                 downloads[appID]?.state = .failed(message)
                 SteamLog.event("[steam-depot] failed app=\(appID) reason=drive-missing")
                 outcome = .failed(message)

@@ -541,12 +541,12 @@ enum DockInstallScripts {
         }
         guard items.contains(where: { $0.status != .done }) else { return nil }
         var parts: [String] = []
-        if !names(.pending).isEmpty { parts.append("Runs first: " + names(.pending)) }
-        if !names(.done).isEmpty { parts.append("Already done: " + names(.done)) }
-        if !names(.missing).isEmpty { parts.append("Installer file missing: " + names(.missing)) }
-        if !names(.unsupported).isEmpty { parts.append("Cannot run in this build: " + names(.unsupported)) }
-        if !names(.limit).isEmpty { parts.append("Next start: " + names(.limit)) }
-        return "One-time installs. " + parts.joined(separator: ". ") + "."
+        if !names(.pending).isEmpty { parts.append(L("Runs first: ") + names(.pending)) }
+        if !names(.done).isEmpty { parts.append(L("Already done: ") + names(.done)) }
+        if !names(.missing).isEmpty { parts.append(L("Installer file missing: ") + names(.missing)) }
+        if !names(.unsupported).isEmpty { parts.append(L("Cannot run in this build: ") + names(.unsupported)) }
+        if !names(.limit).isEmpty { parts.append(L("Next start: ") + names(.limit)) }
+        return L("One-time installs. ") + parts.joined(separator: ". ") + "."
     }
 
     /// A program's label for logs, the batch and the sheet: the entry name, reduced to
@@ -905,10 +905,10 @@ enum DockInstallers {
     /// as GameNative (Wine on Android) does. Newer .NET (Core, 5+) setups still run.
     nonisolated static func runnable(_ process: SteamInstallProcess, drive: URL, has32Bit: Bool, hasMsiexec: Bool,
                                      skipDotNet: Bool = false) -> String? {
-        if skipDotNet && isDotNetFramework(process) { return "Wine's own .NET is used" }
+        if skipDotNet && isDotNetFramework(process) { return L("Wine's own .NET is used") }
         if process.executable.lowercased().hasSuffix(".msi") { return hasMsiexec ? nil : "Windows Installer package" }
         guard let file = resolve(process.executable, drive: drive), let machine = machine(file) else { return nil }
-        return machine == 0x14c && !has32Bit ? "32-bit installer" : nil
+        return machine == 0x14c && !has32Bit ? L("32-bit installer") : nil
     }
 
     /// A .NET Framework 2.0-4.x setup: its file name (as Microsoft and
@@ -1178,13 +1178,13 @@ enum DockInstallers {
                                 "key=\(run.hive == .machine ? "HKLM" : "HKCU")\\\(run.key) recorded=\(recorded) minimum=\(run.value)\(lastRun)")
         }
         if skipped {
-            note = "One-time installs skipped. To run them, choose Run at next start under One-time installs."
+            note = L("One-time installs skipped. To run them, choose Run at next start under One-time installs.")
         } else {
             note = DockInstallScripts.note(items)
             if installsOnly {
-                note = (note.map { $0 + " " } ?? "") + "This start runs only them; afterwards restart Madeira and start the game again."
+                note = (note.map { $0 + " " } ?? "") + L("This start runs only them; afterwards restart Madeira and start the game again.")
             } else if serverSync && madsyncConfigured {
-                note = (note.map { $0 + " " } ?? "") + "This start uses Wine's standard synchronization instead of madsync; the next start uses madsync again."
+                note = (note.map { $0 + " " } ?? "") + L("This start uses Wine's standard synchronization instead of madsync; the next start uses madsync again.")
             }
         }
         // Those still not recorded and not run again now are named in the note, so an
@@ -1279,7 +1279,7 @@ enum DockInstallers {
     static func poll(drive: URL, now: Date = Date()) -> String? {
         guard script != nil else { return nil }
         let file = drive.appendingPathComponent(resultName)
-        guard let contents = try? Data(contentsOf: file), contents.count <= 16384 else { return "Starting this game's one-time installs…" }
+        guard let contents = try? Data(contentsOf: file), contents.count <= 16384 else { return L("Starting this game's one-time installs…") }
         let results = DockInstallScripts.results(String(decoding: contents, as: UTF8.self))
         if let services = results.services, logged.insert("services").inserted {
             LogStore.shared.log("[dock-installers] services=\(services)", level: services == "failed" || services == "timeout" ? .error : .info)
@@ -1300,9 +1300,9 @@ enum DockInstallers {
             if runningSince?.index != running { runningSince = (running, now) }
             let seconds = max(0, Int(now.timeIntervalSince(runningSince?.at ?? now)))
             let program = results.started[running] ?? ""
-            var text = "Running one-time install \(running) of \(max(results.total, running)): \(program)…"
+            var text = LF("Running one-time install %@ of %@: %@…", String(describing: (running)), String(describing: (max(results.total, running))), String(describing: (program)))
             if seconds >= stallSeconds {
-                let hint = "If its window no longer changes, it may have finished without closing. Ending the session leaves it unrecorded; Record as done under One-time installs records it."
+                let hint = L("If its window no longer changes, it may have finished without closing. Ending the session leaves it unrecorded; Record as done under One-time installs records it.")
                 text += " (\(seconds / 60) min)\n" + hint
                 if logged.insert("stall\(running)").inserted {
                     let line = "[dock-installers] still running \(running)/\(results.total) program=\(program) after \(seconds) s; the host waits for it (an installer window that never closes keeps the batch here)"
@@ -1311,7 +1311,7 @@ enum DockInstallers {
             }
             return text + failures
         }
-        guard results.ended else { return "Running this game's one-time installs…" + failures }
+        guard results.ended else { return L("Running this game's one-time installs…") + failures }
         let total = max(results.total, results.exits.count), succeeded = results.exits.count - failed.count
         if logged.insert("end").inserted {
             finishedAt = Date()
@@ -1319,7 +1319,7 @@ enum DockInstallers {
                                 (installsOnly ? "the session ends, the game starts after a restart" : "the host starts next"))
         }
         allSucceeded = total > 0 && succeeded == total
-        return "One-time installs finished: \(succeeded) of \(total) succeeded." + failures
+        return LF("One-time installs finished: %@ of %@ succeeded.", String(describing: (succeeded)), String(describing: (total))) + failures
     }
 
     /// madeira-bcd: the batch ended and every program in it succeeded (poll).
@@ -1329,7 +1329,7 @@ enum DockInstallers {
     /// owner's words (2026-10-12): all succeeded, or the count and the failed programs. `ended`
     /// is poll's text, nil when the batch never ended.
     static func restartNotice(_ ended: String?) -> String {
-        if allSucceeded { return "One-time installs completed successfully. Close Madeira and open it again to play the game." }
-        return (ended ?? "One-time installs ended.") + "\nClose Madeira and open it again to play the game."
+        if allSucceeded { return L("One-time installs completed successfully. Close Madeira and open it again to play the game.") }
+        return (ended ?? L("One-time installs ended.")) + L("\nClose Madeira and open it again to play the game.")
     }
 }

@@ -44,7 +44,7 @@ enum DockStartProgram {
     /// Puts the chosen program (nil: none) in place of `launcher`, the program Steam's
     /// launch entry names; both are relative to `folder`, the game's install folder.
     static func apply(launcher: String, program: String?, folder: URL, files: FileManager = .default) -> Outcome {
-        guard safe(launcher) else { return .failed("Steam's launch entry \(launcher) is outside the game's folder") }
+        guard safe(launcher) else { return .failed(LF("Steam's launch entry %@ is outside the game's folder", String(describing: (launcher)))) }
         let target = folder.appendingPathComponent(launcher)
         let kept = URL(fileURLWithPath: target.path + keptSuffix)
         let swapping = program.map { $0.lowercased() != launcher.lowercased() } ?? false
@@ -56,9 +56,9 @@ enum DockStartProgram {
                 try files.moveItem(at: kept, to: target)
                 return .restored
             }
-            guard safe(program) else { return .failed("\(program) is outside the game's folder") }
+            guard safe(program) else { return .failed(LF("%@ is outside the game's folder", String(describing: (program)))) }
             let source = folder.appendingPathComponent(program)
-            guard files.fileExists(atPath: source.path) else { return .failed("\(program) is not in the game's folder") }
+            guard files.fileExists(atPath: source.path) else { return .failed(LF("%@ is not in the game's folder", String(describing: (program)))) }
             if files.fileExists(atPath: target.path) {
                 if files.fileExists(atPath: kept.path) {
                     // Already swapped: a copy of this program, or of an earlier choice.

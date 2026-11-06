@@ -117,7 +117,7 @@ import SwiftUI
     private func context(_ app: String) async throws -> Context? {
         guard let record = EpicLibrary.shared.installed[app] else { return nil }
         guard EpicLibrary.shared.downloads[app] == nil else {
-            throw EpicContentError.invalid("Finish or cancel this game's download before you sync saves.")
+            throw EpicContentError.invalid(L("Finish or cancel this game's download before you sync saves."))
         }
         let session = try await EpicAPI.shared.validSession()
         let token = session.accessToken, account = session.accountID
@@ -131,12 +131,12 @@ import SwiftUI
         guard let config = stored.config else { return nil }
         let drive = LibraryModel.drive
         guard let user = SteamCloudPaths.userFolder(drive: drive)?.url else {
-            throw EpicContentError.invalid("The Wine prefix has no user folder yet. Start a game once, then sync.")
+            throw EpicContentError.invalid(L("The Wine prefix has no user folder yet. Start a game once, then sync."))
         }
         let paths = EpicSavePaths(drive: drive, userFolder: user,
                                   installFolder: drive.appendingPathComponent(record.folder, isDirectory: true), accountID: account)
         guard let folder = paths.resolve(config.folder) else {
-            throw EpicContentError.invalid("This game keeps its saves in a place Madeira does not know yet.")
+            throw EpicContentError.invalid(L("This game keeps its saves in a place Madeira does not know yet."))
         }
         return Context(record: record, config: config, folder: folder, account: account,
                        transport: EpicCloudHTTP(token: token, accountID: account))
@@ -152,7 +152,7 @@ import SwiftUI
         let latest = try await EpicCloudSaves.latest(app: app, transport: context.transport)
         guard let account = await EpicAPI.shared.account(), account.id == context.account,
               EpicLibrary.shared.signedIn, !EpicLibrary.shared.sessionRunning else {
-            throw EpicContentError.invalid("The account or game session changed. Try sync again when no game is running.")
+            throw EpicContentError.invalid(L("The account or game session changed. Try sync again when no game is running."))
         }
         let deviceMap = Dictionary(device.map { ($0.path, $0.sha) }, uniquingKeysWith: { a, _ in a })
         let verdict = EpicSavePlanner.decide(device: deviceMap, cloud: latest?.snapshot.files, baseline: records[app]?.baseline)
@@ -210,8 +210,8 @@ import SwiftUI
             switch looked.verdict {
             case .download: await download(app, looked)
             case .upload: await upload(app, looked)
-            case .inSync, .empty: remember(app, looked); update(app) { $0.note = looked.verdict == .empty ? "No saves yet." : "Already in sync." }
-            case .conflict: update(app) { $0.note = "The saves differ. Choose which to keep." }
+            case .inSync, .empty: remember(app, looked); update(app) { $0.note = looked.verdict == .empty ? L("No saves yet.") : L("Already in sync.") }
+            case .conflict: update(app) { $0.note = L("The saves differ. Choose which to keep.") }
             }
         } catch {
             fail(app, error)
@@ -227,7 +227,7 @@ import SwiftUI
             guard let looked = try await look(app) else { update(app) { $0.phase = .unsupported }; return }
             show(app, looked)
             if useCloud {
-                guard looked.latest != nil else { update(app) { $0.note = "Epic has no saves for this game." }; return }
+                guard looked.latest != nil else { update(app) { $0.note = L("Epic has no saves for this game.") }; return }
                 await download(app, looked)
             } else {
                 await upload(app, looked)
@@ -257,7 +257,7 @@ import SwiftUI
     private func validate(_ context: Context) throws {
         guard Self.enabled, EpicLibrary.shared.signedIn, EpicLibrary.shared.accountID == context.account,
               !EpicLibrary.shared.sessionRunning else {
-            throw EpicContentError.invalid("The account or game session changed. Try sync again when no game is running.")
+            throw EpicContentError.invalid(L("The account or game session changed. Try sync again when no game is running."))
         }
     }
 
@@ -278,8 +278,8 @@ import SwiftUI
             next.device = after
             next.verdict = .inSync
             show(app, next)
-            update(app) { $0.note = "Downloaded \(result.files) save file\(result.files == 1 ? "" : "s")."
-                + (result.backedUp > 0 ? " \(result.backedUp) replaced on this device \(result.backedUp == 1 ? "was" : "were") backed up." : "") }
+            update(app) { $0.note = LF("Downloaded %@ save files.", String(result.files))
+                + (result.backedUp > 0 ? LF(" %@ replaced files were backed up on this device.", String(result.backedUp)) : "") }
         } catch {
             fail(app, error)
         }
@@ -300,7 +300,7 @@ import SwiftUI
             next.verdict = .inSync
             show(app, next)
             update(app) { $0.cloudFiles = result.files; $0.cloudDate = EpicCloudSaves.date(ofBuildVersion: result.version)
-                $0.note = "Uploaded \(result.files) save file\(result.files == 1 ? "" : "s") as a new snapshot." }
+                $0.note = LF("Uploaded %@ save files as a new snapshot.", String(result.files)) }
         } catch {
             fail(app, error)
         }
@@ -341,7 +341,7 @@ struct EpicCloudSection: View {
             } header: {
                 Text("Epic Cloud saves")
             } footer: {
-                Text("Sync runs when Madeira starts and when this page opens. Replaced files are kept in Files › Madeira › Epic Cloud Backups. Sync now uploads newer device saves\(setting.autoUpload ? "; automatic upload is also on" : ""). If both sides changed, choose which saves to keep.")
+                Text(LF("Sync runs when Madeira starts and when this page opens. Replaced files are kept in Files › Madeira › Epic Cloud Backups. Sync now uploads newer device saves%@. If both sides changed, choose which saves to keep.", String(describing: (setting.autoUpload ? L("; automatic upload is also on") : ""))))
             }
             .task { await cloud.check(appName, automatic: true) }
         }
@@ -370,8 +370,8 @@ struct EpicCloudSection: View {
         case .conflict:
             Label("The saves on this device and in Epic's cloud differ", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 3) {
-                Text("Epic's cloud: \(Self.when(state.cloudDate)) · \(Self.files(state.cloudFiles)) · \(Self.size(state.cloudBytes))")
-                Text("This device: \(Self.when(state.deviceDate)) · \(Self.files(state.deviceFiles)) · \(Self.size(state.deviceBytes))")
+                Text(LF("Epic's cloud: %@ · %@ · %@", String(describing: (Self.when(state.cloudDate))), String(describing: (Self.files(state.cloudFiles))), String(describing: (Self.size(state.cloudBytes)))))
+                Text(LF("This device: %@ · %@ · %@", String(describing: (Self.when(state.deviceDate))), String(describing: (Self.files(state.deviceFiles))), String(describing: (Self.size(state.deviceBytes)))))
             }.font(.caption).foregroundStyle(.secondary)
             Text("Nothing is changed until you choose which to keep.").font(.caption).foregroundStyle(.secondary)
             Button("Keep Epic's saves…") { confirmCloud = true }

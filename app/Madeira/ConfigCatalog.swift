@@ -50,7 +50,8 @@ struct AllSettingsView: View {
     @State private var newValue = ""
 
     private func matches(_ o: ConfigOption) -> Bool {
-        search.isEmpty || [o.key, o.title, o.note, o.category].contains { $0.localizedCaseInsensitiveContains(search) }
+        search.isEmpty || [o.key, o.title, o.note, o.category, L(o.title), L(o.note), L(o.category)]
+            .contains { $0.localizedCaseInsensitiveContains(search) }
     }
     private var otherKeys: [String] {
         values.keys.filter { !ConfigCatalog.keys.contains($0) && (search.isEmpty || $0.localizedCaseInsensitiveContains(search)) }.sorted()
@@ -83,7 +84,7 @@ struct AllSettingsView: View {
                         $0.category == category && !RuntimeMemorySyncSettings.featuredKeys.contains($0.key) && matches($0)
                     }
                     if !options.isEmpty {
-                        Section(category) {
+                        Section(L(category)) {
                             ForEach(options) { ConfigOptionRow(option: $0, value: binding($0.key)) }
                         }
                     }
@@ -115,7 +116,7 @@ struct AllSettingsView: View {
                     Text("For anything not listed, such as env.FEX_TSOENABLED = 1.")
                 }
             }
-            .searchable(text: $search, prompt: "Search options")
+            .searchable(text: $search, prompt: L("Search options"))
             .navigationTitle("All settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -135,11 +136,11 @@ struct ConfigOptionRow: View {
         VStack(alignment: .leading, spacing: 4) {
             control
             if !option.note.isEmpty {
-                Text(option.note).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(L(option.note)).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             HStack(spacing: 8) {
                 if !option.title.isEmpty { Text(option.key).font(.caption2.monospaced()) }
-                if !option.defaultValue.isEmpty { Text("default \(option.defaultValue)").font(.caption2) }
+                if !option.defaultValue.isEmpty { Text(LF("Default: %@", option.defaultValue)).font(.caption2) }
                 if value != nil { Text("set").font(.caption2.weight(.semibold)).foregroundStyle(.tint) }
             }
             .foregroundStyle(.secondary)
@@ -152,20 +153,20 @@ struct ConfigOptionRow: View {
     @ViewBuilder private var control: some View {
         switch option.kind {
         case .bool:
-            Picker(option.displayTitle, selection: Binding(get: { value ?? "" }, set: { value = $0.isEmpty ? nil : $0 })) {
+            Picker(L(option.displayTitle), selection: Binding(get: { value ?? "" }, set: { value = $0.isEmpty ? nil : $0 })) {
                 Text("Default").tag("")
                 Text("On").tag("1")
                 Text("Off").tag("0")
                 if let v = value, !["1", "0"].contains(v) { Text(v).tag(v) }
             }
         case .choice:
-            Picker(option.displayTitle, selection: Binding(get: { value ?? "" }, set: { value = $0.isEmpty ? nil : $0 })) {
-                ForEach(option.choices, id: \.self) { Text($0.label).tag($0.value) }
+            Picker(L(option.displayTitle), selection: Binding(get: { value ?? "" }, set: { value = $0.isEmpty ? nil : $0 })) {
+                ForEach(option.choices, id: \.self) { Text(L($0.label)).tag($0.value) }
                 if let v = value, !option.choices.contains(where: { $0.value == v }) { Text("Custom: \(v)").tag(v) }
             }
         case .int, .text:
             HStack {
-                Text(option.displayTitle).lineLimit(2)
+                Text(L(option.displayTitle)).lineLimit(2)
                 Spacer(minLength: 12)
                 TextField("Default", text: $draft)
                     .multilineTextAlignment(.trailing)
@@ -195,7 +196,8 @@ struct SettingsSearchResults: View {
     private var hits: [ConfigOption] {
         ConfigCatalog.generated.filter { o in
             !RuntimeMemorySyncSettings.featuredKeys.contains(o.key)
-                && [o.key, o.title, o.note, o.category].contains { $0.localizedCaseInsensitiveContains(query) }
+                && [o.key, o.title, o.note, o.category, L(o.title), L(o.note), L(o.category)]
+                    .contains { $0.localizedCaseInsensitiveContains(query) }
         }
     }
     private func binding(_ key: String) -> Binding<String?> {
@@ -217,10 +219,10 @@ struct SettingsSearchResults: View {
             }
             ForEach(hits.prefix(Self.limit)) { ConfigOptionRow(option: $0, value: binding($0.key)) }
         } header: {
-            Text(hits.isEmpty ? "Options" : "Options (\(hits.count))")
+            Text(hits.isEmpty ? L("Options") : LF("Options (%@)", String(describing: (hits.count))))
         } footer: {
             if hits.count > Self.limit {
-                Text("Showing \(Self.limit) of \(hits.count). Refine the search, or open All settings.")
+                Text(LF("Showing %@ of %@. Refine the search, or open All settings.", String(describing: (Self.limit)), String(describing: (hits.count))))
             } else if !hits.isEmpty {
                 Text("Most options are read when Madeira starts: close it from the app switcher after a change.")
             }

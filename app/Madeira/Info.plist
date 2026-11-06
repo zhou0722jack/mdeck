@@ -21,7 +21,7 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Madeira game setup</string>
+	<string>Madeira 游戏配置</string>
 			<key>CFBundleTypeRole</key>
 			<string>Viewer</string>
 			<key>LSHandlerRank</key>
@@ -80,7 +80,7 @@
 		<string>_remotepairing-pairable-host._tcp</string>
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Madeira uses the local network to pair with this device for JIT, without a computer, and to download Steam games from a PC on this network.</string>
+	<string>Madeira 使用本地网络与此设备配对，无需电脑即可启用 JIT，并可从同一网络中的电脑下载 Steam 游戏。</string>
 	<key>UTExportedTypeDeclarations</key>
 	<array>
 		<dict>
@@ -89,7 +89,7 @@
 				<string>public.json</string>
 			</array>
 			<key>UTTypeDescription</key>
-			<string>Madeira game setup</string>
+			<string>Madeira 游戏配置</string>
 			<key>UTTypeIdentifier</key>
 			<string>app.madeira.setup</string>
 			<key>UTTypeTagSpecification</key>

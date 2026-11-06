@@ -42,12 +42,12 @@ struct ControlPreset: Codable, Identifiable, Equatable {
 
 enum GestureZoneKind: String, Codable, CaseIterable {
     case stick, swipe, look
-    var title: String { switch self { case .stick: "Stick"; case .swipe: "Swipe"; case .look: "Look" } }
+    var title: String { switch self { case .stick: "Stick"; case .swipe: "Swipe"; case .look: L("Look") } }
 }
 
 enum SwipeDirections: String, Codable, CaseIterable {
     case four, horizontal, vertical
-    var title: String { switch self { case .four: "All"; case .horizontal: "Left/Right"; case .vertical: "Up/Down" } }
+    var title: String { switch self { case .four: L("All"); case .horizontal: "Left/Right"; case .vertical: "Up/Down" } }
 }
 
 struct GestureZone: Codable, Identifiable, Equatable {
@@ -266,8 +266,8 @@ struct ControlPresetStore: Equatable {
     /// "Custom Layout N", the lowest N not taken.
     func nextCustomName() -> String {
         var n = 1
-        while named("Custom Layout \(n)") != nil { n += 1 }
-        return "Custom Layout \(n)"
+        while named(LF("Custom Layout %@", String(describing: (n)))) != nil { n += 1 }
+        return LF("Custom Layout %@", String(describing: (n)))
     }
 
     enum SaveResult: Equatable {
@@ -322,7 +322,7 @@ struct ControlPresetStore: Equatable {
     static func decoded(_ data: Data) throws -> ControlPresetStore {
         let f = try JSONDecoder().decode(File.self, from: data)
         guard f.version == 1 else {
-            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "preset file version \(f.version)"))
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: LF("preset file version %@", String(describing: (f.version)))))
         }
         return ControlPresetStore(user: f.presets)
     }
@@ -581,7 +581,7 @@ struct ControlLayoutMenu: View {
         }
         .alert("Keep the current controls?", isPresented: shown($pending)) {
             if !presets.readOnly {
-                Button("Keep as \u{201C}\(presets.store.nextCustomName())\u{201D}") {
+                Button(LF("Keep as “%@”", String(describing: (presets.store.nextCustomName())))) {
                     let choice = pending
                     pending = nil
                     presets.keepCurrent()
@@ -597,7 +597,7 @@ struct ControlLayoutMenu: View {
         } message: {
             Text("The controls on screen are not saved in a layout.")
         }
-        .alert("Delete \u{201C}\(confirmDelete?.name ?? "")\u{201D}?", isPresented: shown($confirmDelete)) {
+        .alert(LF("Delete “%@”?", String(describing: (confirmDelete?.name ?? ""))), isPresented: shown($confirmDelete)) {
             Button("Delete", role: .destructive) {
                 if let p = confirmDelete, presets.delete(p.id) { didChoose?(false) }
                 confirmDelete = nil
@@ -636,7 +636,7 @@ struct ControlLayoutMenu: View {
                     .background(GlassShape(circle: true))
             case .row:
                 HStack(spacing: 4) {
-                    Text(presets.active?.name ?? "Custom")
+                    Text(presets.active?.name ?? L("Custom"))
                     Image(systemName: "chevron.up.chevron.down").font(.caption)
                 }
             }

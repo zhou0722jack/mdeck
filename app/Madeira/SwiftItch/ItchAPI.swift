@@ -25,11 +25,11 @@ enum ItchAPIError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .signedOut: return "Sign in to itch.io in Settings › itch.io."
-        case .badKey: return "itch.io did not accept this API key. Make a new one on itch.io (Settings › API keys) and paste it again."
-        case .http(let code): return "itch.io answered with an error (HTTP \(code)). Try again later."
-        case .invalid(let what): return "itch.io sent something Madeira could not read (\(what))."
-        case .noWindowsUpload: return "This game has no Windows download on itch.io."
+        case .signedOut: return L("Sign in to itch.io in Settings › itch.io.")
+        case .badKey: return L("itch.io did not accept this API key. Make a new one on itch.io (Settings › API keys) and paste it again.")
+        case .http(let code): return LF("itch.io answered with an error (HTTP %@). Try again later.", String(describing: (code)))
+        case .invalid(let what): return LF("itch.io sent something Madeira could not read (%@).", String(describing: (what)))
+        case .noWindowsUpload: return L("This game has no Windows download on itch.io.")
         }
     }
 
@@ -146,7 +146,7 @@ enum ItchFormat {
         let title = (string(game, "title") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let user = value(game, "user") as? [String: Any]
         let author = user.flatMap { string($0, "display_name").flatMap { $0.isEmpty ? nil : $0 } ?? string($0, "username") }
-        return ItchOwnedGame(id: id, title: title.isEmpty ? "itch.io game \(id)" : title,
+        return ItchOwnedGame(id: id, title: title.isEmpty ? LF("itch.io game %@", String(describing: (id))) : title,
                              cover: (string(game, "still_cover_url") ?? string(game, "cover_url")).flatMap(httpsURL),
                              downloadKeyID: key, url: string(game, "url").flatMap(httpsURL),
                              minPrice: int(game, "min_price"), author: author)
@@ -309,7 +309,7 @@ actor ItchAPI {
     private func profileName(key: String) async throws -> String {
         let object = try await get("profile", key: key)
         guard let user = ItchFormat.value(object, "user") as? [String: Any] else { throw ItchAPIError.invalid("profile") }
-        return ItchFormat.string(user, "display_name").flatMap { $0.isEmpty ? nil : $0 } ?? ItchFormat.string(user, "username") ?? "itch.io account"
+        return ItchFormat.string(user, "display_name").flatMap { $0.isEmpty ? nil : $0 } ?? ItchFormat.string(user, "username") ?? L("itch.io account")
     }
 
     /// The Windows games in the account's collections, all of them (at most 20

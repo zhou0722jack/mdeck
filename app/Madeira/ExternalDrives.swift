@@ -227,8 +227,8 @@ final class ExternalDrives: ObservableObject {
     /// Adds a folder picked with the folder picker and links it right away.
     func add(_ url: URL) throws {
         if let loadFailure { throw loadFailure }
-        guard wine_process_is_running() == 0 else { throw LibraryError.message("Close the running game before adding a drive.") }
-        guard url.startAccessingSecurityScopedResource() else { throw LibraryError.message("Madeira could not open that folder.") }
+        guard wine_process_is_running() == 0 else { throw LibraryError.message(L("Close the running game before adding a drive.")) }
+        guard url.startAccessingSecurityScopedResource() else { throw LibraryError.message(L("Madeira could not open that folder.")) }
         let bookmark: Data
         do { bookmark = try url.bookmarkData() } catch { url.stopAccessingSecurityScopedResource(); throw error }
         let used = Set(folders.map(\.letter))
@@ -236,7 +236,7 @@ final class ExternalDrives: ObservableObject {
             !used.contains($0) && (try? FileManager.default.attributesOfItem(atPath: Self.dosdevices.appendingPathComponent($0 + ":").path)) == nil
         }) else {
             url.stopAccessingSecurityScopedResource()
-            throw LibraryError.message("No free drive letters.")
+            throw LibraryError.message(L("No free drive letters."))
         }
         var name = url.lastPathComponent.components(separatedBy: CharacterSet(charactersIn: "/\\:*?\"<>|")).joined()
         if name.isEmpty { name = "Drive" }
@@ -245,11 +245,11 @@ final class ExternalDrives: ObservableObject {
         var folder = ExternalFolder(name: name, letter: letter, bookmark: bookmark)
         do {
             guard !mounted.values.contains(where: { $0.resolvingSymlinksInPath() == url.resolvingSymlinksInPath() }) else {
-                throw LibraryError.message("That folder is already registered.")
+                throw LibraryError.message(L("That folder is already registered."))
             }
             let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isUbiquitousItemKey, .volumeIsLocalKey, .volumeIsReadOnlyKey])
             guard values.isDirectory == true, values.isUbiquitousItem != true, values.volumeIsLocal == true else {
-                throw LibraryError.message("Choose a folder on a local USB or SSD drive.")
+                throw LibraryError.message(L("Choose a folder on a local USB or SSD drive."))
             }
             if values.volumeIsReadOnly != true { folder.libraryID = try ExternalStorageIdentity.register(root: url) }
             try Self.validate(folders + [folder])
@@ -390,7 +390,7 @@ struct ExternalGamesSheet: View {
             .navigationTitle(folder.name)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button("Add \(chosen.count)") { add() }.disabled(chosen.isEmpty) }
+                ToolbarItem(placement: .confirmationAction) { Button(LF("Add %@", String(describing: (chosen.count)))) { add() }.disabled(chosen.isEmpty) }
             }
         }
         .task {
@@ -435,7 +435,7 @@ struct ExternalDrivesSection: View {
                     Text(folder.letter.uppercased() + ":").font(.body.monospaced())
                     Text(folder.name)
                     Spacer()
-                    Text(drives.mounted[folder.id] == nil ? "Not connected" : "Connected").foregroundStyle(.secondary)
+                    Text(drives.mounted[folder.id] == nil ? L("Not connected") : L("Connected")).foregroundStyle(.secondary)
                 }
                 .swipeActions { Button("Remove", role: .destructive) { removing = folder } }
                 if drives.mounted[folder.id] != nil {
@@ -463,7 +463,7 @@ struct ExternalDrivesSection: View {
                 scanning = drives.folders.last
             } catch { self.error = error.localizedDescription }
         }
-        .confirmationDialog("Remove \(removing?.name ?? "")?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+        .confirmationDialog(LF("Remove %@?", String(describing: (removing?.name ?? ""))), isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
                             titleVisibility: .visible, presenting: removing) { folder in
             Button("Remove", role: .destructive) { drives.remove(folder.id) }
         } message: { _ in
@@ -502,16 +502,16 @@ struct ExternalDrivesSection: View {
     }
 
     func move(_ entry: LibraryEntry, toSteamLibrary target: String? = nil, toRoot root: String? = nil) async throws -> LibraryEntry {
-        guard moving == nil else { throw Failure(errorDescription: "Another game is being moved.") }
-        guard wine_process_is_running() == 0 else { throw Failure(errorDescription: "Close the running game first.") }
-        guard !SteamOwnedLibrary.shared.hasStorageWork else { throw Failure(errorDescription: "Wait for downloads and cloud operations to finish.") }
+        guard moving == nil else { throw Failure(errorDescription: L("Another game is being moved.")) }
+        guard wine_process_is_running() == 0 else { throw Failure(errorDescription: L("Close the running game first.")) }
+        guard !SteamOwnedLibrary.shared.hasStorageWork else { throw Failure(errorDescription: L("Wait for downloads and cloud operations to finish.")) }
         var entry = entry
         var items: [(from: URL, to: URL)] = []
         var newPath: String
         if let appID = entry.steamAppID {
-            guard SteamOwnedLibrary.shared.downloads[appID] == nil else { throw Failure(errorDescription: "Wait for the download to finish or cancel it first.") }
+            guard SteamOwnedLibrary.shared.downloads[appID] == nil else { throw Failure(errorDescription: L("Wait for the download to finish or cancel it first.")) }
             guard let target, let game = SteamGamesModel.shared.games.first(where: { $0.id == appID }) else {
-                throw Failure(errorDescription: "Steam does not list this game as installed.")
+                throw Failure(errorDescription: L("Steam does not list this game as installed."))
             }
             guard game.library.caseInsensitiveCompare(target) != .orderedSame else { return entry }
             guard SteamInstallPaths.isManaged(library: target) else { throw ExternalStorageError.invalidRecord }
@@ -528,18 +528,18 @@ struct ExternalDrivesSection: View {
             }
             newPath = target + "/common/" + game.installDir
         } else {
-            guard let root else { throw Failure(errorDescription: "Choose where to move the game.") }
+            guard let root else { throw Failure(errorDescription: L("Choose where to move the game.")) }
             let folder = Self.gameFolder(entry.relativePath)
             let name = (folder as NSString).lastPathComponent
             guard !folder.isEmpty, !["games", "external"].contains(folder.lowercased()), folder.split(separator: "/").count >= (folder.hasPrefix("External/") ? 3 : 1)
-            else { throw Failure(errorDescription: "This game's folder cannot be moved.") }
+            else { throw Failure(errorDescription: L("This game's folder cannot be moved.")) }
             let dest = root + "/" + name
             guard dest.caseInsensitiveCompare(folder) != .orderedSame else { return entry }
             items.append((try ExternalDrives.nativeURL(folder, write: true), try ExternalDrives.nativeURL(dest, write: true)))
             newPath = dest + entry.relativePath.dropFirst(folder.count)
         }
         if let name = ExternalDrives.driveName(library: newPath), !ExternalDrives.isConnected(name) {
-            throw Failure(errorDescription: "\(name) is not connected.")
+            throw Failure(errorDescription: LF("%@ is not connected.", String(describing: (name))))
         }
         let copy = items.map { (from: $0.from.resolvingSymlinksInPath(), to: $0.to) }
 
@@ -567,7 +567,7 @@ struct ExternalDrivesSection: View {
     /// moves the progress bar too.
     nonisolated private static func copyFile(_ from: URL, to: URL, copied: (Int64) -> Void) throws {
         guard FileManager.default.createFile(atPath: to.path, contents: nil) else {
-            throw Failure(errorDescription: "Could not write \(to.lastPathComponent).")
+            throw Failure(errorDescription: LF("Could not write %@.", String(describing: (to.lastPathComponent))))
         }
         let input = try FileHandle(forReadingFrom: from), output = try FileHandle(forWritingTo: to)
         defer { try? input.close(); try? output.close() }
@@ -597,26 +597,26 @@ struct ExternalDrivesSection: View {
                 if values?.isRegularFile == true { out.append((item, Int64(values?.fileSize ?? 0))) }
                 else if values?.isDirectory != true { unreadable = item; break }
             }
-            if let unreadable { failure = "Could not read \(unreadable.lastPathComponent)." }
+            if let unreadable { failure = LF("Could not read %@.", String(describing: (unreadable.lastPathComponent))) }
             return out
         }
         var failure: String?
         let sources = items.map { files($0.from) }
         if let failure { throw Failure(errorDescription: failure) }
         let total = sources.flatMap { $0 }.reduce(Int64(0)) { $0 + $1.1 }
-        guard !sources.isEmpty, !(sources.first?.isEmpty ?? true) else { throw Failure(errorDescription: "The game's files were not found.") }
+        guard !sources.isEmpty, !(sources.first?.isEmpty ?? true) else { throw Failure(errorDescription: L("The game's files were not found.")) }
         for item in items where fm.fileExists(atPath: item.to.path) {
-            throw Failure(errorDescription: "\(item.to.lastPathComponent) already exists there.")
+            throw Failure(errorDescription: LF("%@ already exists there.", String(describing: (item.to.lastPathComponent))))
         }
         if let parent = items.first?.to.deletingLastPathComponent() {
             try? fm.createDirectory(at: parent, withIntermediateDirectories: true)
             // FAT32 holds no file of 4 GB or more.
             let largest = sources.flatMap { $0 }.map(\.1).max() ?? 0
             if let type = parent.fileSystemType?.lowercased(), ["msdos", "fat", "fat32", "vfat"].contains(type), largest >= 1 << 32 {
-                throw Failure(errorDescription: "This drive is formatted FAT32, which cannot hold this game's files over 4 GB. Use an exFAT or APFS drive.")
+                throw Failure(errorDescription: L("This drive is formatted FAT32, which cannot hold this game's files over 4 GB. Use an exFAT or APFS drive."))
             }
             if let free = parent.freeSpace, free < total + 256 << 20 {
-                throw Failure(errorDescription: "Not enough free space: \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file)) needed.")
+                throw Failure(errorDescription: LF("Not enough free space: %@ needed.", String(describing: (ByteCountFormatter.string(fromByteCount: total, countStyle: .file)))))
             }
         }
         var done: Int64 = 0, lastReport = Date.distantPast
@@ -632,7 +632,7 @@ struct ExternalDrivesSection: View {
                         if Date().timeIntervalSince(lastReport) > 0.2 { lastReport = Date(); progress(total > 0 ? Double(done) / Double(total) : 1) }
                     }
                     let copied = Int64((try? dest.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? -1)
-                    guard copied == size else { throw Failure(errorDescription: "The copy of \(file.lastPathComponent) does not match.") }
+                    guard copied == size else { throw Failure(errorDescription: LF("The copy of %@ does not match.", String(describing: (file.lastPathComponent)))) }
                 }
             }
             // Check the whole copy before anything is deleted.
@@ -644,7 +644,7 @@ struct ExternalDrivesSection: View {
                 // The original is listed again, in case it changed or was only partly read.
                 let original = listing(files(item.from), base: item.from)
                 guard failure == nil, copied == original, original == listing(sources[index], base: item.from) else {
-                    throw Failure(errorDescription: "The copy is incomplete (\(copied.count) of \(original.count) files).")
+                    throw Failure(errorDescription: LF("The copy is incomplete (%@ of %@ files).", String(describing: (copied.count)), String(describing: (original.count))))
                 }
             }
         } catch {

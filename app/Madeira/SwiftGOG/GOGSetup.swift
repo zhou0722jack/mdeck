@@ -97,15 +97,15 @@ enum GOGSetup {
         var seen = Set<String>()
         for id in ids where seen.insert(id.lowercased()).inserted {
             guard let d = repository.first(where: { $0.id.caseInsensitiveCompare(id) == .orderedSame }) else {
-                plan.notes.append(GOGSetupNote(id: id, name: id, note: "Not in GOG's list of redistributables"))
+                plan.notes.append(GOGSetupNote(id: id, name: id, note: L("Not in GOG's list of redistributables")))
                 continue
             }
             if d.id.caseInsensitiveCompare(directX) == .orderedSame {
-                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: "Not needed: Madeira has its own DirectX"))
+                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: L("Not needed: Madeira has its own DirectX")))
             } else if visualCpp2015Plus(d.id) {
-                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: "Not needed: Madeira includes the Visual C++ 2015-2022 runtime"))
+                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: L("Not needed: Madeira includes the Visual C++ 2015-2022 runtime")))
             } else if dotNetFramework.contains(d.id) {
-                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: "Skipped: .NET Framework installers do not run in Madeira"))
+                plan.notes.append(GOGSetupNote(id: d.id, name: d.name, note: L("Skipped: .NET Framework installers do not run in Madeira")))
             } else if d.executable.isEmpty {
                 plan.download.append(d)   // files the game uses from its folder
             } else if d.isProgram || (d.isPackage && hasMsiexec) {
@@ -113,7 +113,7 @@ enum GOGSetup {
                 plan.run.append(GOGSetupProgram(id: d.id, name: d.name, executable: d.executable, arguments: d.arguments))
             } else {
                 plan.notes.append(GOGSetupNote(id: d.id, name: d.name,
-                                               note: d.isPackage ? "Skipped: needs Windows Installer, which this build does not include"
+                                               note: d.isPackage ? L("Skipped: needs Windows Installer, which this build does not include")
                                                                  : "Skipped: its installer is not a program"))
             }
         }

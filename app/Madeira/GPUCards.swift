@@ -57,7 +57,7 @@ enum GPUCards {
                 name: "NVIDIA GeForce GTX 1060 6GB"),
         // "Older NVIDIA card (Direct3D 9)" (D3D9Identity.olderNvidiaName), here for
         // every API: Fallout 3 and New Vegas pick their render path from the name and the driver.
-        GPUCard(id: "nvidia-7900gs", title: "NVIDIA GeForce 7900 GS (older games)", vendor: nvidiaVendor, device: 0x0292,
+        GPUCard(id: "nvidia-7900gs", title: L("NVIDIA GeForce 7900 GS (older games)"), vendor: nvidiaVendor, device: 0x0292,
                 name: "NVIDIA GeForce 7900 GS", driver: "nv4_disp.dll"),
         GPUCard(id: "amd-rx6700xt", title: "AMD Radeon RX 6700 XT", vendor: amdVendor, device: 0x73df,
                 name: "AMD Radeon RX 6700 XT"),
@@ -68,7 +68,7 @@ enum GPUCards {
         // This device's own GPU under its Metal name in every place, Windows'
         // registry included (which otherwise says "Madeira Display"), with the
         // ids DXMT's Direct3D 9 and win32u already use.
-        GPUCard(id: "apple", title: "This device's own GPU", vendor: appleVendor, device: 0x0001, name: nil),
+        GPUCard(id: "apple", title: L("This device's own GPU"), vendor: appleVendor, device: 0x0001, name: nil),
     ]
 
     static func card(_ id: String?) -> GPUCard? {

@@ -475,7 +475,7 @@ struct FPSOverlay: View {
     private var thermalPill: some View {
         if thermalState == .serious || thermalState == .critical {
             let isCritical = thermalState == .critical
-            Text(isCritical ? "CRIT" : "HOT")
+            Text(isCritical ? L("CRIT") : L("HOT"))
                 .foregroundColor(.white)
                 .padding(.horizontal, 5)
                 .padding(.vertical, 1)

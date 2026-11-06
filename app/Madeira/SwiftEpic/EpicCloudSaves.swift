@@ -25,7 +25,7 @@ enum EpicContentError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalid(let message): return message
-        case .httpStatus(let status): return "Epic download failed (HTTP \(status)). Try again."
+        case .httpStatus(let status): return LF("Epic download failed (HTTP %@). Try again.", String(describing: (status)))
         }
     }
 }
@@ -89,7 +89,7 @@ enum EpicSaveWriter {
                          src.bindMemory(to: Bytef.self).baseAddress, uLong(input.count))
             }
         }
-        guard status == Z_OK else { throw EpicContentError.invalid("Could not compress a save chunk.") }
+        guard status == Z_OK else { throw EpicContentError.invalid(L("Could not compress a save chunk.")) }
         return output.prefix(Int(length))
     }
 
@@ -109,7 +109,7 @@ enum EpicSaveWriter {
     /// A chunk file: header version 3 (66 bytes) and the zlib-compressed payload, padded
     /// with zeros to 1 MiB first, as Legendary's Chunk.data setter and write() do.
     static func chunk(_ payload: Data, guid: [UInt32]) throws -> BuiltChunk {
-        guard payload.count <= chunkSize else { throw EpicContentError.invalid("A save chunk is larger than 1 MiB.") }
+        guard payload.count <= chunkSize else { throw EpicContentError.invalid(L("A save chunk is larger than 1 MiB.")) }
         var padded = payload
         if padded.count < chunkSize { padded.append(Data(count: chunkSize - padded.count)) }
         let hash = rollingHash(padded), sha = EpicCodec.sha1(padded)
@@ -354,10 +354,10 @@ enum EpicSaveScan {
             let relative = String(full.dropFirst(root.count + 1))
             guard config.includes(relative) else { continue }
             let size = UInt64(values.fileSize ?? 0)
-            guard size <= maximumFileSize else { throw EpicContentError.invalid("A save file is larger than 64 MB.") }
+            guard size <= maximumFileSize else { throw EpicContentError.invalid(L("A save file is larger than 64 MB.")) }
             total += size
             guard result.count < maximumFiles, total <= maximumTotal else {
-                throw EpicContentError.invalid("This game's saves are too large to sync (over 2000 files or 128 MB).")
+                throw EpicContentError.invalid(L("This game's saves are too large to sync (over 2000 files or 128 MB)."))
             }
             result.append(EpicDeviceSave(path: relative, size: size, sha: hex(try EpicCodec.sha1(of: url)),
                                          modified: values.contentModificationDate ?? Date(timeIntervalSince1970: 0), url: url))
@@ -434,7 +434,7 @@ struct EpicCloudHTTP: EpicCloudTransport {
 
     private func decode(_ data: Data) throws -> [EpicCloudObject] {
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let files = json["files"] as? [String: Any] else { throw EpicContentError.invalid("Unexpected answer from Epic's save service.") }
+              let files = json["files"] as? [String: Any] else { throw EpicContentError.invalid(L("Unexpected answer from Epic's save service.")) }
         return files.keys.sorted().map { key in
             let entry = files[key] as? [String: Any]
             return EpicCloudObject(path: key, readLink: entry?["readLink"] as? String, writeLink: entry?["writeLink"] as? String)
@@ -457,7 +457,7 @@ struct EpicCloudHTTP: EpicCloudTransport {
     }
     private func savesyncURL(_ app: String) throws -> URL {
         guard let url = URL(string: "https://\(Self.host)/api/v1/access/egstore/savesync/\(accountID)/\(app)/") else {
-            throw EpicContentError.invalid("Invalid Epic save URL.")
+            throw EpicContentError.invalid(L("Invalid Epic save URL."))
         }
         return url
     }
@@ -466,7 +466,7 @@ struct EpicCloudHTTP: EpicCloudTransport {
     }
     func read(_ object: EpicCloudObject) async throws -> Data {
         guard let link = object.readLink, let url = URL(string: link), url.scheme == "https" else {
-            throw EpicContentError.invalid("Epic gave no download link for a save file.")
+            throw EpicContentError.invalid(L("Epic gave no download link for a save file."))
         }
         // A pre-signed link: no Authorization header.
         let (file, response) = try await URLSession.shared.download(from: url)
@@ -475,7 +475,7 @@ struct EpicCloudHTTP: EpicCloudTransport {
             throw EpicContentError.httpStatus((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
         guard try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? Int.max <= Self.sizeLimit else {
-            throw EpicContentError.invalid("The cloud save download is too large.")
+            throw EpicContentError.invalid(L("The cloud save download is too large."))
         }
         return try Data(contentsOf: file)
     }
@@ -484,7 +484,7 @@ struct EpicCloudHTTP: EpicCloudTransport {
     }
     func write(_ object: EpicCloudObject, data: Data) async throws {
         guard let link = object.writeLink, let url = URL(string: link), url.scheme == "https" else {
-            throw EpicContentError.invalid("Epic gave no upload link for a save file.")
+            throw EpicContentError.invalid(L("Epic gave no upload link for a save file."))
         }
         var r = URLRequest(url: url)
         r.httpMethod = "PUT"
@@ -555,7 +555,7 @@ enum EpicCloudSaves {
         for file in manifest.files { for part in file.parts { needed.insert(part.guid) } }
         for chunk in manifest.chunks.values where needed.contains(chunk.guid) {
             let remote = snapshot.prefix + "/" + EpicManifest.path(of: chunk, level: level)
-            guard let object = byPath[remote] else { throw EpicContentError.invalid("A save chunk is missing in Epic's cloud; nothing was changed.") }
+            guard let object = byPath[remote] else { throw EpicContentError.invalid(L("A save chunk is missing in Epic's cloud; nothing was changed.")) }
             let raw = try await transport.read(object)
             // Chunks written by Epic's launcher may not match the manifest's size fields exactly;
             // the file hashes below are the check that counts.
@@ -571,30 +571,30 @@ enum EpicCloudSaves {
             var data = Data()
             for part in file.parts {
                 guard let chunk = chunkData[part.guid], Int(part.offset) <= chunk.count, Int(part.size) <= chunk.count - Int(part.offset) else {
-                    throw EpicContentError.invalid("A save file refers to missing data; nothing was changed.")
+                    throw EpicContentError.invalid(L("A save file refers to missing data; nothing was changed."))
                 }
                 data.append(chunk.subdata(in: Int(part.offset)..<Int(part.offset) + Int(part.size)))
             }
-            guard EpicCodec.sha1(data) == file.sha1 else { throw EpicContentError.invalid("A downloaded save file failed its check; nothing was changed.") }
+            guard EpicCodec.sha1(data) == file.sha1 else { throw EpicContentError.invalid(L("A downloaded save file failed its check; nothing was changed.")) }
             total += data.count
-            guard total <= EpicSaveScan.maximumTotal else { throw EpicContentError.invalid("The cloud save is too large to sync.") }
+            guard total <= EpicSaveScan.maximumTotal else { throw EpicContentError.invalid(L("The cloud save is too large to sync.")) }
             assembled.append((file, data))
         }
         for item in assembled {
             guard let parts = EpicManifest.components(item.file.name) else {
-                throw EpicContentError.invalid("The cloud save has an invalid file path; nothing was changed.")
+                throw EpicContentError.invalid(L("The cloud save has an invalid file path; nothing was changed."))
             }
             var target = folder
             for part in parts {
                 target = EpicSavePaths.resolveCase(base: target, parts: [part])
                 if (try? FileManager.default.attributesOfItem(atPath: target.path)[.type] as? FileAttributeType) == .typeSymbolicLink {
-                    throw EpicContentError.invalid("A cloud save path contains a symbolic link; nothing was changed.")
+                    throw EpicContentError.invalid(L("A cloud save path contains a symbolic link; nothing was changed."))
                 }
             }
             target = target.resolvingSymlinksInPath().standardizedFileURL
             let base = folder.resolvingSymlinksInPath().standardizedFileURL.pathComponents
             guard target.pathComponents.count > base.count, Array(target.pathComponents.prefix(base.count)) == base else {
-                throw EpicContentError.invalid("A cloud save path leaves the save folder; nothing was changed.")
+                throw EpicContentError.invalid(L("A cloud save path leaves the save folder; nothing was changed."))
             }
         }
         try await validate()
@@ -603,7 +603,7 @@ enum EpicCloudSaves {
         for item in assembled {
             let parts = item.file.name.replacingOccurrences(of: "\\", with: "/").split(separator: "/").map(String.init)
             guard !parts.isEmpty, !parts.contains(where: { $0 == ".." || $0 == "." || $0.contains(":") }) else {
-                throw EpicContentError.invalid("The cloud save names a file outside the save folder; nothing was changed.")
+                throw EpicContentError.invalid(L("The cloud save names a file outside the save folder; nothing was changed."))
             }
             let target = EpicSavePaths.resolveCase(base: folder, parts: parts)
             try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -625,12 +625,12 @@ enum EpicCloudSaves {
     static func upload(_ saves: [EpicDeviceSave], app: String, accountID: String, config: EpicSaveConfig,
                        transport: EpicCloudTransport, date: Date = Date(),
                        validate: @MainActor () throws -> Void = {}) async throws -> (version: String, files: Int) {
-        guard !saves.isEmpty else { throw EpicContentError.invalid("There are no saves to upload.") }
+        guard !saves.isEmpty else { throw EpicContentError.invalid(L("There are no saves to upload.")) }
         var files = [EpicSaveWriter.SaveFile]()
         for save in saves {
             let data = try Data(contentsOf: save.url)
             guard EpicSaveScan.hex(EpicCodec.sha1(data)) == save.sha else {
-                throw EpicContentError.invalid("A save file changed while it was being read. Try again when the game is not writing.")
+                throw EpicContentError.invalid(L("A save file changed while it was being read. Try again when the game is not writing."))
             }
             files.append(EpicSaveWriter.SaveFile(path: save.path, data: data))
         }
@@ -639,7 +639,7 @@ enum EpicCloudSaves {
         var byPath = [String: EpicCloudObject]()
         for target in targets { byPath[target.path] = target }
         for upload in package.uploads where byPath[upload.path] == nil {
-            throw EpicContentError.invalid("Epic gave no upload target for \(upload.path).")
+            throw EpicContentError.invalid(LF("Epic gave no upload target for %@.", String(describing: (upload.path))))
         }
         for upload in package.uploads {
             try await validate()

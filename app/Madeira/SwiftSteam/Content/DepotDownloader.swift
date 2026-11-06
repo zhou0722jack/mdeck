@@ -120,7 +120,7 @@ final class DepotDownloader {
         depotCache = steamApps.appendingPathComponent("depotcache", isDirectory: true)
         let hosts: [String]
         if let provider = contentHosts { hosts = try await provider(app.appID) } else { hosts = try await contentServers(appID: app.appID) }
-        guard !hosts.isEmpty else { throw SteamError.chunkDownloadFailed("No content servers are available.") }
+        guard !hosts.isEmpty else { throw SteamError.chunkDownloadFailed(L("No content servers are available.")) }
 
         // 1. Keys, manifests and per-host authorization for every depot.
         state.step = .fileList
@@ -524,12 +524,12 @@ final class DepotDownloader {
     /// that length are kept so resumed and updated installs reuse them.
     private nonisolated static func sizeFile(_ path: String, to size: UInt64) throws {
         let fd = open(path, O_WRONLY | O_CREAT, 0o644)
-        guard fd >= 0 else { throw SteamError.chunkDownloadFailed("Cannot create a game file (errno \(errno)).") }
+        guard fd >= 0 else { throw SteamError.chunkDownloadFailed(LF("Cannot create a game file (errno %@).", String(describing: (errno)))) }
         defer { close(fd) }
         var info = stat()
         if fstat(fd, &info) == 0, UInt64(info.st_size) == size { return }
         guard ftruncate(fd, off_t(size)) == 0 else {
-            throw SteamError.chunkDownloadFailed("Cannot size a game file (errno \(errno)).")
+            throw SteamError.chunkDownloadFailed(LF("Cannot size a game file (errno %@).", String(describing: (errno))))
         }
     }
 
@@ -689,7 +689,7 @@ final class DepotDownloader {
     private nonisolated static func fetchChunkFromPeer(_ chunk: DepotManifest.ChunkEntry, plan: DepotPlan,
                                                        peer: SteamPeerChunkSource, path: String) async throws {
         let response = try await peer.fetch(depotID: plan.depotID, sha: chunk.sha)
-        guard response.result == 1 else { throw SteamError.chunkDownloadFailed("The PC answered \(response.result).") }
+        guard response.result == 1 else { throw SteamError.chunkDownloadFailed(LF("The PC answered %@.", String(describing: (response.result)))) }
         let expected = Int(chunk.uncompressedSize)
         let data: Data
         if response.encrypted {
@@ -853,20 +853,20 @@ final class DepotDownloader {
 
     private nonisolated static func write(_ data: Data, to path: String, offset: UInt64) throws {
         let fd = open(path, O_WRONLY)
-        guard fd >= 0 else { throw SteamError.chunkDownloadFailed("Cannot open a game file (errno \(errno)).") }
+        guard fd >= 0 else { throw SteamError.chunkDownloadFailed(LF("Cannot open a game file (errno %@).", String(describing: (errno)))) }
         defer { close(fd) }
         try data.withUnsafeBytes { raw in
             var written = 0
             while written < raw.count {
                 let n = pwrite(fd, raw.baseAddress! + written, raw.count - written, off_t(offset) + off_t(written))
-                guard n > 0 else { throw SteamError.chunkDownloadFailed("Cannot write a game file (errno \(errno)).") }
+                guard n > 0 else { throw SteamError.chunkDownloadFailed(LF("Cannot write a game file (errno %@).", String(describing: (errno)))) }
                 written += n
             }
         }
     }
 
     private nonisolated static func download(_ urlString: String) async throws -> Data {
-        guard let url = URL(string: urlString) else { throw SteamError.chunkDownloadFailed("Invalid content URL.") }
+        guard let url = URL(string: urlString) else { throw SteamError.chunkDownloadFailed(L("Invalid content URL.")) }
         let (data, response) = try await http.data(from: url)
         guard let status = (response as? HTTPURLResponse)?.statusCode, (200...299).contains(status) else {
             throw SteamError.contentHTTP((response as? HTTPURLResponse)?.statusCode ?? 0)
@@ -1029,7 +1029,7 @@ final class DepotDownloader {
         let data = Data(data)  // zero-based indices
         guard data.count > 30,
               data[0] == 0x50, data[1] == 0x4B, data[2] == 0x03, data[3] == 0x04 else {
-            throw SteamError.manifestFetchFailed("Not a zip")
+            throw SteamError.manifestFetchFailed(L("Not a zip"))
         }
         func u16(_ o: Int) -> Int { Int(data[o]) | Int(data[o + 1]) << 8 }
         func u32(_ o: Int) -> Int { Int(data[o]) | Int(data[o+1]) << 8 | Int(data[o+2]) << 16 | Int(data[o+3]) << 24 }
@@ -1040,7 +1040,7 @@ final class DepotDownloader {
         let start = 30 + nameLen + extraLen
         guard start + compSize <= data.count, method == 0 || method == 8,
               uncompSize <= ContentDecryptor.maximumChunkBytes * 4 else {
-            throw SteamError.manifestFetchFailed("Bad zip entry (method \(method))")
+            throw SteamError.manifestFetchFailed(LF("Bad zip entry (method %@)", String(describing: (method))))
         }
         let entry = data.subdata(in: start..<(start + compSize))
         if method == 0 { return entry }
@@ -1164,16 +1164,16 @@ final class DepotDownloader {
         var hosts: [String] = []
         do {
             guard let url = URL(string: "https://api.steampowered.com/IContentServerDirectoryService/GetServersForSteamPipe/v1/?cell_id=\(session.cellID)&max_servers=20") else {
-                throw SteamError.chunkDownloadFailed("Bad content directory URL")
+                throw SteamError.chunkDownloadFailed(L("Bad content directory URL"))
             }
             let (data, response) = try await Self.http.data(from: url)
             guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-                throw SteamError.chunkDownloadFailed("Content directory HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+                throw SteamError.chunkDownloadFailed(LF("Content directory HTTP %@", String(describing: ((response as? HTTPURLResponse)?.statusCode ?? 0))))
             }
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let resp = json["response"] as? [String: Any],
                   let servers = resp["servers"] as? [[String: Any]] else {
-                throw SteamError.chunkDownloadFailed("Content directory returned unexpected data")
+                throw SteamError.chunkDownloadFailed(L("Content directory returned unexpected data"))
             }
             // In the directory's order. The directory marks some CDN servers
             // https_support "unavailable"; requesting them over HTTPS fails the
@@ -1403,7 +1403,7 @@ extension DepotDownloader {
         try FileManager.default.createDirectory(at: journalDir, withIntermediateDirectories: true)
         let hosts: [String]
         if let provider = contentHosts { hosts = try await provider(appID) } else { hosts = try await contentServers(appID: appID) }
-        guard !hosts.isEmpty else { throw SteamError.chunkDownloadFailed("No content servers are available.") }
+        guard !hosts.isEmpty else { throw SteamError.chunkDownloadFailed(L("No content servers are available.")) }
         let key = try await depotKey(depotID: appID, appID: appID)
         let manifest = try await fetchManifest(depotID: appID, appID: appID, manifestGID: manifestGID, key: key, hosts: hosts)
         let pool = Array(hosts.prefix(hostPoolSize))

@@ -34,9 +34,9 @@ enum EADownloadError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .diskSpace(let needed):
-            return "Not enough free space on this device: this download needs about \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file)) more. Free some space, then try again."
-        case .file(let reason): return "A game file could not be downloaded from EA (\(reason)). Try again to continue."
-        case .unsafePath(let name): return "EA's build names a file outside the game's folder (\(name))."
+            return LF("Not enough free space on this device: this download needs about %@ more. Free some space, then try again.", String(describing: (ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))))
+        case .file(let reason): return LF("A game file could not be downloaded from EA (%@). Try again to continue.", String(describing: (reason)))
+        case .unsafePath(let name): return LF("EA's build names a file outside the game's folder (%@).", String(describing: (name)))
         }
     }
 }
@@ -72,10 +72,10 @@ final class EARangeClient: @unchecked Sendable {
         request.httpMethod = "HEAD"
         let (_, response) = try await http.data(for: request)
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw EADownloadError.file("HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0) for the build's size")
+            throw EADownloadError.file(LF("HTTP %@ for the build's size", String(describing: ((response as? HTTPURLResponse)?.statusCode ?? 0))))
         }
         guard let length = http.value(forHTTPHeaderField: "Content-Length").flatMap({ Int64($0) }), length > 0 else {
-            throw EADownloadError.file("no size for the build")
+            throw EADownloadError.file(L("no size for the build"))
         }
         return length
     }
@@ -406,7 +406,7 @@ final class EADownloader: @unchecked Sendable {
             try Data().write(to: destination, options: .atomic)
             return 0
         }
-        guard entry.method == 0 || entry.method == 8 else { throw EADownloadError.file("compression method \(entry.method)") }
+        guard entry.method == 0 || entry.method == 8 else { throw EADownloadError.file(LF("compression method %@", String(describing: (entry.method)))) }
         let temporary = destination.deletingLastPathComponent().appendingPathComponent("." + destination.lastPathComponent + ".madeira-part")
         try? FileManager.default.removeItem(at: temporary)
         guard FileManager.default.createFile(atPath: temporary.path, contents: nil) else { throw EADownloadError.file("create") }
@@ -476,7 +476,7 @@ final class EADownloader: @unchecked Sendable {
                         if remaining == 0 { break }
                     }
                 }
-                guard remaining == 0 else { throw EADownloadError.file("short read") }
+                guard remaining == 0 else { throw EADownloadError.file(L("short read")) }
                 try inflater.write(Data(), last: true)
                 guard inflater.written == entry.uncompressedSize, inflater.crc.checksum == entry.crc32 else {
                     EALog.event("[ea-download] checksum name=\(parts.last!) method=\(entry.method) size=\(inflater.written)/\(entry.uncompressedSize)"
