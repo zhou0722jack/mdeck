@@ -2432,6 +2432,10 @@ struct ContentView: View {
                 launchAfterJITEnded(started: true)
             case .failure(let failure):
                 launchAfterJITEnded(started: false)
+                if failure is CancellationError {
+                    jitStatus = .unknown
+                    return
+                }
                 if let coordinatorError = failure as? JITCoordinator.CoordinatorError,
                    case .setupRequired = coordinatorError {
                     jitStatus = .unknown
@@ -2657,7 +2661,11 @@ struct ContentView: View {
             LibraryEntry.setGOGSetup(GOGLibrary.shared.setupBatch(for: entry), for: entry.id)
             GOGGalaxy.shared.prepare(entry)
         }
-        do { if entry.desktop != true { _ = try LibraryModel.executable(entry.launchRelativePath) }; try entry.validate() }
+        do {
+            try SteamClient.prepare(entry)
+            if entry.desktop != true { _ = try LibraryModel.executable(entry.launchRelativePath) }
+            try entry.validate()
+        }
         catch {
             LibraryEntry.setTransientArguments(nil, for: entry.id)
             library.error = error.localizedDescription

@@ -1,31 +1,62 @@
 # JIT setup
 
-Madeira needs an attached debugger to create executable memory on iOS. It can
-use either the StikDebug app or its built-in StikJIT helper. Both methods send
-the same bundled `madeira-jit.js` debugger script to the current Madeira
-process.
+Madeira needs an attached debugger to create executable memory on iOS. You can
+run the bundled `madeira-jit.js` in StikDebug yourself, or let Madeira send it
+through the StikDebug app or its built-in StikJIT helper. All three routes use
+the same script and keep the live-debugger and signing checks.
 
-## Automatic selection
+## External StikDebug script
 
-The default **Automatic** method uses StikDebug when iOS reports that its
+New installations default to **External StikDebug script**. Upgrading keeps a
+previously saved JIT method; choose the external method in **Settings → JIT**
+to change it. A Chinese walkthrough is in [外部脚本启动](EXTERNAL_JIT_ZH_CN.md).
+
+1. In Madeira's JIT settings, use **Export Madeira JIT script** and save
+   `madeira-jit.js` to Files.
+2. In StikDebug's **Scripts** page, import that file and assign it to this
+   installed Madeira app. An explicit app assignment takes precedence over
+   StikDebug's automatically selected script. Configure this device's pairing
+   and LocalDevVPN in StikDebug as usual.
+3. Start Madeira from StikDebug with that script. Return to Madeira and choose
+   the game to play. Do not stop the script before Madeira prepares its pool.
+4. Madeira allocates its JIT pool through the script, then detaches the
+   debugger automatically and continues the normal game launch.
+
+In this mode Madeira does not open StikDebug, send a replacement script, start
+the built-in helper, or run the network shortcut. **Check external script
+attachment** and Play wait up to 90 seconds for a live debugger. They do not
+treat a leftover `CS_DEBUGGED` flag alone as readiness. You can stop a wait;
+cancellation drops the pending game launch. Changing the method also cancels
+the wait, and a callback from an old wait cannot complete a new one.
+
+Run the external script before choosing the game: if StikDebug relaunches the
+app, the previous process's pending launch cannot survive. This mode still
+needs a debuggable signature and valid device pairing. It changes who starts
+the debugger, not iOS's requirements for JIT.
+
+## App-initiated methods
+
+The optional **Automatic** method uses StikDebug when iOS reports that its
 `stikdebug://` URL scheme is installed. Otherwise, it uses Built-in StikJIT.
 Madeira does not silently switch methods after a failed attempt; the error is
 shown so the pairing, VPN, or Developer Disk Image problem can be fixed.
 
 Choose a method under **Settings → JIT**, or open **JIT setup** for its guided
-setup and status. First-run setup offers three ways in, each with its own
-numbered steps: **In-app** (pair this iPhone with Madeira, iOS 27 and
+setup and status. In addition to the external-script guide, first-run setup
+offers three app-initiated ways, each with its own numbered steps: **In-app**
+(pair this iPhone with Madeira, iOS 27 and
 later) and **In-app with pairing file** both select Built-in StikJIT,
 **StikDebug** selects StikDebug, and setting it up later leaves the current
 method unchanged.
 
-**Play** enables JIT itself when it is off: it runs the same flow as **Enable
+For an app-initiated method, **Play** enables JIT itself when it is off: it runs the same flow as **Enable
 JIT** (the loopback check and the Madeira JIT shortcut included), then starts
 the game once the debugger is attached. Meanwhile the button reads **Starting
 JIT**, with a spinner, and the game's page stays open. If JIT does not come on, the usual
 error is shown and the game is not started; enabling JIT later starts nothing.
-This also covers JIT enabled from StikDebug's own list, which sets CS_DEBUGGED
-and leaves, so no debugger is attached.
+This also covers a plain attach-and-detach from StikDebug's app list. In
+external mode, select Madeira's script for that app so it keeps serving the
+pool request instead of returning immediately.
 
 ## StikDebug
 
@@ -38,8 +69,9 @@ and leaves, so no debugger is attached.
 Madeira opens StikDebug's canonical `stikdebug://enable-jit` URL with Madeira's
 bundle identifier, current process ID, and custom script. It waits up to 90
 seconds for both the `CS_DEBUGGED` flag and a live debugger connection. Enabling
-Madeira from StikDebug's own app list is not equivalent because that flow can
-detach before Madeira creates its JIT pool.
+Madeira from StikDebug's own app list without the assigned Madeira script can
+detach before Madeira creates its JIT pool. For an app-list launch, use the
+external-script route above.
 
 ## Apple Vision Pro (compatible iPad app)
 

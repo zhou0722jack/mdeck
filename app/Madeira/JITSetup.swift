@@ -7,6 +7,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 enum JITMethod: String, CaseIterable, Identifiable {
+    case externalScript
     case automatic
     case stikDebug
     case builtIn
@@ -14,6 +15,7 @@ enum JITMethod: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
+        case .externalScript: return L("External StikDebug script")
         case .automatic: return L("Automatic")
         case .stikDebug: return L("StikDebug")
         case .builtIn: return L("Built-in StikJIT")
@@ -134,12 +136,15 @@ final class JITCoordinator: ObservableObject {
         case setupRequired(String)
         case pairingMissing
         case scriptMissing
+        case externalScriptTimedOut
 
         var errorDescription: String? {
             switch self {
             case .setupRequired(let message): return message
             case .pairingMissing: return L("Pair this device or import its pairing file first.")
             case .scriptMissing: return L("Madeira's JIT script is missing from this installation. Reinstall Madeira.")
+            case .externalScriptTimedOut:
+                return L("The external script did not attach within 90 seconds. In StikDebug, assign madeira-jit.js to this Madeira installation and run it, then return to Madeira. Keep the script running until the game starts.")
             }
         }
     }
@@ -176,7 +181,17 @@ final class JITCoordinator: ObservableObject {
     }
 
     @Published var method: JITMethod {
-        didSet { UserDefaults.standard.set(method.rawValue, forKey: "madeiraJITMethod") }
+        didSet {
+            if method != oldValue {
+                cancelExternalScriptWait()
+                status = nil
+                error = nil
+                connectionProblem = nil
+                loopbackAnswered = nil
+                txmPresent = nil
+            }
+            UserDefaults.standard.set(method.rawValue, forKey: "madeiraJITMethod")
+        }
     }
     @Published private(set) var connectionProblem: ConnectionProblem?
     /// What the last loopback check found (nil: none ran). A JIT failure after it found no
@@ -185,15 +200,19 @@ final class JITCoordinator: ObservableObject {
     private var loopbackAnswered: Bool?
     @Published var showSetup = false
     @Published private(set) var busy = false
+    @Published private(set) var waitingForExternalScript = false
     @Published private(set) var status: String?
     @Published private(set) var error: String?
     @Published private(set) var txmPresent: Bool?
     @Published private(set) var pairingImported = JITPairingFileStore.isImported
     @Published private(set) var pairingSource = JITPairingFileStore.source
+    private var externalScriptTimer: Timer?
+    private var externalScriptRequestID: UUID?
+    private var externalScriptCompletions: [(Result<Void, Error>) -> Void] = []
 
     private init() {
         method = UserDefaults.standard.string(forKey: "madeiraJITMethod")
-            .flatMap(JITMethod.init(rawValue:)) ?? .automatic
+            .flatMap(JITMethod.init(rawValue:)) ?? .externalScript
     }
 
     var resolvedMethod: JITMethod {
@@ -214,18 +233,31 @@ final class JITCoordinator: ObservableObject {
 
     func enable(completion: @escaping (Result<Void, Error>) -> Void) {
         guard SigningStatus.current.debuggable else {
+            status = nil
+            error = SigningStatus.notDebuggableMessage
             completion(.failure(NSError(
                 domain: "MadeiraJIT", code: 11,
                 userInfo: [NSLocalizedDescriptionKey: SigningStatus.notDebuggableMessage])))
             return
         }
         if StikJITHelper.ready {
+            if resolvedMethod == .externalScript {
+                status = L("The external script is ready. You can start a game.")
+                error = nil
+                connectionProblem = nil
+            }
             completion(.success(()))
             return
         }
         error = nil
         status = nil
         connectionProblem = nil
+        // StikDebug owns pairing, networking and script selection in this mode.
+        // Madeira only observes its own process; it never opens another JIT route.
+        if resolvedMethod == .externalScript {
+            waitForExternalScript(completion)
+            return
+        }
         ensureLoopback(then: { [weak self] restoreOnFailure in
             self?.enableResolved { result in
                 // Nothing will hold the network open now: put back what the shortcut changed.
@@ -309,6 +341,8 @@ final class JITCoordinator: ObservableObject {
 
     private func enableResolved(_ completion: @escaping (Result<Void, Error>) -> Void) {
         switch resolvedMethod {
+        case .externalScript:
+            waitForExternalScript(completion)
         case .automatic:
             assertionFailure("Automatic must resolve to a concrete JIT method")
         case .stikDebug:
@@ -339,6 +373,57 @@ final class JITCoordinator: ObservableObject {
             }
             enableBuiltIn(completion: completion)
         }
+    }
+
+    /// Several callers may wait for the same attachment (Settings and Play).
+    /// Complete each once, before a callback can start another request.
+    private func waitForExternalScript(_ completion: @escaping (Result<Void, Error>) -> Void) {
+        externalScriptCompletions.append(completion)
+        guard !waitingForExternalScript else { return }
+        waitingForExternalScript = true
+        busy = true
+        loopbackAnswered = nil
+        let requestID = UUID()
+        externalScriptRequestID = requestID
+        status = L("Waiting for the external StikDebug script…")
+        LogStore.shared.log("[jit-external] waiting for the selected StikDebug script")
+        externalScriptTimer = StikJITHelper.waitForDebugger { [weak self] result in
+            Task { @MainActor in
+                guard let self, self.externalScriptRequestID == requestID else { return }
+                let answer = result.mapError { _ -> Error in CoordinatorError.externalScriptTimedOut }
+                self.finishExternalScriptWait(answer)
+            }
+        }
+    }
+
+    private func finishExternalScriptWait(_ result: Result<Void, Error>) {
+        guard waitingForExternalScript else { return }
+        externalScriptTimer?.invalidate()
+        externalScriptTimer = nil
+        externalScriptRequestID = nil
+        waitingForExternalScript = false
+        busy = false
+        let completions = externalScriptCompletions
+        externalScriptCompletions.removeAll()
+        switch result {
+        case .success:
+            status = L("The external script is ready. You can start a game.")
+            error = nil
+            LogStore.shared.log("[jit-external] debugger attached")
+        case .failure(let failure) where failure is CancellationError:
+            status = L("Stopped waiting for the external script.")
+            error = nil
+            LogStore.shared.log("[jit-external] wait cancelled")
+        case .failure(let failure):
+            status = nil
+            error = failure.localizedDescription
+            LogStore.shared.log("[jit-external] attachment timed out", level: .error)
+        }
+        completions.forEach { $0(result) }
+    }
+
+    func cancelExternalScriptWait() {
+        finishExternalScriptWait(.failure(CancellationError()))
     }
 
     func importPairingFile(_ source: URL) {
@@ -545,6 +630,7 @@ struct JITSettingsSection: View {
                     Text(method.title).tag(method)
                 }
             }
+            .disabled(coordinator.busy)
             Button {
                 coordinator.showSetup = true
             } label: {
@@ -561,7 +647,7 @@ struct JITSettingsSection: View {
                 Text(coordinator.automaticDescription)
                     .font(.caption).foregroundStyle(.secondary)
             }
-            if JITShortcutFile.supported, let url = JITShortcutFile.url {
+            if coordinator.method != .externalScript, JITShortcutFile.supported, let url = JITShortcutFile.url {
                 Button {
                     LogStore.shared.log("[jit-shortcut] add: iCloud link")
                     UIApplication.shared.open(JITShortcutFile.iCloudLink)
@@ -572,11 +658,67 @@ struct JITSettingsSection: View {
                     Label("No internet connection? Add local copy", systemImage: "square.and.arrow.up")
                 }
             }
-            Toggle("\(JITNetworkShortcut.name) shortcut", isOn: $shortcut.enabled)
+            if coordinator.method != .externalScript {
+                Toggle("\(JITNetworkShortcut.name) shortcut", isOn: $shortcut.enabled)
+            }
         } header: {
             Text("JIT")
         } footer: {
-            Text("When LocalDevVPN can't reach this device, Enable JIT runs your \(JITNetworkShortcut.name) shortcut: it turns Cellular Data off when there's no Wi-Fi and connects LocalDevVPN, then puts both back once the game has started. Each run opens Shortcuts for a moment.")
+            if coordinator.method == .externalScript {
+                Text("StikDebug runs the script you select. Madeira waits for its attachment and then prepares the game's JIT memory.")
+            } else {
+                Text("When LocalDevVPN can't reach this device, Enable JIT runs your \(JITNetworkShortcut.name) shortcut: it turns Cellular Data off when there's no Wi-Fi and connects LocalDevVPN, then puts both back once the game has started. Each run opens Shortcuts for a moment.")
+            }
+        }
+        if coordinator.method == .externalScript {
+            ExternalJITScriptSection()
+        }
+    }
+}
+
+/// The exported file is also the exact script used by the in-app JIT methods.
+struct ExternalJITScriptInstructions: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("1. Export madeira-jit.js and import it into StikDebug's Scripts page.")
+            Text("2. Assign madeira-jit.js to this Madeira app in StikDebug. Set up this device's pairing and LocalDevVPN there.")
+            Text("3. Run Madeira from StikDebug with that script, return here, then start your game. Madeira detaches automatically after preparing its JIT memory.")
+            if let url = StikJITHelper.scriptURL {
+                ShareLink(item: url) {
+                    Label("Export Madeira JIT script", systemImage: "square.and.arrow.up")
+                }
+            } else {
+                Text("Madeira's JIT script is missing from this installation. Reinstall Madeira.")
+                    .foregroundStyle(.red)
+            }
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+struct ExternalJITScriptSection: View {
+    @ObservedObject private var coordinator = JITCoordinator.shared
+
+    var body: some View {
+        Section {
+            ExternalJITScriptInstructions()
+            if coordinator.waitingForExternalScript {
+                HStack {
+                    ProgressView()
+                    Text("Waiting for the external StikDebug script…")
+                }
+                Button("Stop waiting", role: .cancel) { coordinator.cancelExternalScriptWait() }
+            } else {
+                Button("Check external script attachment") { coordinator.enable { _ in } }
+                    .disabled(coordinator.busy)
+            }
+            if let error = coordinator.error {
+                Text(error).foregroundStyle(.red)
+            } else if let status = coordinator.status {
+                Text(status).foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("External StikDebug script")
         }
     }
 }
@@ -604,21 +746,30 @@ struct JITSetupView: View {
                             Text(method.title).tag(method)
                         }
                     }
+                    .disabled(coordinator.busy)
                     if coordinator.method == .automatic {
                         Text(coordinator.automaticDescription)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     LabeledContent("StikDebug",
                                    value: StikJITHelper.isAvailable ? L("Installed") : L("Not detected"))
-                    LabeledContent("Built-in helper",
-                                   value: MadeiraBuiltInJIT.isAvailable ? "Available" : "Unavailable")
+                    if coordinator.method != .externalScript {
+                        LabeledContent("Built-in helper",
+                                       value: MadeiraBuiltInJIT.isAvailable ? "Available" : "Unavailable")
+                    }
                 } header: {
                     Text("JIT method")
                 } footer: {
-                    Text("Automatic uses StikDebug when it is installed. Madeira does not silently change methods after a failure.")
+                    if coordinator.method == .externalScript {
+                        Text("StikDebug runs the script you select. Madeira waits for its attachment and then prepares the game's JIT memory.")
+                    } else {
+                        Text("Automatic uses StikDebug when it is installed. Madeira does not silently change methods after a failure.")
+                    }
                 }
 
-                if coordinator.method != .stikDebug {
+                if coordinator.method == .externalScript {
+                    ExternalJITScriptSection()
+                } else if coordinator.method != .stikDebug {
                     Section {
                         LabeledContent("Pairing", value: pairingLabel)
                         if OnDevicePairing.isSupported {
@@ -662,17 +813,17 @@ struct JITSetupView: View {
                     }
                 }
 
-                if coordinator.busy {
+                if coordinator.method != .externalScript, coordinator.busy {
                     Section { HStack { ProgressView(); Text(coordinator.status ?? L("Working…")) } }
-                } else if let error = coordinator.error {
+                } else if coordinator.method != .externalScript, let error = coordinator.error {
                     Section {
                         Label(error, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red)
                         if let problem = coordinator.connectionProblem { jitConnectionActions(problem) }
                     }
-                } else if let status = coordinator.status {
+                } else if coordinator.method != .externalScript, let status = coordinator.status {
                     Section { Label(status, systemImage: "checkmark.circle.fill").foregroundStyle(.green) }
                 }
-                if let txm = coordinator.txmPresent {
+                if coordinator.method != .externalScript, let txm = coordinator.txmPresent {
                     Section { LabeledContent("TXM/SPTM", value: txm ? L("Present") : L("Not present")) }
                 }
             }

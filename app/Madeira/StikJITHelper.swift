@@ -29,8 +29,12 @@ enum StikJITHelper {
 
     /// The script in Copy Bundle Resources is the single source used by both
     /// StikDebug and Built-in StikJIT.
+    static var scriptURL: URL? {
+        Bundle.main.url(forResource: "madeira-jit", withExtension: "js")
+    }
+
     static var scriptData: Data? {
-        guard let url = Bundle.main.url(forResource: "madeira-jit", withExtension: "js") else { return nil }
+        guard let url = scriptURL else { return nil }
         return try? Data(contentsOf: url)
     }
 
@@ -114,9 +118,9 @@ enum StikJITHelper {
     /// Why the last allocatePool() returned nil, in words for the person playing
     /// (the library shows it); nil after a success.
     private(set) static var poolFailure: String?
-    static let noDebuggerMessage = "JIT is switched on, but StikDebug is not attached to Madeira, so the JIT memory cannot "
-        + "be set up. This happens when JIT is enabled from StikDebug's own app list. Tap Enable JIT: StikDebug then "
-        + "reopens Madeira with Madeira's script, ready to play."
+    static var noDebuggerMessage: String {
+        L("JIT is enabled, but the debugger is not attached and Madeira's JIT memory is not ready. Run madeira-jit.js for this app in StikDebug, or use an in-app JIT method, then try again.")
+    }
 
     /// This app run's pool exists. The debugger detaches right after the pool is
     /// made, by design, so from then on "no debugger attached" is the normal state.

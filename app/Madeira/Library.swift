@@ -3311,6 +3311,8 @@ struct LibraryView: View {
     }
     @State private var browser = false
     @State private var selected: LibraryEntry?
+    @State private var steamClientPresented = false
+    @State private var pendingSteamClientLaunch: LibraryEntry?
     @State private var search = ""
     /// The Settings tab's own search text, kept apart from the library's.
     @State private var settingsSearch = ""
@@ -3398,6 +3400,17 @@ struct LibraryView: View {
         .toolbar {
             LibraryLargeTitle()
             if tab == 0 { libraryToolbar } else { settingsToolbar }
+        }
+        .sheet(isPresented: $steamClientPresented, onDismiss: {
+            if let entry = pendingSteamClientLaunch {
+                pendingSteamClientLaunch = nil
+                play(entry)
+            }
+        }) {
+            SteamClientView { entry in
+                pendingSteamClientLaunch = entry
+                steamClientPresented = false
+            }
         }
         // On the tab view, not inside one tab's page: an alert attached to the Library
         // page cannot present while Settings is showing, so an error raised there (its
@@ -3745,6 +3758,14 @@ struct LibraryView: View {
                 .animation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.4), value: liquidMetal.on)
                 .id(LibraryEntry.desktopID)
                 .overlay(RoundedRectangle(cornerRadius: 22).stroke(focused == LibraryEntry.desktopID && controller.connected ? Color.cyan : .clear, lineWidth: 3))
+            Button { steamClientPresented = true } label: {
+                Label("Steam", systemImage: "play.circle")
+                    .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(model.current != nil || model.launching)
+            .accessibilityHint("Install or start the Windows Steam client")
             // ml2021: Valve's client in Big Picture, beside the Desktop, once Steam is installed in the prefix;
             // only in builds with MADEIRA_BIG_PICTURE_UI (LibraryEntry.bigPictureShown).
 #if MADEIRA_BIG_PICTURE_UI

@@ -84,6 +84,8 @@
 		A100060D /* SwiftSteam/Library/SteamLibraryFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = A200060D /* SteamLibraryFetcher.swift */; };
 		A1000522 /* SteamKeyValues.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000522 /* SteamKeyValues.swift */; };
 		A1000523 /* SteamRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000523 /* SteamRuntime.swift */; };
+		9F580A013E294829B675A101 /* SteamClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F580A013E294829B675A201 /* SteamClient.swift */; };
+		9F580A013E294829B675A102 /* BundledInstallers in Resources */ = {isa = PBXBuildFile; fileRef = 9F580A013E294829B675A202 /* BundledInstallers */; };
 		A1000524 /* DockInstallers.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000524 /* DockInstallers.swift */; };
 		A1000542 /* DockStartProgram.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000542 /* DockStartProgram.swift */; };
 		A1000913 /* DockReset.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000913 /* DockReset.swift */; };
@@ -368,6 +370,8 @@
 		A200060D /* SteamLibraryFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SwiftSteam/Library/SteamLibraryFetcher.swift"; sourceTree = "<group>"; };
 		A2000522 /* SteamKeyValues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamKeyValues.swift"; sourceTree = "<group>"; };
 		A2000523 /* SteamRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamRuntime.swift"; sourceTree = "<group>"; };
+		9F580A013E294829B675A201 /* SteamClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SteamClient.swift"; sourceTree = "<group>"; };
+		9F580A013E294829B675A202 /* BundledInstallers */ = {isa = PBXFileReference; lastKnownFileType = folder; path = "BundledInstallers"; sourceTree = "<group>"; };
 		A2000524 /* DockInstallers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DockInstallers.swift"; sourceTree = "<group>"; };
 		A2000542 /* DockStartProgram.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DockStartProgram.swift"; sourceTree = "<group>"; };
 		A2000913 /* DockReset.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DockReset.swift; sourceTree = "<group>"; };
@@ -697,6 +701,8 @@
 				A200060D /* SteamLibraryFetcher.swift */,
 				A2000522 /* SteamKeyValues.swift */,
 				A2000523 /* SteamRuntime.swift */,
+				9F580A013E294829B675A201 /* SteamClient.swift */,
+				9F580A013E294829B675A202 /* BundledInstallers */,
 				A2000524 /* DockInstallers.swift */,
 				A2000542 /* DockStartProgram.swift */,
 				A2000913 /* DockReset.swift */,
@@ -1019,6 +1025,7 @@
 				A1009C03 /* Localizable.xcstrings in Resources */,
 				A1000910 /* Assets.xcassets in Resources */,
 				B1000004 /* madeira-jit.js in Resources */,
+				9F580A013E294829B675A102 /* BundledInstallers in Resources */,
 				B100CA02 /* Give-to-Claude-with-log-and-cfg.txt in Resources */,
 				B1000051 /* Madeira JIT.shortcut in Resources */,
 			);
@@ -1163,6 +1170,7 @@
 				A100060D /* SwiftSteam/Library/SteamLibraryFetcher.swift in Sources */,
 				A1000522 /* SteamKeyValues.swift in Sources */,
 				A1000523 /* SteamRuntime.swift in Sources */,
+				9F580A013E294829B675A101 /* SteamClient.swift in Sources */,
 				A1000524 /* DockInstallers.swift in Sources */,
 				A1000542 /* DockStartProgram.swift in Sources */,
 				A1000913 /* DockReset.swift in Sources */,
@@ -1355,7 +1363,7 @@
 				CODE_SIGN_ENTITLEMENTS = Madeira/Madeira.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
@@ -1407,7 +1415,7 @@
 				"OTHER_LDFLAGS[sdk=iphoneos*]" = ("$(inherited)", "$(MADEIRA_VULKAN_LDFLAGS)");
 				CODE_SIGN_ENTITLEMENTS = Madeira/Madeira.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				GENERATE_INFOPLIST_FILE = NO;
 				HEADER_SEARCH_PATHS = (
@@ -1457,7 +1465,7 @@
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/Frameworks/StikJIT.xcframework/ios-arm64";
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1488,7 +1496,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEVELOPMENT_TEAM = V8NU3FX3TL;
 				"FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]" = "$(SRCROOT)/Frameworks/StikJIT.xcframework/ios-arm64";
 				GENERATE_INFOPLIST_FILE = NO;

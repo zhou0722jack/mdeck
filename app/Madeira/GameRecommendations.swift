@@ -1271,6 +1271,12 @@ enum GameRecommendations {
         guard let last = parts.last else { return nil }
         let steamFolder = steamCommonFolder(parts)
         if last == "big-picture.bat" { return steamBigPicture }   // ml2021: the library's Big Picture entry
+        // The bundled installer and interactive client use the existing Steam
+        // memory profile, independently of the pinned Madeira Dock runtime.
+        if parts == ["c:", "madeira", "installers", "steamsetup.exe"]
+            || parts == ["c:", "program files", "steam client", "steam.exe"] {
+            return steamBigPicture
+        }
         guard last.hasSuffix(".exe") else {
             // A library Steam game: its App ID, or its install folder right under
             // steamapps\common (not a batch file inside it).

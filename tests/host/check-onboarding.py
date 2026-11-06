@@ -49,6 +49,8 @@ def block(text, header):
 
 
 onboarding = (app / 'Onboarding.swift').read_text()
+# Structural checks inspect the labels; the production views localize them.
+onboarding = re.sub(r'\bL\(("(?:[^"\\]|\\.)*")\)', r'\1', onboarding)
 library = (app / 'Library.swift').read_text()
 content = (app / 'ContentView.swift').read_text()
 project = (root / 'app/Madeira.xcodeproj/project.pbxproj').read_text()
@@ -111,11 +113,16 @@ require('secondary("Skip setup") { model.skip() }' in block(view, 'private var w
 jit_page = block(view, 'private var jitPage')
 choices = block(view, 'private var jitChoices')
 require(all(f'case .{path}: {guide}' in jit_page for path, guide in
-            [('onDevice', 'onDeviceGuide'), ('pairingFile', 'pairingFileGuide'), ('stikDebug', 'stikDebugGuide')]),
-        'JIT: each of the three ways in has its own guide')
-require(all(f'jitChoice("{title}"' in choices for title in ['In-app', 'In-app with pairing file', 'StikDebug'])
+            [('externalScript', 'externalScriptGuide'), ('onDevice', 'onDeviceGuide'), ('pairingFile', 'pairingFileGuide'), ('stikDebug', 'stikDebugGuide')]),
+        'JIT: the external script and each app-initiated method have their own guide')
+require(all(f'jitChoice("{title}"' in choices for title in ['External StikDebug script', 'In-app', 'In-app with pairing file', 'StikDebug'])
         and 'enabled: OnDevicePairing.isSupported' in choices,
-        'JIT: In-app (iOS 27), In-app with pairing file, StikDebug')
+        'JIT: external script, In-app (iOS 27), In-app with pairing file, StikDebug')
+external_guide = block(view, 'private var externalScriptGuide')
+require('ExternalJITScriptInstructions()' in external_guide
+        and 'jit.method = .externalScript' in external_guide
+        and 'model.next()' in external_guide and 'finishJIT()' not in external_guide,
+        'the external guide selects the external mode without enabling the network shortcut')
 on_device = block(view, 'private var onDeviceGuide')
 require('startPairing()' in on_device and 'OnDevicePairingPanel()' in on_device
         and 'pairing.start()' in block(view, 'private func startPairing'),
@@ -191,6 +198,10 @@ require('MADEIRA_ONBOARDING' in docs and '## First-run setup' in docs,
         'docs/LIBRARY.md documents setup and its switch')
 
 # ------------------------------------------------------------------ compiled rules
+if '--static-only' in sys.argv:
+    print('PASS: static onboarding checks' if failures == 0 else f'{failures} static failure(s)')
+    sys.exit(0 if failures == 0 else 1)
+
 checks = r'''
 import Foundation
 @main struct Checks {

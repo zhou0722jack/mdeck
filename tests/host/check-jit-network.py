@@ -8,7 +8,7 @@ no device runs.
    to, which is how a network that accepts any connection is ruled out) and the
    connection step (a listening port connects in milliseconds, a closed port fails at
    once).
-2. Source checks: Enable JIT checks the loopback before any JIT method and runs the
+2. Source checks: App-initiated JIT checks the loopback and runs the
    shortcut only when it does not answer and the shortcut is turned on; "start" asks for
    the cellular step only when Madeira sees cellular data without Wi-Fi, and "done" undoes
    only what "start" changed; the restore runs after the debugger detached and before
@@ -43,7 +43,11 @@ require('static let address = "10.7.0.1"' in net and 'static let port: UInt16 = 
         "the check targets lockdownd through LocalDevVPN's loopback (10.7.0.1:62078, StikDebug's address)")
 enable = setup[setup.index('    func enable(completion:'):setup.index('    private func enableResolved(')]
 require(enable.index('ensureLoopback') < enable.index('self?.enableResolved'),
-        'Enable JIT checks the loopback before any JIT method')
+        'app-initiated JIT checks the loopback before its selected method')
+external = enable[enable.index('if resolvedMethod == .externalScript {', enable.index('connectionProblem = nil')):
+                  enable.index('ensureLoopback')]
+require('waitForExternalScript(completion)' in external and 'return' in external,
+        'external-script mode leaves network preparation to StikDebug')
 ensure = enable[enable.index('private func ensureLoopback('):]
 require('guard let self, !probe.reachable, JITNetworkShortcut.shared.enabled else { proceed(false); return }' in ensure,
         'the shortcut runs only when the loopback does not answer and the shortcut is turned on')
@@ -76,12 +80,12 @@ require('Bundle.main.url(forResource: "Madeira JIT", withExtension: "shortcut")'
         and 'static let name = "Madeira JIT"' in net,
         "the file's name is the shortcut's name Madeira runs (Shortcuts names an import after its file)")
 require('OperatingSystemVersion(majorVersion: 27, minorVersion: 0, patchVersion: 0)' in net
-        and 'if JITShortcutFile.supported, let url = JITShortcutFile.url {' in setup,
-        'the shortcut is offered on iOS 27 or later only (it uses Store Content)')
+        and 'coordinator.method != .externalScript, JITShortcutFile.supported, let url = JITShortcutFile.url {' in setup,
+        'the network shortcut is offered on iOS 27 or later, outside external-script mode')
 shortcut_page = onboarding[onboarding.index('private var shortcutPage'):onboarding.index('private var signInPage')]
 require('case .shortcut: shortcutPage' in onboarding and 'JITShortcutOffer' not in onboarding
         and onboarding.count('finishJIT()') == 3 and 'jitPath = .shortcut' in onboarding,
-        "setup offers it on its own page after any of the three JIT guides, so the guides fit on one screen")
+        "setup offers it after the three app-initiated JIT guides; the external guide skips it")
 require('UIApplication.shared.open(JITShortcutFile.iCloudLink)' in shortcut_page and 'ShareLink(item: url)' in shortcut_page
         and 'UIApplication.shared.open(JITShortcutFile.iCloudLink)' in setup and 'ShareLink(item: url)' in setup,
         "setup's page and Settings › JIT add it from its iCloud link (straight to Add Shortcut), "
@@ -93,6 +97,10 @@ require("Keychain" in onboarding and "stays in Madeira's Documents folder" not i
         "setup no longer says the pairing file is in Documents")
 
 # ------------------------------------------------------------------ Swift
+if '--static-only' in sys.argv:
+    print('PASS: static JIT network checks' if failures == 0 else f'{failures} static failure(s)')
+    sys.exit(0 if failures == 0 else 1)
+
 probe = net[net.index('enum LoopbackProbe {'):net.index('/// The user\'s "Madeira JIT" shortcut')]
 probe = probe.replace('static let address = "10.7.0.1"', 'static var address = "10.7.0.1"') \
              .replace('static let port: UInt16 = 62078', 'static var port: UInt16 = 62078')

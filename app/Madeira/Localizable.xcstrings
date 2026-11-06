@@ -1,6 +1,127 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Steam installer": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 安装程序"
+          }
+        }
+      }
+    },
+    "Start Steam": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动 Steam"
+          }
+        }
+      }
+    },
+    "Run Steam installer": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行 Steam 安装程序"
+          }
+        }
+      }
+    },
+    "Install Steam first, then use Start Steam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请先安装 Steam，然后点击“启动 Steam”。"
+          }
+        }
+      }
+    },
+    "The bundled Steam installer is missing or damaged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "内置 Steam 安装程序缺失或已损坏。"
+          }
+        }
+      }
+    },
+    "The Steam installer folder must stay inside Madeira's drive_c.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 安装程序目录必须位于 Madeira 的 drive_c 内。"
+          }
+        }
+      }
+    },
+    "The official Windows installer is included. It needs an internet connection to download the Steam client. Complete installation in the Wine desktop, keeping the suggested folder, then return here to start Steam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已内置官方 Windows 安装程序，安装时需要联网下载 Steam 客户端。请在 Wine 桌面中保留建议的目录并完成安装，再回到这里启动 Steam。"
+          }
+        }
+      }
+    },
+    "Steam client folder": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 客户端目录"
+          }
+        }
+      }
+    },
+    "This folder is separate from Madeira Dock's pinned Steam components. Do not select Madeira Dock's Steam folder in the installer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此目录与 Madeira Dock 的固定版本 Steam 组件分开。安装时请勿选择 Madeira Dock 的 Steam 目录。"
+          }
+        }
+      }
+    },
+    "Starting the installer or Steam uses the same JIT setup as a game. In external script mode, run Madeira's script in StikDebug first. Steam compatibility on this device still needs testing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行安装程序和 Steam 与启动游戏使用相同的 JIT 流程。使用外部脚本模式时，请先在 StikDebug 中运行 Madeira 脚本。Steam 在此设备上的兼容性仍需测试。"
+          }
+        }
+      }
+    },
+    "Install or start the Windows Steam client": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装或启动 Windows 版 Steam 客户端"
+          }
+        }
+      }
+    },
     "%@ Workshop": {
       "localizations": {
         "de": {
@@ -54346,6 +54467,171 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的 Apple ID 登录凭据"
+          }
+        }
+      }
+    },
+    "External StikDebug script": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外部 StikDebug 脚本"
+          }
+        }
+      }
+    },
+    "The external script did not attach within 90 seconds. In StikDebug, assign madeira-jit.js to this Madeira installation and run it, then return to Madeira. Keep the script running until the game starts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外部脚本未在 90 秒内附加。请在 StikDebug 中为当前安装的 Madeira 指定 madeira-jit.js 并运行，再返回 Madeira。开始游戏前请保持脚本运行。"
+          }
+        }
+      }
+    },
+    "The external script is ready. You can start a game.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外部脚本已就绪，可以开始游戏。"
+          }
+        }
+      }
+    },
+    "Waiting for the external StikDebug script…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待外部 StikDebug 脚本…"
+          }
+        }
+      }
+    },
+    "Stopped waiting for the external script.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已停止等待外部脚本。"
+          }
+        }
+      }
+    },
+    "StikDebug runs the script you select. Madeira waits for its attachment and then prepares the game's JIT memory.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "由 StikDebug 运行你指定的脚本。Madeira 等待脚本附加，再准备游戏所需的 JIT 内存。"
+          }
+        }
+      }
+    },
+    "1. Export madeira-jit.js and import it into StikDebug's Scripts page.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1. 导出 madeira-jit.js，并在 StikDebug 的“脚本”页面导入。"
+          }
+        }
+      }
+    },
+    "2. Assign madeira-jit.js to this Madeira app in StikDebug. Set up this device's pairing and LocalDevVPN there.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2. 在 StikDebug 中为当前 Madeira 指定 madeira-jit.js，并配置此设备的配对文件和 LocalDevVPN。"
+          }
+        }
+      }
+    },
+    "3. Run Madeira from StikDebug with that script, return here, then start your game. Madeira detaches automatically after preparing its JIT memory.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3. 从 StikDebug 使用该脚本运行 Madeira，返回后再开始游戏。JIT 内存准备完成后，Madeira 会自动解除附加。"
+          }
+        }
+      }
+    },
+    "Export Madeira JIT script": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出 Madeira JIT 脚本"
+          }
+        }
+      }
+    },
+    "Stop waiting": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "停止等待"
+          }
+        }
+      }
+    },
+    "Check external script attachment": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "检查外部脚本附加状态"
+          }
+        }
+      }
+    },
+    "Run Madeira's script from StikDebug, then return here to play.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 StikDebug 中运行 Madeira 脚本，再返回开始游戏。"
+          }
+        }
+      }
+    },
+    "Use external script mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用外部脚本模式"
+          }
+        }
+      }
+    },
+    "JIT is enabled, but the debugger is not attached and Madeira's JIT memory is not ready. Run madeira-jit.js for this app in StikDebug, or use an in-app JIT method, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JIT 标志已开启，但调试器未附加，Madeira 的 JIT 内存尚未准备好。请在 StikDebug 中为此应用运行 madeira-jit.js，或选择应用内 JIT 方式，然后重试。"
           }
         }
       }

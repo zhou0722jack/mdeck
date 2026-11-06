@@ -58,8 +58,11 @@ require(("jit_check_debugged()" in ready or "SigningStatus.current.debugged" in 
         and "isDebuggerAttached()" in ready,
         "readiness requires CS_DEBUGGED and a live debugger")
 
-# Automatic selection is deterministic: installed StikDebug first, otherwise
-# the built-in helper. A failure never silently falls through to another method.
+# New installs use an externally selected script. Existing choices remain valid;
+# Automatic still resolves deterministically and never falls through on failure.
+initializer = function(setup, "private init()")
+require(".flatMap(JITMethod.init(rawValue:)) ?? .externalScript" in initializer,
+        "new installs default to an external script; saved JIT methods are preserved")
 resolved = function(setup, "var resolvedMethod: JITMethod")
 require("StikJITHelper.isAvailable ? .stikDebug : .builtIn" in resolved,
         "Automatic prefers installed StikDebug, then Built-in StikJIT")
@@ -69,7 +72,34 @@ require("ensureLoopback" in coordinator_enable and "self?.enableResolved" in coo
         and "switch resolvedMethod" in coordinator_route
         and "enableBuiltIn(completion: completion)" in coordinator_route
         and setup.count("StikJITHelper.enableJIT") == 1,
-        "the coordinator routes each selected JIT method once, after the loopback check")
+        "app-initiated methods retain their loopback check and selected route")
+external = coordinator_enable[coordinator_enable.index("if resolvedMethod == .externalScript {", coordinator_enable.index("connectionProblem = nil")):
+                              coordinator_enable.index("ensureLoopback")]
+require("waitForExternalScript(completion)" in external and "return" in external,
+        "external mode waits before the network check, without opening a JIT app or shortcut")
+external_wait = function(setup, "private func waitForExternalScript(")
+for forbidden in ["UIApplication", "ensureLoopback", "prepareBuiltIn", "enableBuiltIn",
+                  "StikJITHelper.enableJIT", "JITNetworkShortcut", "JITPairingFileStore"]:
+    require(forbidden not in external_wait, f"external wait does not invoke {forbidden}")
+require("StikJITHelper.waitForDebugger" in external_wait
+        and "guard !waitingForExternalScript else { return }" in external_wait
+        and "externalScriptCompletions.append(completion)" in external_wait,
+        "Settings and Play share one live-debugger wait")
+require("self.externalScriptRequestID == requestID" in external_wait,
+        "a late callback from a cancelled wait cannot complete a newer request")
+external_finish = function(setup, "private func finishExternalScriptWait(")
+require("externalScriptTimer?.invalidate()" in external_finish
+        and "externalScriptRequestID = nil" in external_finish
+        and external_finish.index("externalScriptCompletions.removeAll()") < external_finish.index("completions.forEach"),
+        "completion invalidates the timer and consumes all waiters before calling them")
+require("CancellationError()" in function(setup, "func cancelExternalScriptWait()")
+        and "cancelExternalScriptWait()" in setup[setup.index("@Published var method:"):setup.index("@Published private(set) var connectionProblem")],
+        "cancelling or changing method abandons an external wait")
+require("failure is CancellationError" in function(content, "private func enableJIT()"),
+        "cancellation clears a queued game without showing a JIT failure")
+require("ShareLink(item: url)" in function(setup, "struct ExternalJITScriptInstructions: View")
+        and "StikJITHelper.scriptURL" in setup,
+        "the external guide exports the same bundled script used by app-initiated JIT")
 require("JITSetupView()" in content and "JITSettingsSection()" in library,
         "JIT setup is reachable from the main flow and Settings")
 require('dictionary["public_key"]' in setup

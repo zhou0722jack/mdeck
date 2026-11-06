@@ -13,6 +13,12 @@ ConfigCatalog.generated.swift 保留英文源文案与配置值，以便继续�
 上游更新；界面展示对应的中文说明，搜索同时支持中文和原始配置键。
 上游已有的其他语言翻译保留。
 
+外部 JIT 脚本模式的设置与启动顺序见
+[从 StikDebug 脚本启动 Madeira](EXTERNAL_JIT_ZH_CN.md)。
+
+游戏库顶部的 Steam 入口、安装与启动按钮、目录提示和错误已汉化，见
+[内置 Steam 安装程序](BUNDLED_STEAM_ZH_CN.md)。
+
 ## 验证
 
 在具有 Xcode 的 Mac 上运行：

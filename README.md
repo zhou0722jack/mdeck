@@ -13,6 +13,9 @@
 Madeira runs Windows PC games on an iPhone, with no jailbreak. Games run as they
 are, unmodified, inside a single iOS app.
 
+本 fork 的游戏库提供内置 Steam 安装程序及“启动 Steam”入口，使用说明和
+验证范围见[内置 Steam 安装程序](docs/BUNDLED_STEAM_ZH_CN.md)。
+
 > [!NOTE]
 > Madeira is an active research project. Many games start and some play well,
 > but performance and compatibility vary from game to game, and things change
@@ -69,9 +72,11 @@ Because JIT needs a debugger, Madeira cannot be offered on the App Store.
 1. Download the IPA from the [latest release](https://github.com/willfaust/Madeira/releases).
 2. Sideload it with your own Apple ID using SideStore, AltStore, Sideloadly,
    Plume or a similar tool.
-3. Open Madeira and enable JIT. Automatic mode uses StikDebug when installed,
-   otherwise it guides you through the built-in setup; see
-   [JIT setup](docs/JIT.md).
+3. Open Madeira and export its JIT script. Import and assign it to Madeira in
+   StikDebug, then launch Madeira with that script before starting a game.
+   New installs default to this external-script mode; app-initiated methods
+   remain available in Settings. See [JIT setup](docs/JIT.md) or
+   [外部脚本启动](docs/EXTERNAL_JIT_ZH_CN.md).
 4. In **Settings**, check that **JIT** and **Memory+** both show a green check:
    Madeira then says **Ready to play**.
 5. Add a game. Steam games come from **Sign in to Steam** in the library. For

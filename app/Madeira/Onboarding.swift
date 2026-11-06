@@ -17,8 +17,8 @@ import UniformTypeIdentifiers
 // revision this device last saw are shown. Every step can be skipped. Settings › JIT or
 // Settings › Steam can reopen it in full. env.MADEIRA_ONBOARDING = 0 never opens it.
 //
-// The JIT page offers three ways in (in-app pairing on iOS 27, a pairing
-// file from a computer, StikDebug), each with its own numbered steps. It stores
+// The JIT page offers an external script plus three in-app ways (on-device
+// pairing, a pairing file from a computer, StikDebug), each with its own guide. It stores
 // only the chosen method and, when selected, pairs on this device through
 // OnDevicePairing or imports the pairing file through JITCoordinator.
 // Sign-in goes through SteamSignIn (the
@@ -220,7 +220,7 @@ struct OnboardingView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     enum JITSetupPath: String {
-        case onDevice = "in-app", pairingFile = "pairing-file", stikDebug = "stikdebug"
+        case externalScript = "external-script", onDevice = "in-app", pairingFile = "pairing-file", stikDebug = "stikdebug"
         /// After a way in is set up (iOS 27): the Madeira JIT shortcut, on its own page.
         case shortcut
     }
@@ -366,7 +366,7 @@ struct OnboardingView: View {
         }
     }
 
-    // JIT: pick one of three ways in, then follow its numbered steps.
+    // JIT: choose an external script or one of the in-app methods.
 
     private var pairedOnDevice: Bool { jit.pairingImported && jit.pairingSource == .onDevice }
     private var fileImported: Bool { jit.pairingImported && jit.pairingSource == .imported }
@@ -374,6 +374,7 @@ struct OnboardingView: View {
     @ViewBuilder private var jitPage: some View {
         switch jitPath {
         case nil: jitChoices
+        case .externalScript: externalScriptGuide
         case .onDevice: onDeviceGuide
         case .pairingFile: pairingFileGuide
         case .stikDebug: stikDebugGuide
@@ -386,6 +387,9 @@ struct OnboardingView: View {
             header(L("Set up JIT"), symbol: "bolt.fill")
             Text("JIT lets Madeira run Windows code. Choose how your \(device) gets it.")
             VStack(spacing: 12) {
+                jitChoice(L("External StikDebug script"), symbol: "doc.text",
+                          detail: L("Run Madeira's script from StikDebug, then return here to play."),
+                          done: jit.method == .externalScript) { choose(.externalScript) }
                 jitChoice("In-app", symbol: "iphone.radiowaves.left.and.right",
                           detail: !OnDevicePairing.isSupported ? L("Needs iOS 27 or later.")
                               : pairedOnDevice ? LF("Paired on this %@.", String(describing: (device)))
@@ -399,6 +403,18 @@ struct OnboardingView: View {
                           done: jit.method == .stikDebug) { choose(.stikDebug) }
             }
             secondary(L("I'll do this later")) { model.next() }
+        }
+    }
+
+    private var externalScriptGuide: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header(L("External StikDebug script"), symbol: "doc.text")
+            ExternalJITScriptInstructions()
+            primary(L("Use external script mode"), symbol: "arrow.right") {
+                jit.method = .externalScript
+                model.next()
+            }
+            secondary(L("Back to options")) { leaveGuide() }
         }
     }
 

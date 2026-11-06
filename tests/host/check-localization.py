@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Check Chinese coverage, format arguments and the real compiled string bundle."""
 import json
+import argparse
 import os
 from pathlib import Path
 import plistlib
@@ -9,6 +10,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--static-only", action="store_true",
+                    help="Check source/catalog consistency without invoking Xcode or Swift.")
+args = parser.parse_args()
 
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / "app/Madeira"
@@ -71,6 +77,10 @@ for match in re.finditer(r'\b(?:point|header|primary|secondary)\(\s*(?:\d+\s*,\s
     assert key in strings, f"Onboarding helper: missing {key}"
     chinese(key)
 print("PASS: onboarding helper titles, steps and linked instructions are translated")
+
+if args.static_only:
+    print("SKIP: Xcode compilation and runtime bundle checks (--static-only)")
+    sys.exit(0)
 
 if sys.platform != "darwin":
     print("SKIP: compiled Apple bundle check requires Xcode on macOS")
