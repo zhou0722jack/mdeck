@@ -39,6 +39,9 @@ args = parser.parse_args()
 root = Path(__file__).resolve().parents[2]
 app = root / 'app/Madeira'
 lists_src = (app / 'GameRecommendations.swift').read_text()
+# Structural checks inspect the underlying labels; the host fixture below still
+# compiles the actual localized production files and exercises their behavior.
+lists_src = re.sub(r'\bL\(("(?:[^"\\]|\\.)*")\)', r'\1', lists_src)
 apply_src = (app / 'GameRecommendationsApply.swift').read_text()
 library = (app / 'Library.swift').read_text()
 prefs = (app / 'LibraryPrefs.swift').read_text()
@@ -56,7 +59,7 @@ def block(source, start, end):
 # The lists, as Swift sees them: the multi-line literal loses its closing
 # delimiter's indentation.
 presets = {}
-for m in re.finditer(r'static let (\w+) = GameRecommendation\(\n\s*id: "([^"]+)", title: "([^"]+)", version: (\d+),\n'
+for m in re.finditer(r'static let (\w+) = GameRecommendation\(\n\s*id: "([^"]+)", title: (?:L\()?"([^"]+)"\)?, version: (\d+),\n'
                      r'\s*config: """\n(.*?)\n( *)"""(?:,\n(.*?))?\)\n', lists_src, re.S):
     name, ident, title, version, body, indent, switches = m.groups()
     # Swift's escape for a backslash is the only one the lists use (.be\\vc_redist).
@@ -989,7 +992,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-recommended-') as directory:
         (temporary / 'configs').mkdir()
         binary = temporary / 'recommended'
         subprocess.run([compiler, str(app / 'GameRecommendations.swift'), str(app / 'GameRecommendationsApply.swift'),
-                        str(temporary / 'Stubs.swift'), str(temporary / 'main.swift'), '-o', str(binary)], check=True)
+                        str(app / 'Localization.swift'), str(temporary / 'Stubs.swift'), str(temporary / 'main.swift'), '-o', str(binary)], check=True)
         env = dict(os.environ, MADEIRA_TEST_DRIVE=str(temporary / 'drive'), MADEIRA_TEST_CONFIGS=str(temporary / 'configs'))
         subprocess.run([str(binary)], check=True, env=env)
     elif args.require_swift:

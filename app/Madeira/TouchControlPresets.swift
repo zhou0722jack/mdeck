@@ -110,7 +110,7 @@ struct ControlPresetScreen: Equatable {
 
 enum ControlPresetLayout {
     static let xboxID = "builtin.xbox"
-    static let xboxName = "Xbox controller"
+    static let xboxName = L("Xbox controller")
     /// Mirrors `TouchControlsModel.baseDiameter`.
     static let baseDiameter = 64.0
 

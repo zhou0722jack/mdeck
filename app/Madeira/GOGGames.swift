@@ -85,7 +85,7 @@ struct GOGGamesSection: View {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if gog.signedIn && !gog.refreshing && others.isEmpty && search.isEmpty {
                     Text(gog.libraryUpdated == nil ? L("Pull down to load your GOG library.")
-                         : "No Windows games were found in this GOG library.").foregroundStyle(.secondary)
+                         : L("No Windows games were found in this GOG library.")).foregroundStyle(.secondary)
                 }
                 if gog.signedIn && !others.isEmpty {
                     Button {

@@ -95,7 +95,7 @@ struct WineGeckoPin {
             var values = URLResourceValues(); values.isExcludedFromBackup = true
             var url = root; try url.setResourceValues(values)
         } catch {
-            fail("Could not prepare the Wine Gecko folder: \(error.localizedDescription)"); return
+            fail(LF("Could not prepare the Wine Gecko folder: %@", String(describing: (error.localizedDescription)))); return
         }
         queue = Self.missing
         count = queue.count
@@ -170,7 +170,7 @@ struct WineGeckoPin {
             }
             log("automatic download not done: \(message)")
         } else {
-            fail("The download failed: \(message)")
+            fail(LF("The download failed: %@", String(describing: (message))))
         }
     }
 

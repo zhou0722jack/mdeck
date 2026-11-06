@@ -581,7 +581,7 @@ struct SteamGamesSection: View {
                         }
                     } else if signedIn && !steam.refreshing && groups.notInstalled.isEmpty && search.isEmpty {
                         Text(steam.libraryUpdated == nil ? L("Pull down to load your Steam library.")
-                             : "No Windows games were found in this Steam library.").foregroundStyle(.secondary)
+                             : L("No Windows games were found in this Steam library.")).foregroundStyle(.secondary)
                     }
                     }
                     if part != .installed && signedIn && !groups.notInstalled.isEmpty {
@@ -900,7 +900,7 @@ struct SteamDownloadStatus: View {
         guard case .active = download.state, p.phase == .downloading else { return nil }
         if let pc = p.pcName {
             if p.pcDropped { return Label(LF("From Steam's servers (%@ stopped answering)", String(describing: (pc))), systemImage: "cloud") }
-            let sent = p.pcBytes > 0 ? " · \(formatBytes(Int64(p.pcBytes))) so far" : ""
+            let sent = p.pcBytes > 0 ? LF(" · %@ so far", String(describing: (formatBytes(Int64(p.pcBytes))))) : ""
             return Label(LF("From %@ on this network%@", String(describing: (pc)), String(describing: (sent))), systemImage: "desktopcomputer")
         }
         return Label("From Steam's servers", systemImage: "cloud")
@@ -926,7 +926,7 @@ struct SteamDownloadStatus: View {
             case .downloading:
                 var parts = ["\(Int(p.fraction * 100))%", LF("%@ of %@", String(describing: (formatBytes(Int64(p.doneBytes)))), String(describing: (formatBytes(Int64(p.totalBytes)))))]
                 // Files already on the drive are checked, not downloaded again.
-                if p.reusedBytes > 0 { parts.append("\(formatBytes(Int64(p.reusedBytes))) already there") }
+                if p.reusedBytes > 0 { parts.append(LF("%@ already there", String(describing: (formatBytes(Int64(p.reusedBytes)))))) }
                 if p.bytesPerSecond > 0 {
                     parts.append("\(formatBytes(Int64(p.bytesPerSecond)))/s")
                     let left = Double(p.totalBytes - min(p.doneBytes, p.totalBytes)) / p.bytesPerSecond
@@ -1060,8 +1060,8 @@ struct SteamBranchPicker: View {
         let installed = installedBranch ?? SteamAppInfo.publicBranch
         if installedBranch != nil, current != installed {
             return current == SteamAppInfo.publicBranch
-                ? "Installed: \(installed). Download below goes back to the public build."
-                : "Installed: \(installed == SteamAppInfo.publicBranch ? "public" : installed). Download below switches to \(current)."
+                ? LF("Installed: %@. Download below goes back to the public build.", String(describing: (installed)))
+                : LF("Installed: %@. Download below switches to %@.", String(describing: (installed == SteamAppInfo.publicBranch ? "public" : installed)), String(describing: (current)))
         }
         guard current != SteamAppInfo.publicBranch else { return nil }
         if branches.contains(where: { $0.name == current && $0.passwordRequired }), SteamBranch.code(appID) == nil {
@@ -1080,7 +1080,7 @@ struct SteamBranchPicker: View {
             if let problem {
                 codeResult = problem
             } else if opened.isEmpty {
-                codeResult = "Steam did not accept that code for this game."
+                codeResult = L("Steam did not accept that code for this game.")
             } else {
                 codeResult = "Opened: " + opened.joined(separator: ", ") + "."
                 if opened.count == 1 { choices.choose(appID, opened[0]) } else { choices.changed() }
@@ -1257,7 +1257,7 @@ struct SteamGameSheet: View {
         }
     }
 
-    static let downloadNote = "Games download directly from Steam with your account, to this iPhone or to the drive picked under Install on. You can leave Madeira while it downloads: on iOS 26 and later iOS shows the download's progress and keeps it going; on earlier versions it pauses after a short while and continues when you return. A download pauses while a game is running and continues afterwards."
+    static let downloadNote = L("Games download directly from Steam with your account, to this iPhone or to the drive picked under Install on. You can leave Madeira while it downloads: on iOS 26 and later iOS shows the download's progress and keeps it going; on earlier versions it pauses after a short while and continues when you return. A download pauses while a game is running and continues afterwards.")
 
     @ViewBuilder private func primaryAction(_ item: SteamGamesRules.Item) -> some View {
         if let installed = item.installed {
@@ -1436,7 +1436,7 @@ struct SteamCloudSection: View {
                     Text(LF("Steam Cloud: %@ · %@%@", String(describing: (Self.when(entry.cloudTime))), String(describing: (Self.size(entry.cloudSize))), String(describing: (entry.kind != .cloudOnly && entry.cloudTime > entry.localTime ? L(" · newer") : ""))))
                         .font(.caption).foregroundStyle(.secondary)
                     Text(entry.kind == .cloudOnly ? L("This device: missing (it was synced here before)")
-                         : "This device: \(Self.when(entry.localTime)) · \(Self.size(entry.localSize))\(entry.localTime > entry.cloudTime ? " · newer" : "")")
+                         : LF("This device: %@ · %@%@", String(describing: (Self.when(entry.localTime))), String(describing: (Self.size(entry.localSize))), String(describing: (entry.localTime > entry.cloudTime ? " · newer" : ""))))
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
@@ -1612,7 +1612,7 @@ struct SteamEntrySection: View {
             if downloads, SteamOwnedLibrary.dlcEnabled, let owned = steam.game(appID)?.dlc, !owned.isEmpty {
                 let installedDepots = games.depots[appID] ?? []
                 let installedDLC = games.installedDLC[appID] ?? [:]
-                DisclosureGroup("Owned DLC (\(owned.count))") {
+                DisclosureGroup(LF("Owned DLC (%@)", String(describing: (owned.count)))) {
                     SteamDLCRows(appID: appID, installedDepots: installedDepots, installedDLC: installedDLC)
                     Text("A DLC turned off is left out of the next update or repair; its files stay until you uninstall the game.")
                         .font(.caption).foregroundStyle(.secondary)

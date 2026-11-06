@@ -88,7 +88,7 @@ final class MadeiraDockModel: ObservableObject {
     func watchReport() {
         watch?.cancel()
         let starting = DockInstallers.installsOnly ? L("Running this game's one-time installs…")
-                                                   : "Madeira Dock is starting. Valve's client signs in and checks the license."
+                                                   : L("Madeira Dock is starting. Valve's client signs in and checks the license.")
         let plan = DockInstallers.note
         status = plan.map { $0 + "\n" + starting } ?? starting
         if let plan { LogStore.shared.log("[dock-installers] " + plan) }
@@ -259,8 +259,8 @@ struct DockInstallRequestRows: View {
             if let request = dock.installRequest[appID] {
                 HStack {
                     Text(request == .record ? L("Next start: one-time installs recorded as done.")
-                         : request == .resetSignOut ? "Next start: one-time installs and Rockstar sign-in removed, then installed again."
-                         : "Next start: one-time installs removed, then installed again.")
+                         : request == .resetSignOut ? L("Next start: one-time installs and Rockstar sign-in removed, then installed again.")
+                         : L("Next start: one-time installs removed, then installed again."))
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("Cancel") { dock.setInstallRequest(appID, nil) }.font(.caption)

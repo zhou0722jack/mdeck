@@ -254,7 +254,7 @@ actor SteamRuntimeInstaller {
         var names = Set<String>(), files: [String] = []
         for (index, package) in SteamRuntimeFiles.packages.enumerated() {
             try Task.checkCancellation()
-            await progress("Downloading Steam components (\(index + 1) of \(SteamRuntimeFiles.packages.count))…")
+            await progress(LF("Downloading Steam components (%@ of %@)…", String(describing: (index + 1)), String(describing: (SteamRuntimeFiles.packages.count))))
             let url = URL(string: SteamRuntimeFiles.origin + package.file)!
             let (temporary, response) = try await session.download(from: url)
             defer { try? fm.removeItem(at: temporary) }
@@ -265,7 +265,7 @@ actor SteamRuntimeInstaller {
             }
             let archive = try Data(contentsOf: temporary, options: .mappedIfSafe)
             guard Self.hash(archive) == package.sha256 else { throw SteamRuntimeFiles.Failure.invalidPackage }
-            await progress("Verifying Steam components…")
+            await progress(L("Verifying Steam components…"))
             try SteamRuntimeFiles.unpack(archive) { name, bytes in
                 guard names.insert(name.lowercased()).inserted else { throw SteamRuntimeFiles.Failure.invalidPackage }
                 let file = stage.appendingPathComponent(name)
@@ -278,7 +278,7 @@ actor SteamRuntimeInstaller {
               files.contains("steam.exe") else { throw SteamRuntimeFiles.Failure.invalidPackage }
         try Task.checkCancellation()
         guard wine_process_is_running() == 0, wineserver_is_running() == 0 else { throw SteamRuntimeFiles.Failure.activeSession }
-        await progress("Preparing the Windows environment…")
+        await progress(L("Preparing the Windows environment…"))
         try Task.checkCancellation()
         guard wine_process_is_running() == 0, wineserver_is_running() == 0 else { throw SteamRuntimeFiles.Failure.activeSession }
         madeira_seed_prefix_if_needed(prefix.path)
@@ -322,7 +322,7 @@ actor SteamRuntimeInstaller {
             try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
             try fm.moveItem(at: stage.appendingPathComponent(name), to: target)
         }
-        await progress("Steam components are ready.")
+        await progress(L("Steam components are ready."))
     }
 
     private static func hash(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }

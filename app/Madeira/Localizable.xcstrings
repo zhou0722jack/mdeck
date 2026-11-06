@@ -26916,7 +26916,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "不限制"
+            "value": "不限帧"
           }
         }
       }
@@ -51632,6 +51632,2723 @@
         }
       },
       "extractionState": "manual"
+    },
+    " · %@ so far": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": " · 已传输 %@"
+          }
+        }
+      }
+    },
+    "%@ already there": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已有 %@"
+          }
+        }
+      }
+    },
+    "%@ config line%@ (the emulator's code-patch report off, without which many games close at start). Resetting replaces %@ config with them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ 行配置（关闭模拟器的代码修补报告，否则很多游戏会在启动时退出）。重置将用这些设置替换%3$@配置。"
+          }
+        }
+      }
+    },
+    "%@ config lines. The emulator's code-patch report is disabled so games can start. Resetting replaces the current configuration with these settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 行配置。已关闭模拟器的代码修补报告，以便游戏正常启动。重置将用这些设置替换当前配置。"
+          }
+        }
+      }
+    },
+    "%@ download in Madeira": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 中的 %@ 下载"
+          }
+        }
+      }
+    },
+    "%@ free of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 可用，共 %@"
+          }
+        }
+      }
+    },
+    "%@ was served from an unexpected address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 来自非预期地址。"
+          }
+        }
+      }
+    },
+    "(a distribution or enterprise certificate), so no debugger can attach to it. Install Madeira with a development ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "发行或企业证书不允许调试器连接。请使用开发"
+          }
+        }
+      }
+    },
+    "32-bit game support, the game library and Madeira Dock": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "32 位游戏支持、游戏库与 Madeira Dock"
+          }
+        }
+      }
+    },
+    "; %@ very large files left out": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "；已排除 %@ 个超大文件"
+          }
+        }
+      }
+    },
+    "AVX %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AVX：%@"
+          }
+        }
+      }
+    },
+    "Add .NET Framework support": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "添加 .NET Framework 支持"
+          }
+        }
+      }
+    },
+    "Anti-aliasing: smooths jagged edges. 0 is off and fastest; 2, 4 or 8 look smoother but cost a lot of speed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "抗锯齿：平滑物体边缘。0 为关闭、速度最快；2、4、8 更平滑，但会明显降低性能。"
+          }
+        }
+      }
+    },
+    "Apple no longer accepts Madeira's sign-in. ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple 已不再接受 Madeira 的登录凭据。"
+          }
+        }
+      }
+    },
+    "Back to options": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "返回选项"
+          }
+        }
+      }
+    },
+    "Big games may stop loading; closing and reopening Madeira can give more.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "大型游戏可能无法继续加载；关闭并重新打开 Madeira 可能获得更多内存。"
+          }
+        }
+      }
+    },
+    "Blurs the background (depth of field). Off is faster and sharper.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "景深模糊背景。关闭后速度更快、画面更清晰。"
+          }
+        }
+      }
+    },
+    "Bumpers & triggers": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "肩键与扳机"
+          }
+        }
+      }
+    },
+    "Checking saves…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查存档…"
+          }
+        }
+      }
+    },
+    "Checking the game's redistributables": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查游戏运行组件"
+          }
+        }
+      }
+    },
+    "Checking which DLC you own": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在检查已拥有的 DLC"
+          }
+        }
+      }
+    },
+    "Choose another pairing file": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择其他配对文件"
+          }
+        }
+      }
+    },
+    "Choose pairing file": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "选择配对文件"
+          }
+        }
+      }
+    },
+    "Connect LocalDevVPN and come back: Madeira then renews it for another %@ days.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接 LocalDevVPN 后返回，Madeira 将续签并延长 %@ 天。"
+          }
+        }
+      }
+    },
+    "Connect automatically": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自动连接"
+          }
+        }
+      }
+    },
+    "Connecting to Steam…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在连接 Steam…"
+          }
+        }
+      }
+    },
+    "Controller fixes for games that ship their own XInput or need focus, touch taps that stay off the mouse, and a crash-guard fix": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手柄与焦点兼容性修复、避免触控产生鼠标点击，以及崩溃保护修复"
+          }
+        }
+      }
+    },
+    "Controller support: 1 on, 0 off.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "手柄支持：1 开启，0 关闭。"
+          }
+        }
+      }
+    },
+    "Could not prepare the Wine Gecko folder: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法准备 Wine Gecko 文件夹：%@"
+          }
+        }
+      }
+    },
+    "Could not prepare the Wine Mono folder: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法准备 Wine Mono 文件夹：%@"
+          }
+        }
+      }
+    },
+    "Created Madeira": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "创建了 Madeira"
+          }
+        }
+      }
+    },
+    "D-pad": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "方向键"
+          }
+        }
+      }
+    },
+    "Default settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认设置"
+          }
+        }
+      }
+    },
+    "Default settings only": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅默认设置"
+          }
+        }
+      }
+    },
+    "Direct3D 12 and DXMT fixes, game launcher windows, per-game settings, PlayStation controllers, and save backups": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct3D 12 与 DXMT 修复、启动器窗口、单游戏设置、PlayStation 手柄与存档备份"
+          }
+        }
+      }
+    },
+    "Direct3D 12 is set to %@; with DXVK only vkd3d-proton can show Direct3D 12 games.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Direct3D 12 当前设置为 %@；搭配 DXVK 时，仅 vkd3d-proton 可显示 Direct3D 12 游戏。"
+          }
+        }
+      }
+    },
+    "Donor RAM only": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仅共享 RAM"
+          }
+        }
+      }
+    },
+    "Donor pool": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "共享内存池"
+          }
+        }
+      }
+    },
+    "Down": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下"
+          }
+        }
+      }
+    },
+    "Download paused": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载已暂停"
+          }
+        }
+      }
+    },
+    "Downloading Steam components (%@ of %@)…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载 Steam 组件（%@ / %@）…"
+          }
+        }
+      }
+    },
+    "Downloading redistributables": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在下载运行组件"
+          }
+        }
+      }
+    },
+    "EA did not say how large this game is.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EA 未提供此游戏的大小。"
+          }
+        }
+      }
+    },
+    "EA download": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "EA 下载"
+          }
+        }
+      }
+    },
+    "Enter it on this %@ to pair with Madeira": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此 %@ 上输入以与 Madeira 配对"
+          }
+        }
+      }
+    },
+    "Enter the code Madeira shows. It's also in the banner at the top of the screen and in a notification.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "输入 Madeira 显示的配对码。屏幕顶部横幅和通知中也会显示此代码。"
+          }
+        }
+      }
+    },
+    "Epic game": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Epic 游戏"
+          }
+        }
+      }
+    },
+    "FPS limit %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧率限制：%@"
+          }
+        }
+      }
+    },
+    "Face": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "主按钮"
+          }
+        }
+      }
+    },
+    "Field of view in degrees: how wide the camera sees.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "视野角度，单位为度，决定摄像机可见范围。"
+          }
+        }
+      }
+    },
+    "Finding the newest build": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在查找最新版本"
+          }
+        }
+      }
+    },
+    "For \"no graphics card\" errors": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于提示“没有显卡”的错误"
+          }
+        }
+      }
+    },
+    "For games that refuse this GPU or only run on cards they know": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于拒绝此 GPU 或仅支持特定显卡的游戏"
+          }
+        }
+      }
+    },
+    "For older games that crash with this GPU, like Fallout 3 and New Vegas": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "用于在当前 GPU 上崩溃的老游戏，例如《辐射 3》和《新维加斯》"
+          }
+        }
+      }
+    },
+    "Forget it under Settings › Signing, then sign in with the Apple ID that installed Madeira.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“设置 › 签名”中移除凭据，再使用安装 Madeira 的 Apple ID 登录。"
+          }
+        }
+      }
+    },
+    "Frame graph": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧耗时图表"
+          }
+        }
+      }
+    },
+    "Frame time": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "帧耗时"
+          }
+        }
+      }
+    },
+    "Frees areas from memory as soon as you leave them. Can lower memory use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离开区域后立即释放其内存，可减少内存使用。"
+          }
+        }
+      }
+    },
+    "From %@ on this network": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "来自局域网中的 %@"
+          }
+        }
+      }
+    },
+    "Full screen (1) or a window (0).": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全屏为 1，窗口模式为 0。"
+          }
+        }
+      }
+    },
+    "GOG download": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "GOG 下载"
+          }
+        }
+      }
+    },
+    "Games download directly from Steam with your account, to this iPhone or to the drive picked under Install on. You can leave Madeira while it downloads: on iOS 26 and later iOS shows the download's progress and keeps it going; on earlier versions it pauses after a short while and continues when you return. A download pauses while a game is running and continues afterwards.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用你的账号直接从 Steam 下载至此 iPhone 或所选安装磁盘。iOS 26 及以上版本支持离开 Madeira 后继续下载并显示进度；较早版本进入后台后会暂停，返回时继续。游戏运行期间会暂停下载，结束后继续。"
+          }
+        }
+      }
+    },
+    "Get started": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始使用"
+          }
+        }
+      }
+    },
+    "Getting games": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "获取游戏"
+          }
+        }
+      }
+    },
+    "Getting redistributable %@ of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在获取运行组件 %@ / %@"
+          }
+        }
+      }
+    },
+    "Getting the build's details": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在获取版本详情"
+          }
+        }
+      }
+    },
+    "Getting the download address": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在获取下载地址"
+          }
+        }
+      }
+    },
+    "Getting the file list (%@ of %@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在获取文件列表（%@ / %@）"
+          }
+        }
+      }
+    },
+    "Glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "玻璃"
+          }
+        }
+      }
+    },
+    "Go to your library": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "进入游戏库"
+          }
+        }
+      }
+    },
+    "Graphics card the game sees": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏识别的显卡"
+          }
+        }
+      }
+    },
+    "Grass gets shadows. Off is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "是否为草地绘制阴影，关闭可提高速度。"
+          }
+        }
+      }
+    },
+    "Grass spacing: higher means less grass and more speed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "草地间距：数值越高，草地越稀疏，速度越快。"
+          }
+        }
+      }
+    },
+    "How far away characters stay visible. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "角色可见距离。较低时速度更快。"
+          }
+        }
+      }
+    },
+    "How far away grass is drawn. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "草地绘制距离。较低时速度更快。"
+          }
+        }
+      }
+    },
+    "How far away objects stay visible. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "物体可见距离。较低时速度更快。"
+          }
+        }
+      }
+    },
+    "How far away small items stay visible. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "小型物品的可见距离。较低时速度更快。"
+          }
+        }
+      }
+    },
+    "How many backup copies of a save are kept when you save over it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "覆盖存档时保留的备份数量。"
+          }
+        }
+      }
+    },
+    "How many cells (blocks of world) around you load in full detail. 5 is normal; higher is much slower and can crash.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "周围以完整细节加载的场景区块数量。通常为 5；调高会明显变慢，甚至导致崩溃。"
+          }
+        }
+      }
+    },
+    "How many cells away distant trees are drawn.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远处树木的绘制距离，以场景区块计。"
+          }
+        }
+      }
+    },
+    "How many cells away the distant landscape and buildings are drawn.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "远景地形与建筑的绘制距离，以场景区块计。"
+          }
+        }
+      }
+    },
+    "How many characters cast shadows indoors. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "室内投射阴影的角色数量。较少时速度更快。"
+          }
+        }
+      }
+    },
+    "How many characters cast shadows outdoors. Lower is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "室外投射阴影的角色数量。较少时速度更快。"
+          }
+        }
+      }
+    },
+    "How many indoor areas stay in memory after you leave them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离开后仍保留在内存中的室内区域数量。"
+          }
+        }
+      }
+    },
+    "How many outdoor cells stay in memory after you leave them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "离开后仍保留在内存中的室外区块数量。"
+          }
+        }
+      }
+    },
+    "How many processor threads the game plans for.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏使用的处理器线程数。"
+          }
+        }
+      }
+    },
+    "I'll do this later": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后设置"
+          }
+        }
+      }
+    },
+    "Import this device's pairing file, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain. Pairing in Madeira needs iOS 27 or later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导入此设备的配对文件，连接 LocalDevVPN 后检查设置。配对文件保存在钥匙串中。应用内配对需要 iOS 27 或更高版本。"
+          }
+        }
+      }
+    },
+    "In-app JIT without StikDebug, and pairing without a computer": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无需 StikDebug 的应用内 JIT，以及无需电脑的配对"
+          }
+        }
+      }
+    },
+    "In-app with pairing file": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在应用内使用配对文件"
+          }
+        }
+      }
+    },
+    "Install LocalDevVPN": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 LocalDevVPN"
+          }
+        }
+      }
+    },
+    "Install [LocalDevVPN](https://apps.apple.com/us/app/localdevvpn/id6755608044).": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 [LocalDevVPN](https://apps.apple.com/us/app/localdevvpn/id6755608044)。"
+          }
+        }
+      }
+    },
+    "Install [StikDebug](https://github.com/StikDebug/StikDebug/releases/latest) and import this %@'s pairing file into it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 [StikDebug](https://github.com/StikDebug/StikDebug/releases/latest)，并导入此 %@ 的配对文件。"
+          }
+        }
+      }
+    },
+    "Install and connect [LocalDevVPN](https://apps.apple.com/us/app/localdevvpn/id6755608044).": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装并连接 [LocalDevVPN](https://apps.apple.com/us/app/localdevvpn/id6755608044)。"
+          }
+        }
+      }
+    },
+    "Install the Visual C++ runtime": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 Visual C++ 运行库"
+          }
+        }
+      }
+    },
+    "Installed: %@. Download below goes back to the public build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安装：%@。在下方下载将切换回公开版本。"
+          }
+        }
+      }
+    },
+    "Installed: %@. Download below switches to %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安装：%@。在下方下载将切换为 %@。"
+          }
+        }
+      }
+    },
+    "Installing Wine Mono failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装 Wine Mono 失败：%@"
+          }
+        }
+      }
+    },
+    "Inverts looking up and down.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "反转上下视角。"
+          }
+        }
+      }
+    },
+    "JIT cannot be enabled on this copy of Madeira: it was signed without get-task-allow ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Madeira 安装未包含 get-task-allow 调试权限，无法启用 JIT。"
+          }
+        }
+      }
+    },
+    "JIT memory": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JIT 内存"
+          }
+        }
+      }
+    },
+    "JIT memory is small this time (%@). ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "本次 JIT 内存较小（%@）。"
+          }
+        }
+      }
+    },
+    "Keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按键"
+          }
+        }
+      }
+    },
+    "LT and RT are full-press triggers. Touch and physical controls can be used together.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "LT 和 RT 触摸键始终完全按下。可以同时使用触控和实体手柄。"
+          }
+        }
+      }
+    },
+    "Last run did not finish: %@ (its installer never closed). If it installed, choose Record as done under One-time installs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上次运行未完成：%@（安装程序没有关闭）。如果已经安装，请在“首次运行组件”中选择“标记为已完成”。"
+          }
+        }
+      }
+    },
+    "Left": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "左"
+          }
+        }
+      }
+    },
+    "Lets quests save the game automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许任务自动保存游戏。"
+          }
+        }
+      }
+    },
+    "Madeira Dock is starting. Valve's client signs in and checks the license.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动 Madeira Dock，Valve 客户端将登录并检查许可证。"
+          }
+        }
+      }
+    },
+    "Madeira Dock starts for games whose Steam launch entries do not start at zero, and a touch gamepad that survives the in-game keyboard": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "非零 Steam 启动项支持，以及显示游戏内键盘时仍可使用的触控手柄"
+          }
+        }
+      }
+    },
+    "Madeira can renew it for another %@ days.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 可以将有效期延长 %@ 天。"
+          }
+        }
+      }
+    },
+    "Madeira could not announce itself on the local network. Check that Wi-Fi is on, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法在本地网络发布配对服务，请开启 Wi-Fi 后重试。"
+          }
+        }
+      }
+    },
+    "Madeira could not open its pairing port.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开 Madeira 配对端口。"
+          }
+        }
+      }
+    },
+    "Madeira has no list for this game yet, so it recommends its standard settings: ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此游戏暂无专属推荐配置，建议使用标准设置："
+          }
+        }
+      }
+    },
+    "Madeira needs Local Network access to pair. Allow it in Settings › Apps › Madeira, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 需要本地网络权限才能配对。请在“设置 › App › Madeira”中允许后重试。"
+          }
+        }
+      }
+    },
+    "Madeira pairing": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 配对"
+          }
+        }
+      }
+    },
+    "Madeira pairing code: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 配对码：%@"
+          }
+        }
+      }
+    },
+    "Madeira was signed with a free Apple ID, so it stops opening when this runs out. ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira 使用免费 Apple ID 签名，到期后将无法打开。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper (%@) could not be found: %@ Choose StikDebug in Settings → JIT. If your sideloader removed the helper, reinstall Madeira and keep its app extensions.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "找不到 Madeira JIT 助手（%@）：%@ 请在“设置 → JIT”中选择 StikDebug；若侧载工具移除了助手，请重新安装并保留应用扩展。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper did not start. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira JIT 助手未启动。请在“设置 → JIT”中选择 StikDebug，或重新安装并保留应用扩展。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper finished without an answer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira JIT 助手结束但未返回结果。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper is missing from this installation. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此安装缺少 Madeira JIT 助手。请在“设置 → JIT”中选择 StikDebug，或重新安装 Madeira，并在侧载工具询问时保留应用扩展。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper stopped unexpectedly. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira JIT 助手意外停止，请重试。"
+          }
+        }
+      }
+    },
+    "Madeira's JIT helper stopped: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Madeira JIT 助手已停止：%@"
+          }
+        }
+      }
+    },
+    "Memory, in bytes, set aside for loading things ahead of time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "为预加载内容预留的内存字节数。"
+          }
+        }
+      }
+    },
+    "Microsoft's download server answered %@ for %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "微软下载服务器对 %2$@ 返回了 %1$@。"
+          }
+        }
+      }
+    },
+    "Movement": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "移动"
+          }
+        }
+      }
+    },
+    "NVIDIA %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "NVIDIA：%@"
+          }
+        }
+      }
+    },
+    "New Vegas: loads the files that colour characters' faces. On fixes faces that do not match their necks; it uses more memory.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "《新维加斯》：加载角色面部颜色文件。可修复脸部与颈部颜色不一致，但会增加内存占用。"
+          }
+        }
+      }
+    },
+    "Next start: one-time installs and Rockstar sign-in removed, then installed again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次启动时：移除首次运行组件和 Rockstar 登录记录，然后重新安装。"
+          }
+        }
+      }
+    },
+    "Next start: one-time installs removed, then installed again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下次启动时：移除首次运行组件，然后重新安装。"
+          }
+        }
+      }
+    },
+    "No PC games were found in this EA account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 EA 账号中未找到 PC 游戏。"
+          }
+        }
+      }
+    },
+    "No Windows games were found in this Epic Games library.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Epic Games 游戏库中未找到 Windows 游戏。"
+          }
+        }
+      }
+    },
+    "No Windows games were found in this GOG library.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 GOG 游戏库中未找到 Windows 游戏。"
+          }
+        }
+      }
+    },
+    "No Windows games were found in this Steam library.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此 Steam 游戏库中未找到 Windows 游戏。"
+          }
+        }
+      }
+    },
+    "No Windows games yet. Games you buy or claim on itch.io show here, and so do the games in your itch.io collections. For a free game, use Find a game.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无 Windows 游戏。你在 itch.io 购买、领取或加入收藏的游戏会显示在这里。免费游戏可通过“查找游戏”添加。"
+          }
+        }
+      }
+    },
+    "No response from Microsoft's download server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "微软下载服务器未响应。"
+          }
+        }
+      }
+    },
+    "Not downloadable": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法下载"
+          }
+        }
+      }
+    },
+    "Nothing": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无"
+          }
+        }
+      }
+    },
+    "Numpad %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数字键盘 %@"
+          }
+        }
+      }
+    },
+    "Numpad /": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数字键盘 /"
+          }
+        }
+      }
+    },
+    "Older NVIDIA card (Direct3D 9)": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧款 NVIDIA 显卡（Direct3D 9）"
+          }
+        }
+      }
+    },
+    "On a computer, make this %@'s pairing file with the [StikDebug pairing-file guide](https://github.com/StikDebug/StikDebug-Guide/blob/main/pairing_file.md).": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在电脑上按照 [StikDebug 配对文件指南](https://github.com/StikDebug/StikDebug-Guide/blob/main/pairing_file.md)创建此 %@ 的配对文件。"
+          }
+        }
+      }
+    },
+    "One row": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单行"
+          }
+        }
+      }
+    },
+    "Open Settings › Privacy & Security › Developer Mode, scroll down and tap **Pair with %@**.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开“设置 › 隐私与安全性 › 开发者模式”，向下滚动并点击**与 %@ 配对**。"
+          }
+        }
+      }
+    },
+    "Owned DLC (%@)": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已拥有的 DLC（%@）"
+          }
+        }
+      }
+    },
+    "Pair again": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新配对"
+          }
+        }
+      }
+    },
+    "Pair in Madeira or import a pairing file made on a computer, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Madeira 中配对，或导入电脑上创建的配对文件，再连接 LocalDevVPN 并检查设置。配对文件保存在此设备的钥匙串中。"
+          }
+        }
+      }
+    },
+    "Pair on this %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此 %@ 上配对"
+          }
+        }
+      }
+    },
+    "Pair this %@ with Madeira in Settings. No computer needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在系统设置中将此 %@ 与 Madeira 配对，无需电脑。"
+          }
+        }
+      }
+    },
+    "Paired on this %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在此 %@ 上配对。"
+          }
+        }
+      }
+    },
+    "Paired with Madeira": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已与 Madeira 配对"
+          }
+        }
+      }
+    },
+    "Pairing failed. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对失败，请重试。"
+          }
+        }
+      }
+    },
+    "Pairing failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对失败：%@"
+          }
+        }
+      }
+    },
+    "Pairing finished, but Madeira could not save the pairing file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "配对完成，但无法保存配对文件。"
+          }
+        }
+      }
+    },
+    "Play runs this game's installer in the Wine desktop. Once it has installed the game, Madeira switches Play to the game's own program.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击开始游戏会在 Wine 桌面中运行安装程序。安装完成后，Madeira 会改为直接启动游戏。"
+          }
+        }
+      }
+    },
+    "Prepare Madeira Dock": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "准备 Madeira Dock"
+          }
+        }
+      }
+    },
+    "Preparing the Windows environment…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备 Windows 环境…"
+          }
+        }
+      }
+    },
+    "Reading the build's file list": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取版本文件列表"
+          }
+        }
+      }
+    },
+    "Report an NVIDIA GPU": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "报告为 NVIDIA 显卡"
+          }
+        }
+      }
+    },
+    "Right": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "右"
+          }
+        }
+      }
+    },
+    "Running games": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "运行游戏"
+          }
+        }
+      }
+    },
+    "Runs characters' AI on its own thread.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在独立线程中运行角色 AI。"
+          }
+        }
+      }
+    },
+    "Save it to Files or AirDrop it to this %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "将文件保存到“文件”应用，或通过隔空投送发送到此 %@。"
+          }
+        }
+      }
+    },
+    "Send a code to my Apple devices": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "向我的 Apple 设备发送验证码"
+          }
+        }
+      }
+    },
+    "Set up JIT": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置 JIT"
+          }
+        }
+      }
+    },
+    "Set up later": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "稍后设置"
+          }
+        }
+      }
+    },
+    "Settings › Privacy & Security › Developer Mode": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置 › 隐私与安全性 › 开发者模式"
+          }
+        }
+      }
+    },
+    "Shortcuts could not be opened": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法打开快捷指令"
+          }
+        }
+      }
+    },
+    "Sign in with your Apple ID under Settings › Signing, or install Madeira again with SideInstaller.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "请在“设置 › 签名”中使用 Apple ID 登录，或通过 SideInstaller 重新安装。"
+          }
+        }
+      }
+    },
+    "Skip setup": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "跳过设置"
+          }
+        }
+      }
+    },
+    "Solid": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纯色"
+          }
+        }
+      }
+    },
+    "Start pairing": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始配对"
+          }
+        }
+      }
+    },
+    "Starting Madeira Dock…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在启动 Madeira Dock…"
+          }
+        }
+      }
+    },
+    "Steam Cloud download stopped: %@ Saves already downloaded are in place; nothing else was changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 云下载已停止：%@ 已下载的存档保留在原处，其他内容未改变。"
+          }
+        }
+      }
+    },
+    "Steam Cloud saves, faster game launches, and fixes that let more games run": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 云存档、游戏启动加速与兼容性修复"
+          }
+        }
+      }
+    },
+    "Steam Cloud upload stopped: %@ This device's saves were not changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 云上传已停止：%@ 此设备的存档未改变。"
+          }
+        }
+      }
+    },
+    "Steam components are ready.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 组件已就绪。"
+          }
+        }
+      }
+    },
+    "Steam could not finish installing content this game needs. Try again later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 未能完成此游戏所需内容的安装，请稍后重试。"
+          }
+        }
+      }
+    },
+    "Steam did not accept that code for this game.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 未接受此游戏的测试代码。"
+          }
+        }
+      }
+    },
+    "Steam did not finish signing in. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 未完成登录，请检查网络后重试。"
+          }
+        }
+      }
+    },
+    "Steam game": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 游戏"
+          }
+        }
+      }
+    },
+    "Steam needs to install or update content this game depends on before it can start. Start the game again to let Madeira Dock wait for Steam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此游戏需要先安装或更新依赖内容。请重新启动游戏，让 Madeira Dock 等待 Steam 完成。"
+          }
+        }
+      }
+    },
+    "Steam signed in but did not confirm this game's license in time. Export the log before trying again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 已登录，但未及时确认游戏许可证。请先导出日志，再重试。"
+          }
+        }
+      }
+    },
+    "Sticks": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "摇杆"
+          }
+        }
+      }
+    },
+    "Still starting Madeira Dock…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "仍在启动 Madeira Dock…"
+          }
+        }
+      }
+    },
+    "Tap **Add the shortcut**, then **Add Shortcut** in Shortcuts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击**添加快捷指令**，然后在快捷指令应用中点击**添加快捷指令**。"
+          }
+        }
+      }
+    },
+    "Tap **Choose pairing file** and pick it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "点击**选择配对文件**并选中文件。"
+          }
+        }
+      }
+    },
+    "Texture quality: 0 is full, 1 is half size, 2 is a quarter. Higher saves memory and speed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "纹理质量：0 为完整尺寸，1 为一半，2 为四分之一。数值越高越节省内存并提高速度。"
+          }
+        }
+      }
+    },
+    "Texture sharpness at an angle (anisotropic filtering), from 0 to 16. Higher looks sharper and costs a little speed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "各向异性过滤：改善斜视纹理的清晰度，范围 0–16。数值越高越清晰，但有一定性能开销。"
+          }
+        }
+      }
+    },
+    "The DLLs were placed, but reading them back failed. Export the log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DLL 已放置完成，但回读失败。请导出日志。"
+          }
+        }
+      }
+    },
+    "The download failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "下载失败：%@"
+          }
+        }
+      }
+    },
+    "The game starts its own program in Wine. If Madeira picked the wrong program, change it in Launch.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "直接在 Wine 中运行游戏程序。如果程序选择有误，请在启动设置中修改。"
+          }
+        }
+      }
+    },
+    "The game's height in pixels. Madeira's display size is set per game in Display; keep them the same.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏画面的像素高度。请与 Madeira 中此游戏的显示分辨率保持一致。"
+          }
+        }
+      }
+    },
+    "The game's width in pixels. Madeira's display size is set per game in Display; keep them the same.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏画面的像素宽度。请与 Madeira 中此游戏的显示分辨率保持一致。"
+          }
+        }
+      }
+    },
+    "The graphics card the game last saw. Madeira keeps it in step with the Older NVIDIA card setting; changing it by hand makes the game reopen its launcher.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏上次识别的显卡。Madeira 会与“旧款 NVIDIA 显卡”设置同步；手动修改会让游戏重新打开启动器。"
+          }
+        }
+      }
+    },
+    "The language the game's text is in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "游戏文本使用的语言。"
+          }
+        }
+      }
+    },
+    "The original native Steam sign-in, library and downloads": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最初的原生 Steam 登录、游戏库与下载功能"
+          }
+        }
+      }
+    },
+    "The pairing file could not be saved in the Keychain (%@). Unlock this device and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法将配对文件保存在钥匙串中（%@）。请解锁此设备后重试。"
+          }
+        }
+      }
+    },
+    "The request for Madeira's JIT helper could not be encoded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法编码 Madeira JIT 助手请求。"
+          }
+        }
+      }
+    },
+    "The size of shadow textures. Lower (512 or 1024) is faster and blurrier.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "阴影纹理大小。较低值（如 512 或 1024）速度更快，但阴影更模糊。"
+          }
+        }
+      }
+    },
+    "The videos played at start. Empty skips them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "启动时播放的视频，留空可跳过。"
+          }
+        }
+      }
+    },
+    "There is no connection, and Steam has nothing saved to sign this account in offline. Start a game once while online; Steam then allows offline starts until its offline sign-in expires.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有网络连接，Steam 也未保存此账号的离线凭据。请先联网启动游戏一次，之后可在离线凭据过期前离线游玩。"
+          }
+        }
+      }
+    },
+    "There is no connection, and this Steam client build cannot be started offline by Madeira Dock. Connect to the internet and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有网络连接，Madeira Dock 无法离线启动此版本的 Steam 客户端。请联网后重试。"
+          }
+        }
+      }
+    },
+    "This device: %@ · %@%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此设备：%@ · %@%@"
+          }
+        }
+      }
+    },
+    "This game": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此游戏"
+          }
+        }
+      }
+    },
+    "This is not an Epic sign-in code. Copy the text Epic shows after you sign in.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这不是 Epic 登录代码。请复制 Epic 登录完成后显示的文本。"
+          }
+        }
+      }
+    },
+    "Turn on **Use it for JIT**.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启**用于 JIT**。"
+          }
+        }
+      }
+    },
+    "Turn on Wi-Fi, then tap **Start pairing** and allow Local Network access.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "打开 Wi-Fi，点击**开始配对**，并允许访问本地网络。"
+          }
+        }
+      }
+    },
+    "Up": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上"
+          }
+        }
+      }
+    },
+    "Use StikDebug": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 StikDebug"
+          }
+        }
+      }
+    },
+    "Use a different account": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用其他账号"
+          }
+        }
+      }
+    },
+    "Use a pairing file": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用配对文件"
+          }
+        }
+      }
+    },
+    "V-sync: 1 waits for the screen and stops tearing, 0 does not.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "垂直同步：1 等待屏幕刷新以减少撕裂，0 不等待。"
+          }
+        }
+      }
+    },
+    "Verifying Steam components…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在验证 Steam 组件…"
+          }
+        }
+      }
+    },
+    "Waiting for the game to finish saving…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待游戏完成保存…"
+          }
+        }
+      }
+    },
+    "Warns when a save needs a mod or add-on that is missing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "存档需要缺失的模组或扩展时显示警告。"
+          }
+        }
+      }
+    },
+    "Water reflects the world. Off is faster.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "水面反射场景，关闭可提高速度。"
+          }
+        }
+      }
+    },
+    "When you play, Madeira opens StikDebug to enable JIT, then comes back.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开始游戏时，Madeira 会打开 StikDebug 以启用 JIT，然后返回。"
+          }
+        }
+      }
+    },
+    "When you start a game with Madeira Dock, Madeira hands this sign-in to Valve's own Steam client, which signs in and checks your license.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "通过 Madeira Dock 启动游戏时，会将登录凭据交给 Valve 的 Steam 客户端，由它登录并检查许可证。"
+          }
+        }
+      }
+    },
+    "Where the game puts you if a save cannot load your spot. Leave it as it is.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法加载存档位置时使用的备用位置，建议保持原值。"
+          }
+        }
+      }
+    },
+    "Windows services first": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先启动 Windows 服务"
+          }
+        }
+      }
+    },
+    "Wine and FEX runtime fixes, DXMT texture and memory fixes, audio, the swap tier, and library launch options": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wine 与 FEX 运行时修复、DXMT 纹理与内存修复、音频、交换层与启动选项"
+          }
+        }
+      }
+    },
+    "Wine's C++ runtime %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wine C++ 运行库：%@"
+          }
+        }
+      }
+    },
+    "Xbox controller": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xbox 手柄"
+          }
+        }
+      }
+    },
+    "You're all set": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "设置完成"
+          }
+        }
+      }
+    },
+    "Your %@ shortcut stopped: %@ Check its steps in Shortcuts, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 快捷指令已停止：%@ 请在快捷指令应用中检查步骤后重试。"
+          }
+        }
+      }
+    },
+    "certificate (for example SideStore, AltStore or Xcode), then enable JIT again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "证书重新安装，例如通过 SideStore、AltStore 或 Xcode，再次启用 JIT。"
+          }
+        }
+      }
+    },
+    "display maximum": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示器最高刷新率"
+          }
+        }
+      }
+    },
+    "fast semaphore waits %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快速信号量等待：%@"
+          }
+        }
+      }
+    },
+    "fast synchronization off": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭快速同步"
+          }
+        }
+      }
+    },
+    "iOS did not provide the extension API Madeira's JIT helper needs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iOS 未提供 Madeira JIT 助手所需的扩展接口。"
+          }
+        }
+      }
+    },
+    "itch.io download": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "itch.io 下载"
+          }
+        }
+      }
+    },
+    "off": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭"
+          }
+        }
+      }
+    },
+    "older NVIDIA card %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "旧款 NVIDIA 显卡：%@"
+          }
+        }
+      }
+    },
+    "on": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "开启"
+          }
+        }
+      }
+    },
+    "so JIT cannot be enabled. Reinstall Madeira with a development certificate.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "因此无法启用 JIT。请使用开发证书重新安装 Madeira。"
+          }
+        }
+      }
+    },
+    "so a new profile cannot renew it. Install Madeira again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "新的描述文件因此无法续签，请重新安装 Madeira。"
+          }
+        }
+      }
+    },
+    "starts in the Wine desktop": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在 Wine 桌面中启动"
+          }
+        }
+      }
+    },
+    "the same names.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "同名存档。"
+          }
+        }
+      }
+    },
+    "the shortcut did not return within 60 s": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷指令未在 60 秒内返回"
+          }
+        }
+      }
+    },
+    "the shortcut failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷指令失败"
+          }
+        }
+      }
+    },
+    "the shortcut was cancelled": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "快捷指令已取消"
+          }
+        }
+      }
+    },
+    "the sign-in SideInstaller gave it": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SideInstaller 提供的登录凭据"
+          }
+        }
+      }
+    },
+    "this screen's shape at 720 lines": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "按本屏幕比例使用 720 行分辨率"
+          }
+        }
+      }
+    },
+    "to keep in Files or iCloud Drive. Restoring puts those files back and overwrites saves with ": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "可保存在“文件”或 iCloud 云盘中。恢复时会写回文件并覆盖"
+          }
+        }
+      }
+    },
+    "which this copy is signed with. Install Madeira again to renew it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此安装正在使用该权限。请重新安装 Madeira 以续签。"
+          }
+        }
+      }
+    },
+    "your Apple ID's sign-in": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "你的 Apple ID 登录凭据"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

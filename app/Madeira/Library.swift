@@ -1031,7 +1031,7 @@ final class LibraryModel: ObservableObject {
     private var dockGameEndedAt: Date?
     private var quitRequestedAt: Date?
     @Published var launching = false
-    @Published var overlayFields = ["FPS", "Frame time", "RAM", "Battery"]
+    @Published var overlayFields = ["FPS", L("Frame time"), "RAM", "Battery"]
     private var launchPresent: UInt64 = 0
     private var launchSurface: UInt64 = 0
     private var launchStarted = Date()
@@ -1706,7 +1706,7 @@ final class LibraryModel: ObservableObject {
         launchPresent = madeira_frame_count(); launchStarted = Date(); launchSlow = false; launchLogs = entry.liveLogs
         launchSurface = winios_surface_present_count()
         MetalBackedView.presentCountAtLaunch = launchPresent; laidOutAfterFirstPresent = false
-        preparing = nil; launching = true; overlayFields = entry.overlayFields ?? ["FPS", "Frame time", "RAM", "Battery"]
+        preparing = nil; launching = true; overlayFields = entry.overlayFields ?? ["FPS", L("Frame time"), "RAM", "Battery"]
         displayMode = entry.displayMode
         MainActor.assumeIsolated { InteractionFrameRate.shared.end() }   // a game owns the panel's rate (ProMotionIntent)
         if LibraryGridArm.enabled { NotificationCenter.default.post(name: LibraryGridArm.releaseMemory, object: nil) }
@@ -1769,8 +1769,8 @@ final class LibraryModel: ObservableObject {
         // iPadOS gave the JIT pool less room than asked at launch: say so once the game is up.
         if !smallPoolNoted, !launching, current != nil, JITPoolMeter.current.shrunk {
             smallPoolNoted = true
-            let words = "JIT memory is small this time (\(JITPoolMeter.current.sizeMB.map { "\($0) MB" } ?? "smaller than usual")). " +
-                "Big games may stop loading; closing and reopening Madeira can give more."
+            let words = LF("JIT memory is small this time (%@). ", String(describing: (JITPoolMeter.current.sizeMB.map { "\($0) MB" } ?? "smaller than usual"))) +
+                L("Big games may stop loading; closing and reopening Madeira can give more.")
             sessionMessage = words
             DispatchQueue.main.asyncAfter(deadline: .now() + 12) { [weak self] in
                 if self?.sessionMessage == words { self?.sessionMessage = "" }
@@ -4344,14 +4344,14 @@ struct LibraryDetail: View {
                 Text("Automatic").tag("")
                 ForEach(GPUCards.all, id: \.id) { Text($0.title).tag($0.id) }
             } label: {
-                compatLabel("Graphics card the game sees", "For games that refuse this GPU or only run on cards they know")
+                compatLabel(L("Graphics card the game sees"), L("For games that refuse this GPU or only run on cards they know"))
             }
             Group {
                 Toggle(isOn: Binding(get: { bcd.nvidia }, set: { on in bcd.nvidia = on; LibraryPrefs.setNvidia(on, for: entry.windowsPath) })) {
-                    compatLabel("Report an NVIDIA GPU", "For \"no graphics card\" errors")
+                    compatLabel(L("Report an NVIDIA GPU"), L("For \"no graphics card\" errors"))
                 }
                 Toggle(isOn: Binding(get: { bcd.olderNvidia }, set: { on in bcd.olderNvidia = on; LibraryPrefs.setOlderNvidia(on, for: entry.windowsPath) })) {
-                    compatLabel("Older NVIDIA card (Direct3D 9)", "For older games that crash with this GPU, like Fallout 3 and New Vegas")
+                    compatLabel(L("Older NVIDIA card (Direct3D 9)"), L("For older games that crash with this GPU, like Fallout 3 and New Vegas"))
                 }
             }
             .disabled(GPUCards.card(bcd.gpuCard) != nil)
@@ -4729,7 +4729,7 @@ struct ControllerBindsPage: View {
 
     var body: some View {
         ForEach(Self.groups, id: \.0) { group in
-            Section(group.0) {
+            Section(L(group.0)) {
                 ForEach(group.1, id: \.self) { name in row(name) }
             }
         }
@@ -4816,7 +4816,7 @@ struct ControllerBindsPage: View {
     }
 
     private func pick(_ name: String, _ title: String, _ action: ControlAction) -> some View {
-        Button(title) {
+        Button(L(title)) {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             var table = binds ?? [:]
             table[name] = action
@@ -4827,13 +4827,13 @@ struct ControllerBindsPage: View {
     /// Row text for an action, in the words the menu uses.
     static func describe(_ action: ControlAction, input: String) -> String {
         switch action {
-        case .none:            return input == "RS" ? "Mouse" : "Nothing"
+        case .none:            return L(input == "RS" ? "Mouse" : "Nothing")
         case .mouseLeft:       return L("Left click")
         case .mouseRight:      return L("Right click")
         case .joystickWASD:    return "WASD"
         case .joystickArrows:  return L("Arrow keys")
         case .keyboardToggle:  return L("Show keyboard")
-        case .pad(let n):      return n
+        case .pad(let n):      return L(n)
         case .key(let vk):     return keyName(vk)
         }
     }
@@ -4855,12 +4855,12 @@ struct ControllerBindsPage: View {
         case 0x21: return L("Page Up")
         case 0x22: return L("Page Down")
         case 0x70...0x7B: return "F\(vk - 0x6F)"
-        case 0x60...0x69: return "Numpad \(vk - 0x60)"
+        case 0x60...0x69: return LF("Numpad %@", String(vk - 0x60))
         case 0x6A: return L("Numpad *")
         case 0x6B: return L("Numpad +")
         case 0x6D: return L("Numpad −")
         case 0x6E: return L("Numpad .")
-        case 0x6F: return "Numpad /"
+        case 0x6F: return L("Numpad /")
         default:   return ControlAction.keyLabel(vk)
         }
     }
@@ -5135,7 +5135,7 @@ struct RuntimeMemorySyncSettings: View {
     @State private var coverage = Self.currentCoverage()
     @State private var wow64 = MadeiraConfig.get("swap-wow64") ?? ""
     static let wow64Choices: [(String, String)] = [
-        ("", "Donor RAM only"), ("1", "Donor RAM, then the swap file"), ("2", "Never tiered (RAM only)"),
+        ("", L("Donor RAM only")), ("1", "Donor RAM, then the swap file"), ("2", "Never tiered (RAM only)"),
     ]
     @State private var engine = SyncEngine.current
     @State private var eco = MadeiraConfig.bool("eco", default: false)
@@ -5185,7 +5185,7 @@ struct RuntimeMemorySyncSettings: View {
                 if !Self.coverageChoices.contains(where: { $0.0 == coverage }) { Text(coverage).tag(coverage) }
             }
             .disabled(swapMB == 0)
-            mbPicker("Donor pool", key: "donor-pool-mb", value: $donorPoolMB, choices: Self.donorPoolChoices,
+            mbPicker(L("Donor pool"), key: "donor-pool-mb", value: $donorPoolMB, choices: Self.donorPoolChoices,
                      zero: "Off", label: Self.gb)
                 .disabled(swapMB == 0)
             // ml2021: a 32-bit program's memory takes donor RAM but never the swap file unless asked
@@ -5397,7 +5397,7 @@ struct GraphicsSettings: View {
             note(d3d11Note)
             if !Self.hasDxvk { note(L("DXVK is not in this build."), warning: d3d11 == "dxvk") }
             if d3d11 == "dxvk" && !d3d12.isEmpty && d3d12 != "vkd3d" {
-                note("Direct3D 12 is set to \(d3d12); with DXVK only vkd3d-proton can show Direct3D 12 games.", warning: true)
+                note(LF("Direct3D 12 is set to %@; with DXVK only vkd3d-proton can show Direct3D 12 games.", String(describing: (d3d12))), warning: true)
             }
 
             choicePicker(L("Direct3D 12"), key: "d3d12", value: $d3d12,
@@ -6095,10 +6095,10 @@ enum OverlayStyle {
     static let labelsKey = "madeiraOverlayLabels", coloursKey = "madeiraOverlayColours"
     static let refreshKey = "madeiraOverlayRefresh", graphSecondsKey = "madeiraOverlayGraphSeconds"
     /// "grid": up to five cells a row (as first made); "row": one long row; "column": one figure a line.
-    static let layouts: [(id: String, name: String)] = [("grid", "Grid"), ("row", "One row"), ("column", "Column")]
+    static let layouts: [(id: String, name: String)] = [("grid", "Grid"), ("row", L("One row")), ("column", "Column")]
     static let backgrounds: [(id: String, name: String)] = [("glass", "Glass"), ("dark", "Dark"), ("clear", "None")]
     /// The figures the overlay can show, in the order of the menu's switches.
-    static let fields = ["FPS", "Frame time", "1% lows", "0.1% lows", "Frame graph", "CPU", "GPU", "RAM", "JIT memory", "Swap & donor", "Battery", "Thermal"]
+    static let fields = ["FPS", L("Frame time"), "1% lows", "0.1% lows", L("Frame graph"), "CPU", "GPU", "RAM", L("JIT memory"), "Swap & donor", "Battery", "Thermal"]
 }
 
 /// Frame times from the present path (madeira_frame_times_us, Winios.m) and the

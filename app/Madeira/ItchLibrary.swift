@@ -858,7 +858,7 @@ final class ItchTransfer: NSObject, URLSessionDownloadDelegate, @unchecked Senda
 
     private func beginGrace() {
         guard hasActiveDownload, grace == .invalid else { return }
-        grace = UIApplication.shared.beginBackgroundTask(withName: "itch.io download") { [weak self] in
+        grace = UIApplication.shared.beginBackgroundTask(withName: L("itch.io download")) { [weak self] in
             MainActor.assumeIsolated {
                 self?.pauseForBackground()
                 self?.endGrace()

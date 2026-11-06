@@ -330,7 +330,7 @@ private struct TarReader {
                 return
             }
         } catch {
-            fail("Could not prepare the Wine Mono folder: \(error.localizedDescription)"); return
+            fail(LF("Could not prepare the Wine Mono folder: %@", String(describing: (error.localizedDescription)))); return
         }
         log("download \(WineMonoPin.url.absoluteString)")
         phase = .downloading(0)
@@ -362,7 +362,7 @@ private struct TarReader {
     private func downloaded(archive: URL, error failure: Error?) {
         observation = nil
         if let failure {
-            fail("The download failed: \(failure.localizedDescription)"); return
+            fail(LF("The download failed: %@", String(describing: (failure.localizedDescription)))); return
         }
         phase = .installing(0)
         let root = Self.root, runtime = Self.runtime
@@ -391,7 +391,7 @@ private struct TarReader {
                 try? fm.removeItem(at: staging)
                 try? fm.removeItem(at: archive)
                 let message = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
-                await MainActor.run { WineMonoModel.shared.fail("Installing Wine Mono failed: \(message)") }
+                await MainActor.run { WineMonoModel.shared.fail(LF("Installing Wine Mono failed: %@", String(describing: (message)))) }
             }
         }
     }

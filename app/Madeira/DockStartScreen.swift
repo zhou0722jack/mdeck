@@ -247,7 +247,7 @@ enum DockStartStatus {
         }
         if hostStarted(fields) { return L("Loading Steam…") }
         // Before the host's first field: the one-time installs run first, then the host starts.
-        let starting = waited >= slowAfter ? "Still starting Madeira Dock…" : "Starting Madeira Dock…"
+        let starting = waited >= slowAfter ? L("Still starting Madeira Dock…") : L("Starting Madeira Dock…")
         guard installers else { return starting }
         guard installsFinished else { return installerProgress ?? L("Running this game's one-time installs…") }
         if let restartHint { return (installerProgress ?? L("One-time installs finished.")) + "\n" + restartHint }

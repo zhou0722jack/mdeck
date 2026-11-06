@@ -408,18 +408,18 @@ struct GOGInstalledGame: Codable, Sendable {
                 downloads[id]?.progress.step = text
                 GOGLog.event("[gog-download] prepare id=\(id) step=\"\(text)\"")
             }
-            step("Finding the newest build")
+            step(L("Finding the newest build"))
             let build = try await api.latestBuild(id)
-            step("Getting the build's details")
+            step(L("Getting the build's details"))
             let manifest = try GOGBuildManifest.parse(try GOGCodec.json(try await api.buildManifest(build), what: "build"))
-            step("Checking which DLC you own")
+            step(L("Checking which DLC you own"))
             let ownedIDs = try await api.ownedIDs()
             let (depots, language) = manifest.selected(ownedDLC: ownedIDs.subtracting([manifest.baseProductID]))
             guard !depots.isEmpty else { throw GOGAPIError.noWindowsBuild }
             var files: [GOGFile] = []
             for (index, depot) in depots.enumerated() {
                 try Task.checkCancellation()
-                step("Getting the file list (\(index + 1) of \(depots.count))")
+                step(LF("Getting the file list (%@ of %@)", String(describing: (index + 1)), String(describing: (depots.count))))
                 let data = try await api.depotManifest(depot.manifest)
                 files += try await Task.detached(priority: .userInitiated) { try GOGDepot.files(data, product: depot.productID) }.value
             }
@@ -486,18 +486,18 @@ struct GOGInstalledGame: Codable, Sendable {
                                          step: (String) -> Void) async throws -> GOGSetup.Plan {
         guard !manifest.dependencies.isEmpty else { return GOGSetup.Plan() }
         do {
-            step("Checking the game's redistributables")
+            step(L("Checking the game's redistributables"))
             let repository = try await api.dependencyRepository()
             var plan = GOGSetup.plan(manifest.dependencies, repository: repository, hasMsiexec: DockInstallers.bundleHasMsiexec)
             var files: [GOGFile] = []
             for (index, dependency) in plan.download.enumerated() {
                 try Task.checkCancellation()
-                step("Getting redistributable \(index + 1) of \(plan.download.count)")
+                step(LF("Getting redistributable %@ of %@", String(describing: (index + 1)), String(describing: (plan.download.count))))
                 let data = try await api.dependencyDepot(dependency.manifest)
                 files += try await Task.detached(priority: .userInitiated) { try GOGDepot.files(data, product: "redist") }.value
             }
             if !files.isEmpty {
-                step("Downloading redistributables")
+                step(L("Downloading redistributables"))
                 let api = self.api
                 let links = GOGLinks { _ in try await api.dependencyLinks() }
                 let result = try await downloader.install(
@@ -745,7 +745,7 @@ struct GOGInstalledGame: Codable, Sendable {
     /// Madeira went to the background during a download: iOS's grace period, then a clean pause.
     private func beginGrace() {
         guard hasActiveDownload, grace == nil else { return }
-        grace = BackgroundRun.shared.beginTask("GOG download") { [weak self] in
+        grace = BackgroundRun.shared.beginTask(L("GOG download")) { [weak self] in
             MainActor.assumeIsolated {
                 self?.pauseForBackground()
                 self?.endGrace()

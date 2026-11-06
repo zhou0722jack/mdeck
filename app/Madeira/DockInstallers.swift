@@ -1194,7 +1194,7 @@ enum DockInstallers {
         }.map { DockInstallScripts.label($0.process.run) }
         if !stillUnfinished.isEmpty {
             let names = stillUnfinished.joined(separator: ", ")
-            let words = "Last run did not finish: \(names) (its installer never closed). If it installed, choose Record as done under One-time installs."
+            let words = LF("Last run did not finish: %@ (its installer never closed). If it installed, choose Record as done under One-time installs.", String(describing: (names)))
             note = (note.map { $0 + " " } ?? "") + words
             LogStore.shared.log("[dock-installers] app=\(app) unfinished=\(stillUnfinished.joined(separator: ",")): the last batch started it and saw no exit status")
         }

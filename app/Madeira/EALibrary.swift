@@ -244,7 +244,7 @@ struct EAInstalledGame: Codable, Sendable {
             let archive = try await downloader.archive(url)
             sizes[id] = .known(download: archive.compressedBytes, install: archive.installBytes)
         } catch {
-            sizes[id] = .unavailable((error as? EAAPIError)?.errorDescription ?? "EA did not say how large this game is.")
+            sizes[id] = .unavailable((error as? EAAPIError)?.errorDescription ?? L("EA did not say how large this game is."))
             handle(error, context: "size id=\(id)", report: false)
         }
     }
@@ -345,11 +345,11 @@ struct EAInstalledGame: Codable, Sendable {
                 downloads[id]?.progress.step = text
                 EALog.event("[ea-download] prepare id=\(id) step=\"\(text)\"")
             }
-            step("Finding the newest build")
+            step(L("Finding the newest build"))
             let build = try await api.liveBuild(offerID: id)
-            step("Getting the download address")
+            step(L("Getting the download address"))
             let url = try await api.downloadURL(offerID: id, buildID: build.buildID)
-            step("Reading the build's file list")
+            step(L("Reading the build's file list"))
             let archive = try await downloader.archive(url)
             let record = installed[id]
             let folder = record?.folder ?? (Self.installRoot + "/" + Self.safeName(game?.installFolder ?? title))
@@ -564,7 +564,7 @@ struct EAInstalledGame: Codable, Sendable {
 
     private func beginGrace() {
         guard hasActiveDownload, grace == .invalid else { return }
-        grace = UIApplication.shared.beginBackgroundTask(withName: "EA download") { [weak self] in
+        grace = UIApplication.shared.beginBackgroundTask(withName: L("EA download")) { [weak self] in
             MainActor.assumeIsolated {
                 self?.pauseForBackground()
                 self?.endGrace()

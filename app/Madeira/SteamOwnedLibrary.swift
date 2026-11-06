@@ -874,7 +874,7 @@ final class SteamOwnedLibrary: ObservableObject {
             SteamLog.event("[steam-cloud] app=\(appID) downloaded files=\(done) backed-up=\(backedUp)")
         } catch {
             SteamLog.event("[steam-cloud] app=\(appID) download failed after=\(done) reason=\(Self.reason(error))")
-            state.problem = "Steam Cloud download stopped: \(SteamSignIn.message(error)) Saves already downloaded are in place; nothing else was changed."
+            state.problem = LF("Steam Cloud download stopped: %@ Saves already downloaded are in place; nothing else was changed.", String(describing: (SteamSignIn.message(error))))
         }
         recordBaseline(appID, settled: settled)
         state.lastDownload = (done, backedUp); state.phase = .ready; cloud[appID] = state
@@ -995,7 +995,7 @@ final class SteamOwnedLibrary: ObservableObject {
         } catch {
             await complete(false)
             SteamLog.event("[steam-cloud] app=\(appID) upload failed after=\(done) reason=\(Self.reason(error))")
-            state.problem = "Steam Cloud upload stopped: \(SteamSignIn.message(error)) This device's saves were not changed."
+            state.problem = LF("Steam Cloud upload stopped: %@ This device's saves were not changed.", String(describing: (SteamSignIn.message(error))))
         }
         state.lastUpload = done; state.phase = .ready; cloud[appID] = state
         return done > 0
@@ -1084,7 +1084,7 @@ final class SteamOwnedLibrary: ObservableObject {
         if case .working = cloudQuit { return }
         cloudBusy.insert(appID)
         defer { cloudBusy.remove(appID) }
-        cloudQuit = .working("Connecting to Steam…")
+        cloudQuit = .working(L("Connecting to Steam…"))
         if !cloudTakeover {
             cloudTakeover = true
             await gate.takeOver()
@@ -1099,7 +1099,7 @@ final class SteamOwnedLibrary: ObservableObject {
         var plan: SteamCloudPlan?
         var seen: [String: Data] = [:]
         for round in 0..<5 {
-            cloudQuit = .working(round == 0 ? "Checking saves…" : "Waiting for the game to finish saving…")
+            cloudQuit = .working(round == 0 ? L("Checking saves…") : L("Waiting for the game to finish saving…"))
             guard let look = await checkCloud(appID) else {
                 SteamLog.event("[steam-cloud] app=\(appID) quit-upload: check failed")
                 cloudQuit = .failed(failure()); return
@@ -1386,7 +1386,7 @@ final class SteamOwnedLibrary: ObservableObject {
         guard active == nil, !inSession, !queue.isEmpty else { return }
         let appID = queue.removeFirst()
         downloads[appID]?.state = .active
-        SteamDownloadBackground.shared.downloadStarted(appID: appID, name: game(appID)?.name ?? "Steam game")
+        SteamDownloadBackground.shared.downloadStarted(appID: appID, name: game(appID)?.name ?? L("Steam game"))
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
             await self.run(appID)
@@ -1466,7 +1466,7 @@ final class SteamOwnedLibrary: ObservableObject {
             }
         }
         active = nil
-        SteamDownloadBackground.shared.downloadEnded(appID: appID, name: game(appID)?.name ?? "Steam game",
+        SteamDownloadBackground.shared.downloadEnded(appID: appID, name: game(appID)?.name ?? L("Steam game"),
                                                      outcome: outcome, queueEmpty: queue.isEmpty)
         pump()
     }

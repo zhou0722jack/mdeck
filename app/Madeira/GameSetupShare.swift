@@ -411,7 +411,7 @@ struct GameSetupShareSheet: View {
                     Section { Text(error).foregroundStyle(.red) }
                 } else if let setup {
                     Section {
-                        ForEach(setup.contents.isEmpty ? ["Default settings only"] : setup.contents, id: \.self) {
+                        ForEach(setup.contents.isEmpty ? [L("Default settings only")] : setup.contents, id: \.self) {
                             Label($0, systemImage: "checkmark.circle")
                         }
                     } header: {
@@ -466,7 +466,7 @@ struct GameSetupApplySheet: View {
         NavigationStack {
             Form {
                 Section {
-                    ForEach(setup.contents.isEmpty ? ["Default settings"] : setup.contents, id: \.self) {
+                    ForEach(setup.contents.isEmpty ? [L("Default settings")] : setup.contents, id: \.self) {
                         Label($0, systemImage: "checkmark.circle")
                     }
                 } header: {

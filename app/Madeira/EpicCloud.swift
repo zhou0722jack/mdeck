@@ -322,9 +322,9 @@ struct EpicCloudSection: View {
     @State private var confirmCloud = false
     @State private var confirmDevice = false
 
-    private static func when(_ date: Date?) -> String { date?.formatted(date: .abbreviated, time: .shortened) ?? "unknown date" }
+    private static func when(_ date: Date?) -> String { date?.formatted(.dateTime.locale(AppLanguage.locale)) ?? L("Unknown date") }
     private static func size(_ bytes: UInt64) -> String { ByteCountFormatter.string(fromByteCount: Int64(min(bytes, UInt64(Int64.max))), countStyle: .file) }
-    private static func files(_ n: Int) -> String { "\(n) file\(n == 1 ? "" : "s")" }
+    private static func files(_ n: Int) -> String { LF("%@ files", String(n)) }
 
     var body: some View {
         let state = cloud.state(appName)

@@ -83,7 +83,7 @@ struct EAGamesSection: View {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if ea.signedIn && !ea.refreshing && others.isEmpty && search.isEmpty {
                     Text(ea.libraryUpdated == nil ? L("Pull down to load your EA library.")
-                         : "No PC games were found in this EA account.").foregroundStyle(.secondary)
+                         : L("No PC games were found in this EA account.")).foregroundStyle(.secondary)
                 }
                 if ea.signedIn && !others.isEmpty {
                     Button {
@@ -244,7 +244,7 @@ struct EAGameCell: View {
         } else if item.installed != nil, let entry {
             LibraryBadges(entry: entry, note: ea.updateAvailable(item.id) ? L("Update") : nil).foregroundStyle(.secondary)
         } else if item.installed == nil {
-            badge(item.owned?.downloadable == false ? "Not downloadable" : "Not installed")
+            badge(item.owned?.downloadable == false ? L("Not downloadable") : "Not installed")
         }
     }
 

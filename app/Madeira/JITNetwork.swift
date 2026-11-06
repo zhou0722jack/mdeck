@@ -299,10 +299,10 @@ enum JITShortcutFile {
         LogStore.shared.log("[jit-shortcut] run input=\(input)")
         waiting = completion
         timeout = Timer.scheduledTimer(withTimeInterval: 60, repeats: false) { [weak self] _ in
-            MainActor.assumeIsolated { self?.finish(.failed("the shortcut did not return within 60 s")) }
+            MainActor.assumeIsolated { self?.finish(.failed(L("the shortcut did not return within 60 s"))) }
         }
         UIApplication.shared.open(url) { [weak self] opened in
-            if !opened { MainActor.assumeIsolated { self?.finish(.failed("Shortcuts could not be opened")) } }
+            if !opened { MainActor.assumeIsolated { self?.finish(.failed(L("Shortcuts could not be opened"))) } }
         }
     }
 
@@ -314,8 +314,8 @@ enum JITShortcutFile {
         let value = { (name: String) in query.first { $0.name == name }?.value ?? "" }
         switch url.path {
         case "/success": finish(.done(value("result")))
-        case "/error":   finish(.failed(value("errorMessage").isEmpty ? "the shortcut failed" : value("errorMessage")))
-        default:         finish(.failed("the shortcut was cancelled"))
+        case "/error":   finish(.failed(value("errorMessage").isEmpty ? L("the shortcut failed") : value("errorMessage")))
+        default:         finish(.failed(L("the shortcut was cancelled")))
         }
         return true
     }

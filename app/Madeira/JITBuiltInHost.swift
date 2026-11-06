@@ -80,25 +80,25 @@ enum MadeiraBuiltInJIT {
             return
         }
         guard let identifier = helperIdentifier else {
-            fail(2, "Madeira's JIT helper is missing from this installation. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks.")
+            fail(2, L("Madeira's JIT helper is missing from this installation. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks."))
             return
         }
         if NSClassFromString("NSExtension") == nil {
             dlopen("/System/Library/Frameworks/ExtensionFoundation.framework/ExtensionFoundation", RTLD_NOW)
         }
         guard let extensionClass = NSClassFromString("NSExtension") else {
-            fail(3, "iOS did not provide the extension API Madeira's JIT helper needs.")
+            fail(3, L("iOS did not provide the extension API Madeira's JIT helper needs."))
             return
         }
         let factory = unsafeBitCast(extensionClass as AnyObject, to: NSExtensionClassShim.self)
         let found: AnyObject
         do { found = try factory.extension(withIdentifier: identifier) }
         catch {
-            fail(2, "Madeira's JIT helper (\(identifier)) could not be found: \(error.localizedDescription) Choose StikDebug in Settings → JIT. If your sideloader removed the helper, reinstall Madeira and keep its app extensions.")
+            fail(2, LF("Madeira's JIT helper (%@) could not be found: %@ Choose StikDebug in Settings → JIT. If your sideloader removed the helper, reinstall Madeira and keep its app extensions.", String(describing: (identifier)), String(describing: (error.localizedDescription))))
             return
         }
         guard let data = try? JSONEncoder().encode(request) else {
-            fail(4, "The request for Madeira's JIT helper could not be encoded.")
+            fail(4, L("The request for Madeira's JIT helper could not be encoded."))
             return
         }
         let helper = HelperRequest(extension: found, operation: request.operation.rawValue, completion: completion)
@@ -137,12 +137,12 @@ private final class HelperRequest {
         shim.setRequestCancellationBlock { [weak self] _, error in
             let message = error?.localizedDescription ?? L("the request was cancelled")
             DispatchQueue.main.async { MainActor.assumeIsolated {
-                self?.end(.failure(Self.error(5, "Madeira's JIT helper stopped: \(message)")))
+                self?.end(.failure(Self.error(5, LF("Madeira's JIT helper stopped: %@", String(describing: (message))))))
             } }
         }
         shim.setRequestInterruptionBlock { [weak self] _ in
             DispatchQueue.main.async { MainActor.assumeIsolated {
-                self?.end(.failure(Self.error(6, "Madeira's JIT helper stopped unexpectedly. Try again.")))
+                self?.end(.failure(Self.error(6, L("Madeira's JIT helper stopped unexpectedly. Try again."))))
             } }
         }
         let item = NSExtensionItem()
@@ -151,7 +151,7 @@ private final class HelperRequest {
             DispatchQueue.main.async { MainActor.assumeIsolated {
                 guard let self else { return }
                 guard let uuid else {
-                    self.end(.failure(Self.error(7, "Madeira's JIT helper did not start. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks.")))
+                    self.end(.failure(Self.error(7, L("Madeira's JIT helper did not start. Choose StikDebug in Settings → JIT, or reinstall Madeira and keep its app extensions if your sideloader asks."))))
                     return
                 }
                 LogStore.shared.log("[jit-helper] \(self.operation): started \(identifier) as pid \(self.shim.pid(forRequestIdentifier: uuid))")
@@ -162,7 +162,7 @@ private final class HelperRequest {
 
     private func returned(_ payload: Data?) {
         guard let payload, let response = try? JSONDecoder().decode(MadeiraJITRequest.Response.self, from: payload) else {
-            end(.failure(Self.error(8, "Madeira's JIT helper finished without an answer.")))
+            end(.failure(Self.error(8, L("Madeira's JIT helper finished without an answer."))))
             return
         }
         LogStore.shared.log("[jit-helper] \(operation): finished success=\(response.success ? 1 : 0)")

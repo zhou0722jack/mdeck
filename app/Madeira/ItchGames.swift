@@ -88,7 +88,7 @@ struct ItchGamesSection: View {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if itch.signedIn && !itch.refreshing && others.isEmpty && search.isEmpty {
                     Text(itch.libraryUpdated == nil ? L("Pull down to load your itch.io library.")
-                         : "No Windows games yet. Games you buy or claim on itch.io show here, and so do the games in your itch.io collections. For a free game, use Find a game.")
+                         : L("No Windows games yet. Games you buy or claim on itch.io show here, and so do the games in your itch.io collections. For a free game, use Find a game."))
                         .foregroundStyle(.secondary)
                 }
                 if itch.signedIn {
@@ -475,8 +475,8 @@ struct ItchEntrySection: View {
             Text("itch.io")
         } footer: {
             Text(record?.setup != nil
-                 ? "Play runs this game's installer in the Wine desktop. Once it has installed the game, Madeira switches Play to the game's own program."
-                 : "The game starts its own program in Wine. If Madeira picked the wrong program, change it in Launch.")
+                 ? L("Play runs this game's installer in the Wine desktop. Once it has installed the game, Madeira switches Play to the game's own program.")
+                 : L("The game starts its own program in Wine. If Madeira picked the wrong program, change it in Launch."))
         }
         .task(id: id) { await itch.loadChoice(id, force: true) }
         .confirmationDialog("Uninstall \(entry.title)? Its downloaded files are deleted from this device. Saves stored elsewhere are kept.",

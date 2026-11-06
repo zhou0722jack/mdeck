@@ -81,7 +81,7 @@ import UserNotifications
         guard Self.isSupported, !active, session == nil else { return }
         var error: UnsafeMutablePointer<CChar>?
         guard let session = madeira_rppairing_new(Self.hostName, &error) else {
-            fail(Self.take(error) ?? "Madeira could not open its pairing port.")
+            fail(Self.take(error) ?? L("Madeira could not open its pairing port."))
             return
         }
         self.session = session
@@ -133,11 +133,11 @@ import UserNotifications
         phase = .pin(pin)
         log("code shown")
         if #available(iOS 26.0, *), let task = continued as? BGContinuedProcessingTask {
-            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
+            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: LF("Enter it on this %@ to pair with Madeira", String(describing: (Self.deviceKind))))
             task.progress.completedUnitCount = 1
         }
         if UIApplication.shared.applicationState != .active {
-            notify("Madeira pairing code: \(pin)", body: LF("Enter this code on your %@ to finish pairing.", String(describing: (Self.deviceKind))))
+            notify(LF("Madeira pairing code: %@", String(describing: (pin))), body: LF("Enter this code on your %@ to finish pairing.", String(describing: (Self.deviceKind))))
         }
     }
 
@@ -155,16 +155,16 @@ import UserNotifications
                 phase = .paired(device: device ?? "this \(Self.deviceKind)")
                 log("paired")
                 if UIApplication.shared.applicationState != .active {
-                    notify("Paired with Madeira", body: L("Return to Madeira to finish setting up JIT."))
+                    notify(L("Paired with Madeira"), body: L("Return to Madeira to finish setting up JIT."))
                 }
                 endBackground(success: true)
             } catch {
-                fail("Pairing finished, but Madeira could not save the pairing file.")
+                fail(L("Pairing finished, but Madeira could not save the pairing file."))
             }
         case 2:
             endBackground(success: false)
         default:
-            fail(message.map { "Pairing failed: \($0)" } ?? "Pairing failed. Try again.")
+            fail(message.map { LF("Pairing failed: %@", String(describing: ($0))) } ?? L("Pairing failed. Try again."))
         }
     }
 
@@ -218,8 +218,8 @@ import UserNotifications
         guard active else { return }
         log("advertising failed error=\(error)")
         fail(error == DNSServiceErrorType(kDNSServiceErr_PolicyDenied)
-             ? "Madeira needs Local Network access to pair. Allow it in Settings › Apps › Madeira, then try again."
-             : "Madeira could not announce itself on the local network. Check that Wi-Fi is on, then try again.")
+             ? L("Madeira needs Local Network access to pair. Allow it in Settings › Apps › Madeira, then try again.")
+             : L("Madeira could not announce itself on the local network. Check that Wi-Fi is on, then try again."))
     }
 
     private func stopAdvertising() {
@@ -237,7 +237,7 @@ import UserNotifications
     }
 
     private func beginBackground() {
-        grace = UIApplication.shared.beginBackgroundTask(withName: "Madeira pairing") {
+        grace = UIApplication.shared.beginBackgroundTask(withName: L("Madeira pairing")) {
             MainActor.assumeIsolated {
                 let pairing = OnDevicePairing.shared
                 if pairing.continued == nil && pairing.active {
@@ -261,7 +261,7 @@ import UserNotifications
             registered = identifier
         }
         let request = BGContinuedProcessingTaskRequest(identifier: identifier, title: L("Pairing with Madeira"),
-                                                       subtitle: "Settings › Privacy & Security › Developer Mode")
+                                                       subtitle: L("Settings › Privacy & Security › Developer Mode"))
         request.strategy = .fail
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -278,7 +278,7 @@ import UserNotifications
         continued = task
         task.progress.totalUnitCount = 2
         if case .pin(let pin) = phase {
-            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: "Enter it on this \(Self.deviceKind) to pair with Madeira")
+            task.updateTitle(LF("Pairing code %@", String(describing: (pin))), subtitle: LF("Enter it on this %@ to pair with Madeira", String(describing: (Self.deviceKind))))
             task.progress.completedUnitCount = 1
         }
         task.expirationHandler = {

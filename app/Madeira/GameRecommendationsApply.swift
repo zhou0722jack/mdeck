@@ -96,10 +96,9 @@ extension GameRecommendations {
         let lines = GameProfile.parse(rec.fileText).count
         if rec.id == standard.id {
             return (desktop ? L("Madeira recommends its standard settings for the Desktop: ")
-                            : "Madeira has no list for this game yet, so it recommends its standard settings: ")
-                + "\(lines) config line\(lines == 1 ? "" : "s") (the emulator's code-patch report off, without which many games "
-                + "close at start). Resetting replaces "
-                + (desktop ? "the Desktop's" : "this game's") + " config with them."
+                            : L("Madeira has no list for this game yet, so it recommends its standard settings: "))
+                + LF("%@ config line%@ (the emulator's code-patch report off, without which many games close at start). Resetting replaces %@ config with them.",
+                     String(lines), lines == 1 ? "" : "s", desktop ? L("the Desktop's") : L("this game's"))
         }
         let summary = rec.switchSummary
         let switches = summary.isEmpty ? "" : "; " + summary

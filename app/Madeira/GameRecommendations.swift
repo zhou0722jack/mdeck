@@ -100,19 +100,19 @@ struct GameRecommendation: Equatable {
     /// A short list of the switches it sets, for Game details.
     var switchSummary: String {
         var parts: [String] = []
-        if let avx { parts.append("AVX \(avx ? "on" : "off")") }
-        if let nvidia { parts.append("NVIDIA \(nvidia ? "on" : "off")") }
-        if let olderNvidia { parts.append("older NVIDIA card \(olderNvidia ? "on" : "off")") }
-        if let wineVCRT { parts.append("Wine's C++ runtime \(wineVCRT ? "on" : "off")") }
-        if fastSync == false { parts.append("fast synchronization off") }
-        if let semaphoreFastPath { parts.append("fast semaphore waits \(semaphoreFastPath ? "on" : "off")") }
+        if let avx { parts.append(LF("AVX %@", L(avx ? "on" : "off"))) }
+        if let nvidia { parts.append(LF("NVIDIA %@", L(nvidia ? "on" : "off"))) }
+        if let olderNvidia { parts.append(LF("older NVIDIA card %@", L(olderNvidia ? "on" : "off"))) }
+        if let wineVCRT { parts.append(LF("Wine's C++ runtime %@", L(wineVCRT ? "on" : "off"))) }
+        if fastSync == false { parts.append(L("fast synchronization off")) }
+        if let semaphoreFastPath { parts.append(LF("fast semaphore waits %@", L(semaphoreFastPath ? "on" : "off"))) }
         if let fpsMode {
-            let label = [1: "60", 3: "30", 4: "40", 0: "display maximum", 2: "uncapped"][fpsMode] ?? "\(fpsMode)"
-            parts.append("FPS limit \(label)")
+            let label = [1: "60", 3: "30", 4: "40", 0: L("display maximum"), 2: L("Uncapped")][fpsMode] ?? "\(fpsMode)"
+            parts.append(LF("FPS limit %@", String(describing: (label))))
         }
-        if let resolution { parts.append(resolution == Self.screen720 ? "this screen's shape at 720 lines" : resolution) }
-        if launchMode == "desktop" { parts.append("starts in the Wine desktop") }
-        if startServices == true { parts.append("Windows services first") }
+        if let resolution { parts.append(resolution == Self.screen720 ? L("this screen's shape at 720 lines") : resolution) }
+        if launchMode == "desktop" { parts.append(L("starts in the Wine desktop")) }
+        if startServices == true { parts.append(L("Windows services first")) }
         return parts.joined(separator: ", ")
     }
 }

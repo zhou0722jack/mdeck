@@ -476,11 +476,11 @@ struct DeveloperPortal {
         if !Set(installed.groups).isSubset(of: new.profile.groups) { missing.insert(SigningProfile.appGroups) }
         guard missing.isEmpty else {
             throw Failure.unexpected(LF("Apple's new profile does not grant %@, ", String(describing: (missing.sorted().joined(separator: ", "))))
-                + "which this copy is signed with. Install Madeira again to renew it.")
+                + L("which this copy is signed with. Install Madeira again to renew it."))
         }
         guard installed.certificates.isEmpty || !Set(installed.certificates).isDisjoint(with: new.profile.certificates) else {
             throw Failure.unexpected(L("This copy was signed with a certificate the Apple ID no longer has, ")
-                + "so a new profile cannot renew it. Install Madeira again.")
+                + L("so a new profile cannot renew it. Install Madeira again."))
         }
         return new
     }
@@ -504,8 +504,8 @@ struct DeveloperPortal {
     /// The device's remote-pairing port through LocalDevVPN, as StikJIT reaches it.
     nonisolated static let devicePort: UInt16 = 49152
 
-    nonisolated static let signInRefusedMessage = "Apple no longer accepts Madeira's sign-in. "
-        + "Sign in with your Apple ID under Settings › Signing, or install Madeira again with SideInstaller."
+    nonisolated static let signInRefusedMessage = L("Apple no longer accepts Madeira's sign-in. ")
+        + L("Sign in with your Apple ID under Settings › Signing, or install Madeira again with SideInstaller.")
     nonisolated static let unreachableMessage = "Madeira couldn't reach this device. Connect LocalDevVPN, then try again."
 
     private static let renewedUntilKey = "madeiraSigningRenewedUntil"
@@ -646,7 +646,7 @@ struct DeveloperPortal {
         // one would spend an App ID there.
         if let team = main.teamID, team != account.teamID {
             return stop(L("Madeira's sign-in is for another Apple ID than the one this copy was signed with. ")
-                + "Forget it under Settings › Signing, then sign in with the Apple ID that installed Madeira.")
+                + L("Forget it under Settings › Signing, then sign in with the Apple ID that installed Madeira."))
         }
         // A second connection to the device while the debugger holds one is not worth
         // a game that fails to start.
@@ -771,11 +771,11 @@ struct SigningSettingsSection: View {
     }
 
     private var footer: String {
-        let weekly = "Madeira was signed with a free Apple ID, so it stops opening when this runs out. "
+        let weekly = L("Madeira was signed with a free Apple ID, so it stops opening when this runs out. ")
         guard let account = signing.account else {
             return weekly + L("Refresh it with the app that installed it before then, or sign in with the Apple ID it was installed with and Madeira renews its own signing when it is open and LocalDevVPN is connected. Installed with SideInstaller, Madeira needs no sign-in.")
         }
-        let source = account.appleID == nil ? "the sign-in SideInstaller gave it" : "your Apple ID's sign-in"
+        let source = account.appleID == nil ? L("the sign-in SideInstaller gave it") : L("your Apple ID's sign-in")
         return weekly + LF("With %@ (a token for Apple's developer service, not your password, kept in this device's Keychain), Madeira renews its own signing when it is open and LocalDevVPN is connected. It asks Apple and an anisette server, %@ first.", String(describing: (source)), String(describing: (account.anisetteServers.first.flatMap { URL(string: $0)?.host } ?? "the one it was given")))
     }
 
@@ -840,8 +840,8 @@ struct SigningRefreshOffer: ViewModifier {
         if case .failed(let why) = signing.prompt { return why }
         if signing.signInRefused { return SigningRefresh.signInRefusedMessage }
         return LoopbackProbe.vpnInterfaceUp
-            ? "Madeira can renew it for another \(SigningProfile.week) days."
-            : "Connect LocalDevVPN and come back: Madeira then renews it for another \(SigningProfile.week) days."
+            ? LF("Madeira can renew it for another %@ days.", String(describing: (SigningProfile.week)))
+            : LF("Connect LocalDevVPN and come back: Madeira then renews it for another %@ days.", String(describing: (SigningProfile.week)))
     }
 
     /// What the alert offers besides closing it: a sign-in when Apple turned the last one

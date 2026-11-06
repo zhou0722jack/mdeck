@@ -30,9 +30,14 @@ assert 'url?.host == "client-update.akamai.steamstatic.com"' in text and 'url?.s
 print('PASS: three pinned packages from one HTTPS Valve host; redirects stay on it')
 with tempfile.TemporaryDirectory(prefix='madeira-runtime-') as tmp:
     tmp = Path(tmp)
-    (tmp/'module.modulemap').write_text('module zlib [system] { header "/usr/include/zlib.h" export * link "z" }')
+    if sys.platform != 'darwin':
+        (tmp/'module.modulemap').write_text('module zlib [system] { header "/usr/include/zlib.h" export * link "z" }')
     main = r'''
 import Foundation
+// The fixture exercises ZIP parsing and registry updates, not Wine startup.
+func wine_process_is_running() -> Int32 { 0 }
+func wineserver_is_running() -> Int32 { 0 }
+func madeira_seed_prefix_if_needed(_ path: String) {}
 let fm = FileManager.default
 let mode = CommandLine.arguments[1]
 if mode == "registry" {
@@ -96,7 +101,7 @@ if mode == "registry" {
 '''
     (tmp/'main.swift').write_text(main)
     exe = tmp/'check'
-    subprocess.run([SWIFTC, '-I', str(tmp), str(source), str(tmp/'main.swift'), '-o', str(exe)], check=True)
+    subprocess.run([SWIFTC, '-I', str(tmp), str(source), str(root/'app/Madeira/Localization.swift'), str(tmp/'main.swift'), '-o', str(exe)], check=True)
     subprocess.run([str(exe), 'registry'], check=True)
     def archive(items, compression=zipfile.ZIP_DEFLATED):
         out = io.BytesIO()

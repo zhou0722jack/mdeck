@@ -98,7 +98,7 @@ enum JITPairingFileStore {
         guard status == errSecSuccess else {
             throw NSError(domain: "MadeiraJIT", code: 12,
                           userInfo: [NSLocalizedDescriptionKey:
-                            "The pairing file could not be saved in the Keychain (\(status)). Unlock this device and try again."])
+                            LF("The pairing file could not be saved in the Keychain (%@). Unlock this device and try again.", String(describing: (status)))])
         }
         UserDefaults.standard.set(source.rawValue, forKey: sourceKey)
     }
@@ -262,7 +262,7 @@ final class JITCoordinator: ObservableObject {
             status = LF("Running the %@ shortcut…", String(describing: (JITNetworkShortcut.name)))
             JITNetworkShortcut.shared.start { [weak self] outcome in
                 if case .failed(let why) = outcome {
-                    stopped("Your \(JITNetworkShortcut.name) shortcut stopped: \(why) Check its steps in Shortcuts, then try again.")
+                    stopped(LF("Your %@ shortcut stopped: %@ Check its steps in Shortcuts, then try again.", String(describing: (JITNetworkShortcut.name)), String(describing: (why))))
                     return
                 }
                 // LocalDevVPN's Connect returns before its tunnel routes (about 5 s
@@ -636,8 +636,8 @@ struct JITSetupView: View {
                         Text("Built-in StikJIT")
                     } footer: {
                         Text(OnDevicePairing.isSupported
-                             ? "Pair in Madeira or import a pairing file made on a computer, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain."
-                             : "Import this device's pairing file, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain. Pairing in Madeira needs iOS 27 or later.")
+                             ? L("Pair in Madeira or import a pairing file made on a computer, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain.")
+                             : L("Import this device's pairing file, connect LocalDevVPN, then check setup. The pairing file is kept in this device's Keychain. Pairing in Madeira needs iOS 27 or later."))
                     }
 
                     Section {

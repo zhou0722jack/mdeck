@@ -704,7 +704,7 @@ struct GameMoveSection: View {
                 let total = url.volumeTotal
                 let f = ByteCountFormatter.string(fromByteCount: free ?? 0, countStyle: .file)
                 next[target.value] = switch (free, total) {
-                case let (_?, total?): "\(f) free of \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+                case let (_?, total?): LF("%@ free of %@", String(describing: (f)), String(describing: (ByteCountFormatter.string(fromByteCount: total, countStyle: .file))))
                 case (_?, nil): "\(f) free"
                 default: nil
                 }

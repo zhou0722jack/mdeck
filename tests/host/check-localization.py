@@ -62,6 +62,16 @@ for source in APP.rglob("*.swift"):
         chinese(key)
 print("PASS: every L/LF call resolves to a translated catalog entry")
 
+# The onboarding helpers accept localized keys but are not recognized as SwiftUI
+# APIs by the extractor. Keep their static titles and interpolated steps covered.
+onboarding = (APP / "Onboarding.swift").read_text()
+for match in re.finditer(r'\b(?:point|header|primary|secondary)\(\s*(?:\d+\s*,\s*)?(' + literal + ')', onboarding):
+    raw_key = re.sub(r'\\\([^)]*\)', '%@', match[1])
+    key = json.loads(raw_key)
+    assert key in strings, f"Onboarding helper: missing {key}"
+    chinese(key)
+print("PASS: onboarding helper titles, steps and linked instructions are translated")
+
 if sys.platform != "darwin":
     print("SKIP: compiled Apple bundle check requires Xcode on macOS")
     sys.exit(0)

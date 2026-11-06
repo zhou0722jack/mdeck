@@ -86,7 +86,7 @@ struct EpicGamesSection: View {
                     LibraryCells(items: mine, layout: layout, width: width) { item, list, dense in cell(item, list: list, dense: dense) }
                 } else if epic.signedIn && !epic.refreshing && others.isEmpty && search.isEmpty {
                     Text(epic.libraryUpdated == nil ? L("Pull down to load your Epic Games library.")
-                         : "No Windows games were found in this Epic Games library.").foregroundStyle(.secondary)
+                         : L("No Windows games were found in this Epic Games library.")).foregroundStyle(.secondary)
                 }
                 if epic.signedIn && !others.isEmpty {
                     Button {
@@ -566,7 +566,7 @@ struct EpicSignInView: View {
         guard !busy else { return }
         guard let code = EpicAPI.authorizationCode(in: text) else {
             failure = EpicAPI.correctiveAction(in: text).map(EpicAPI.correctiveMessage)
-                ?? "This is not an Epic sign-in code. Copy the text Epic shows after you sign in."
+                ?? L("This is not an Epic sign-in code. Copy the text Epic shows after you sign in.")
             return
         }
         busy = true

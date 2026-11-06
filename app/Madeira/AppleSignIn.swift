@@ -469,7 +469,7 @@ struct AppleSignInSheet: View {
             case .choose: EmptyView()
             }
             if prompt.method != .device {
-                option("Send a code to my Apple devices", "laptopcomputer.and.iphone", .devices)
+                option(L("Send a code to my Apple devices"), "laptopcomputer.and.iphone", .devices)
             }
             ForEach(prompt.numbers) { number in
                 if number.takesTexts, !(prompt.method == .sms && number.id == prompt.selectedNumberId) {

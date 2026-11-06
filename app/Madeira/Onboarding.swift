@@ -283,18 +283,18 @@ struct OnboardingView: View {
     private func header(_ title: String, symbol: String) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Image(systemName: symbol).font(.system(size: 44)).foregroundStyle(.tint).accessibilityHidden(true)
-            Text(title).font(.title.bold()).accessibilityAddTraits(.isHeader)
+            Text(L(title)).font(.title.bold()).accessibilityAddTraits(.isHeader)
         }
     }
 
     private func primary(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: symbol).fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 36)
+            Label(L(title), systemImage: symbol).fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 36)
         }.buttonStyle(.borderedProminent).controlSize(.large)
     }
 
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(title, action: action).frame(maxWidth: .infinity, minHeight: 44)
+        Button(L(title), action: action).frame(maxWidth: .infinity, minHeight: 44)
     }
 
     private func point(_ number: Int, _ text: LocalizedStringKey, done: Bool = false) -> some View {
@@ -339,8 +339,8 @@ struct OnboardingView: View {
                 + (pages.contains(.wineMono) ? ["Download Wine Mono, for games built on .NET Framework."] : [])
                 + (pages.contains(.vcRedist) ? ["Install Microsoft's Visual C++ runtime, which many games need."] : [])
             ForEach(offered.indices, id: \.self) { index in point(index + 1, offered[index]) }
-            primary("Get started", symbol: "arrow.right") { model.next() }.padding(.top, 8)
-            secondary("Skip setup") { model.skip() }
+            primary(L("Get started"), symbol: "arrow.right") { model.next() }.padding(.top, 8)
+            secondary(L("Skip setup")) { model.skip() }
         }
     }
 
@@ -349,7 +349,7 @@ struct OnboardingView: View {
     /// localdevvpn:// (canOpenURL; the scheme is declared in Info.plist), so nothing opens.
     private var localDevVPNPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Install LocalDevVPN", symbol: "network")
+            header(L("Install LocalDevVPN"), symbol: "network")
             Text("Madeira enables JIT through LocalDevVPN, a free app that gives Madeira a network path to this \(device). Install it from the App Store, then come back.")
                 .fixedSize(horizontal: false, vertical: true)
             if localDevVPNInstalled {
@@ -361,7 +361,7 @@ struct OnboardingView: View {
                     LogStore.shared.log("[onboarding] LocalDevVPN app-store")
                     UIApplication.shared.open(LocalDevVPN.appStore)
                 }
-                secondary("I'll do this later") { model.next() }
+                secondary(L("I'll do this later")) { model.next() }
             }
         }
     }
@@ -383,28 +383,28 @@ struct OnboardingView: View {
 
     private var jitChoices: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Set up JIT", symbol: "bolt.fill")
+            header(L("Set up JIT"), symbol: "bolt.fill")
             Text("JIT lets Madeira run Windows code. Choose how your \(device) gets it.")
             VStack(spacing: 12) {
                 jitChoice("In-app", symbol: "iphone.radiowaves.left.and.right",
                           detail: !OnDevicePairing.isSupported ? L("Needs iOS 27 or later.")
-                              : pairedOnDevice ? "Paired on this \(device)."
-                              : "Pair this \(device) with Madeira in Settings. No computer needed.",
+                              : pairedOnDevice ? LF("Paired on this %@.", String(describing: (device)))
+                              : LF("Pair this %@ with Madeira in Settings. No computer needed.", String(describing: (device))),
                           done: pairedOnDevice, enabled: OnDevicePairing.isSupported) { choose(.onDevice) }
-                jitChoice("In-app with pairing file", symbol: "doc.badge.plus",
+                jitChoice(L("In-app with pairing file"), symbol: "doc.badge.plus",
                           detail: fileImported ? "Pairing file imported." : L("Use a pairing file made on a computer."),
                           done: fileImported) { choose(.pairingFile) }
                 jitChoice("StikDebug", symbol: "ant",
                           detail: L("Enable JIT with the StikDebug app."),
                           done: jit.method == .stikDebug) { choose(.stikDebug) }
             }
-            secondary("I'll do this later") { model.next() }
+            secondary(L("I'll do this later")) { model.next() }
         }
     }
 
     private var onDeviceGuide: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Pair on this \(device)", symbol: "iphone.radiowaves.left.and.right")
+            header(LF("Pair on this %@", String(describing: (device))), symbol: "iphone.radiowaves.left.and.right")
             VStack(alignment: .leading, spacing: 14) {
                 point(1, "Turn on Wi-Fi, then tap **Start pairing** and allow Local Network access.",
                       done: pairing.phase != .idle || pairedOnDevice)
@@ -418,19 +418,19 @@ struct OnboardingView: View {
                     .font(.headline).foregroundStyle(.green)
                 vpnNote
                 primary(L("Continue"), symbol: "arrow.right") { useBuiltIn() }
-                secondary("Pair again") { startPairing() }
+                secondary(L("Pair again")) { startPairing() }
             } else {
-                primary("Start pairing", symbol: "dot.radiowaves.left.and.right") { startPairing() }
+                primary(L("Start pairing"), symbol: "dot.radiowaves.left.and.right") { startPairing() }
                     .disabled(pairing.active)
                 OnDevicePairingPanel()
             }
-            secondary("Back to options") { leaveGuide() }
+            secondary(L("Back to options")) { leaveGuide() }
         }
     }
 
     private var pairingFileGuide: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Use a pairing file", symbol: "doc.badge.plus")
+            header(L("Use a pairing file"), symbol: "doc.badge.plus")
             VStack(alignment: .leading, spacing: 14) {
                 point(1, "On a computer, make this \(device)'s pairing file with the [StikDebug pairing-file guide](https://github.com/StikDebug/StikDebug-Guide/blob/main/pairing_file.md).",
                       done: fileImported)
@@ -444,31 +444,31 @@ struct OnboardingView: View {
                     .font(.headline).foregroundStyle(.green)
                 vpnNote
                 primary(L("Continue"), symbol: "arrow.right") { useBuiltIn() }
-                secondary("Choose another pairing file") { importPairingFile() }
+                secondary(L("Choose another pairing file")) { importPairingFile() }
             } else {
-                primary("Choose pairing file", symbol: "folder") { importPairingFile() }
+                primary(L("Choose pairing file"), symbol: "folder") { importPairingFile() }
             }
             if let error = pairingImportError ?? jit.error {
                 Label(error, systemImage: "exclamationmark.circle.fill").foregroundStyle(.red)
             }
-            secondary("Back to options") { leaveGuide() }
+            secondary(L("Back to options")) { leaveGuide() }
         }
     }
 
     private var stikDebugGuide: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Use StikDebug", symbol: "ant")
+            header(L("Use StikDebug"), symbol: "ant")
             VStack(alignment: .leading, spacing: 14) {
                 point(1, "Install [StikDebug](https://github.com/StikDebug/StikDebug/releases/latest) and import this \(device)'s pairing file into it.")
                 point(2, "Install and connect [LocalDevVPN](https://apps.apple.com/us/app/localdevvpn/id6755608044).")
                 point(3, "When you play, Madeira opens StikDebug to enable JIT, then comes back.")
             }
-            primary("Use StikDebug", symbol: "arrow.right") {
+            primary(L("Use StikDebug"), symbol: "arrow.right") {
                 jit.method = .stikDebug
                 LogStore.shared.log("[onboarding] JIT method=StikDebug")
                 finishJIT()
             }
-            secondary("Back to options") { leaveGuide() }
+            secondary(L("Back to options")) { leaveGuide() }
         }
     }
 
@@ -556,7 +556,7 @@ struct OnboardingView: View {
     /// It drives LocalDevVPN with LocalDevVPN's own Shortcuts action.
     private var shortcutPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Connect automatically", symbol: "bolt.horizontal.circle")
+            header(L("Connect automatically"), symbol: "bolt.horizontal.circle")
             Text("With the \(JITNetworkShortcut.name) shortcut, Enable JIT connects LocalDevVPN for you, turns Cellular Data off while there's no Wi-Fi, and puts both back, along with any VPN you were using, once the game starts.")
                 .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 14) {
@@ -594,7 +594,7 @@ struct OnboardingView: View {
         VStack(alignment: .leading, spacing: 18) {
             header("Sign in to Steam", symbol: "person.crop.circle.badge.checkmark")
             Text(model.steps.contains(.dockClient)
-                 ? "When you start a game with Madeira Dock, Madeira hands this sign-in to Valve's own Steam client, which signs in and checks your license."
+                 ? L("When you start a game with Madeira Dock, Madeira hands this sign-in to Valve's own Steam client, which signs in and checks your license.")
                  : L("Madeira keeps a Steam sign-in so it can start your Steam games with your own account."))
             VStack(alignment: .leading, spacing: 10) {
                 Label("Your password goes only to Steam and is never saved.", systemImage: "lock.fill")
@@ -603,20 +603,20 @@ struct OnboardingView: View {
             if let name = signIn.accountName {
                 Label("Signed in as \(name)", systemImage: "checkmark.circle.fill").font(.headline).foregroundStyle(.green)
                 primary(L("Continue"), symbol: "arrow.right") { model.next() }
-                secondary("Use a different account") {
+                secondary(L("Use a different account")) {
                     LogStore.shared.log("[onboarding] sign-in replaced")
                     signIn.signOut(); showSignIn = true
                 }
             } else {
                 primary("Sign in to Steam", symbol: "person.crop.circle") { showSignIn = true }
-                secondary("Set up later") { model.next() }
+                secondary(L("Set up later")) { model.next() }
             }
         }
     }
 
     private var dockClientPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Prepare Madeira Dock", symbol: "shippingbox")
+            header(L("Prepare Madeira Dock"), symbol: "shippingbox")
             Text("Madeira Dock starts your installed Steam games through Valve's own Steam client, without the Steam desktop window. It needs the client's components, which Madeira downloads from Valve.")
             if dock.clientInstalled {
                 Label("Valve's client components are installed.", systemImage: "checkmark.circle.fill")
@@ -637,7 +637,7 @@ struct OnboardingView: View {
                     }
                 }
                 // A running download continues; Settings › Steam › Madeira Dock shows it.
-                secondary("Set up later") { model.next() }
+                secondary(L("Set up later")) { model.next() }
             }
         }
     }
@@ -646,7 +646,7 @@ struct OnboardingView: View {
     /// The download continues if the page is left; Settings › .NET Framework shows it.
     private var wineMonoPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Add .NET Framework support", symbol: "shippingbox.and.arrow.backward")
+            header(L("Add .NET Framework support"), symbol: "shippingbox.and.arrow.backward")
             Text("Some Windows games are built on Microsoft's .NET Framework. Madeira runs them on Wine Mono, the Wine project's open-source .NET runtime.")
             if mono.installed {
                 Label("Wine Mono is installed.", systemImage: "checkmark.circle.fill")
@@ -670,7 +670,7 @@ struct OnboardingView: View {
                         mono.install()
                     }
                 }
-                secondary("Set up later") { model.next() }
+                secondary(L("Set up later")) { model.next() }
             }
         }
     }
@@ -681,7 +681,7 @@ struct OnboardingView: View {
     /// the page keeps the download going; Settings › Visual C++ runtimes shows it.
     private var vcRedistPage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("Install the Visual C++ runtime", symbol: "puzzlepiece.extension.fill")
+            header(L("Install the Visual C++ runtime"), symbol: "puzzlepiece.extension.fill")
             Text("Many Windows games are built with Microsoft Visual C++ and need its 2015-2022 runtime. Madeira downloads Microsoft's own installers and takes the runtime out of them, for 64-bit and 32-bit games alike. Games find it at their next start.")
             if redist.complete {
                 Label("The Visual C++ 2015-2022 runtime is installed.", systemImage: "checkmark.circle.fill")
@@ -705,14 +705,14 @@ struct OnboardingView: View {
                         redist.install()
                     }
                 }
-                secondary("Set up later") { model.next() }
+                secondary(L("Set up later")) { model.next() }
             }
         }
     }
 
     private var donePage: some View {
         VStack(alignment: .leading, spacing: 18) {
-            header("You're all set", symbol: "checkmark.seal.fill")
+            header(L("You're all set"), symbol: "checkmark.seal.fill")
             if model.steps.contains(.jit) {
                 Text("You can change the JIT method or import a pairing file from Settings › JIT.")
             }
@@ -726,7 +726,7 @@ struct OnboardingView: View {
                 Text("Settings › Visual C++ runtimes installs Microsoft's runtime again, or removes it.")
             }
             Text("You can run this setup again from Settings › JIT or Settings › Steam.").foregroundStyle(.secondary)
-            primary("Go to your library", symbol: "square.grid.2x2.fill") { model.finish() }
+            primary(L("Go to your library"), symbol: "square.grid.2x2.fill") { model.finish() }
         }
     }
 }

@@ -361,7 +361,7 @@ struct EpicInstalledGame: Codable, Sendable {
             await self.run(app)
         }
         active = (app, task)
-        background.downloadStarted(appID: 0, name: game(app)?.title ?? installed[app]?.title ?? "Epic game")
+        background.downloadStarted(appID: 0, name: game(app)?.title ?? installed[app]?.title ?? L("Epic game"))
     }
 
     private func run(_ app: String) async {
@@ -424,7 +424,7 @@ struct EpicInstalledGame: Codable, Sendable {
             }
         }
         active = nil
-        background.downloadEnded(appID: 0, name: game(app)?.title ?? installed[app]?.title ?? "Epic game",
+        background.downloadEnded(appID: 0, name: game(app)?.title ?? installed[app]?.title ?? L("Epic game"),
                                  outcome: outcome, queueEmpty: queue.isEmpty)
         pump()
     }

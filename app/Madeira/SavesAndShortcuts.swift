@@ -335,7 +335,7 @@ struct SavesSection: View {
                         switch r {
                         case .success(let b):
                             message = "\(b.files) files, \(ByteCountFormatter.string(fromByteCount: Int64(b.bytes), countStyle: .file))"
-                                + (b.leftOut > 0 ? "; \(b.leftOut) very large files left out" : "")
+                                + (b.leftOut > 0 ? LF("; %@ very large files left out", String(describing: (b.leftOut))) : "")
                             shareURL = b.url
                         case .failure(let e):
                             message = e.localizedDescription
@@ -358,8 +358,8 @@ struct SavesSection: View {
             Text("Saves")
         } footer: {
             Text("A backup is one zip of every Windows user's Documents, Saved Games and AppData (caches left out), "
-                 + "to keep in Files or iCloud Drive. Restoring puts those files back and overwrites saves with "
-                 + "the same names.")
+                 + L("to keep in Files or iCloud Drive. Restoring puts those files back and overwrites saves with ")
+                 + L("the same names."))
         }
         // The zip is a copy made for sharing: removed once the share sheet closes.
         .sheet(item: Binding(get: { shareURL.map { SharedFile(url: $0) } }, set: {

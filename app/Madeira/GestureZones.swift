@@ -447,7 +447,7 @@ struct GestureZonePanel: View {
     }
 
     private func row(_ title: String, _ content: some View) -> some View {
-        HStack { Text(title).font(.subheadline); Spacer(); content }
+        HStack { Text(L(title)).font(.subheadline); Spacer(); content }
     }
 
     private func menu(_ b: Binding<ControlAction>, _ choices: [ControlAction]) -> some View {

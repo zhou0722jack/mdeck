@@ -248,8 +248,8 @@ enum MadeiraDock {
             // among the account's subscriptions (madeira-dock src/session.c).
             if result == 34 {
                 return fields["session-authenticated-online"] == "1"
-                    ? "Steam signed in but did not confirm this game's license in time. Export the log before trying again."
-                    : "Steam did not finish signing in. Check the connection and try again."
+                    ? L("Steam signed in but did not confirm this game's license in time. Export the log before trying again.")
+                    : L("Steam did not finish signing in. Check the connection and try again.")
             }
             if result == 54, fields["launch-user-arguments-invalid"] != nil {
                 return L("The game's launch arguments are invalid or too long. Edit them in Game details and try again.")
@@ -258,8 +258,8 @@ enum MadeiraDock {
             // Offline start (madeira-dock docs/OFFLINE.md): Valve's client decides.
             if result == 50 {
                 return fields["session-offline-abi"] == "0"
-                    ? "There is no connection, and this Steam client build cannot be started offline by Madeira Dock. Connect to the internet and try again."
-                    : "There is no connection, and Steam has nothing saved to sign this account in offline. Start a game once while online; Steam then allows offline starts until its offline sign-in expires."
+                    ? L("There is no connection, and this Steam client build cannot be started offline by Madeira Dock. Connect to the internet and try again.")
+                    : L("There is no connection, and Steam has nothing saved to sign this account in offline. Start a game once while online; Steam then allows offline starts until its offline sign-in expires.")
             }
             if result == 51 { return L("There is no connection, and Steam refused to sign in offline. Connect to the internet and start the game once. Export the log if it happens again.") }
             if result == 52 { return L("Steam signed in offline, but what it has saved does not list this game. Start this game once while online, then it can be played offline.") }
@@ -308,8 +308,8 @@ enum MadeiraDock {
             case 16: return L("Steam reports this game is already running. Close it, then try again.")
             case 17, 19, 20:
                 return waited
-                    ? "Steam could not finish installing content this game needs. Try again later."
-                    : "Steam needs to install or update content this game depends on before it can start. Start the game again to let Madeira Dock wait for Steam."
+                    ? L("Steam could not finish installing content this game needs. Try again later.")
+                    : L("Steam needs to install or update content this game depends on before it can start. Start the game again to let Madeira Dock wait for Steam.")
             case 18: return L("Steam does not see this game as installed.")
             case 28: return L("Steam could not find the game's executable.")
             // Steam's CreateProcess for the game failed: Madeira could not load the program.

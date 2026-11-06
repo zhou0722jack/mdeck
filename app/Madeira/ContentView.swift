@@ -2415,7 +2415,7 @@ struct ContentView: View {
         if !SigningStatus.current.debuggable, MadeiraConfig.flag("MADEIRA_JIT_SIGNING_CHECK") {
             jitStatus = .unavailable
             logStore.log(String(format: "[jit-signing] get-task-allow is missing (cs-flags=0x%x): no debugger can attach to this copy, "
-                                + "so JIT cannot be enabled. Reinstall Madeira with a development certificate.",
+                                + L("so JIT cannot be enabled. Reinstall Madeira with a development certificate."),
                                 SigningStatus.current.flags), level: .error)
             if library.enabled { library.error = SigningStatus.notDebuggableMessage }
             launchAfterJITEnded(started: false)
@@ -2520,7 +2520,7 @@ struct ContentView: View {
     /// Syncs the game's saves, then starts it; if the saves are still not settled, asks again.
     private func cloudWait(_ appID: Int) {
         guard SteamOwnedLibrary.shared.cloudWaitingFor == nil else { return }
-        let name = MadeiraDock.games(drive: MadeiraDock.drive).first { $0.id == appID }?.name ?? "This game"
+        let name = MadeiraDock.games(drive: MadeiraDock.drive).first { $0.id == appID }?.name ?? L("This game")
         Task { @MainActor in
             let hold = await SteamOwnedLibrary.shared.settleCloud(appID)
             if let hold {
@@ -5016,7 +5016,7 @@ struct MappingPanel: View {
     private var controllerTab: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Controller controls feed XInput player 1. LS and RS are analogue sticks; "
-                 + "LT and RT are full-press triggers. Touch and physical controls can be used together.")
+                 + L("LT and RT are full-press triggers. Touch and physical controls can be used together."))
                 .font(.system(size: 11))
                 .foregroundStyle(.orange.opacity(0.95))
                 .fixedSize(horizontal: false, vertical: true)
@@ -5064,7 +5064,7 @@ struct MappingPanel: View {
 
     private func section(_ title: String, _ items: [(String, ControlAction)]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title)
+            Text(L(title))
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.45))
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 48), spacing: 6)], spacing: 6) {

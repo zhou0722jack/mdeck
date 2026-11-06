@@ -38,7 +38,7 @@ source = (app / 'GameIniFiles.swift').read_text(encoding='utf-8')
 library = (app / 'Library.swift').read_text(encoding='utf-8')
 project = (app.parent / 'Madeira.xcodeproj/project.pbxproj').read_text(encoding='utf-8')
 
-check('case .iniFiles: return "Settings files"' in library and
+check('case .iniFiles: return L("Settings files")' in library and
       'case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)' in library,
       'Game details has a Settings files page')
 check('[.library, .iniFiles, .advanced]' in library, 'for every game but the Desktop')
@@ -111,7 +111,7 @@ else:
         (temporary / 'main.swift').write_text(main_swift)
         binary = temporary / 'ini'
         subprocess.run([compiler, '-swift-version', '5', str(temporary / 'GameIniFiles.swift'), str(temporary / 'main.swift'),
-                        '-o', str(binary)], check=True)
+                        str(app / 'Localization.swift'), '-o', str(binary)], check=True)
         drive = temporary / 'drive_c'
         (drive / 'users/steamuser/Documents/My Games/FalloutNV').mkdir(parents=True)
         (drive / 'users/steamuser/Documents/My Games/FalloutNV/Fallout.ini').write_text('a=1\n')

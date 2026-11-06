@@ -352,7 +352,7 @@ enum VCRedistInstaller {
                     self.phase = .idle
                     self.log("installed: \(self.installed.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")); the next session links them")
                 } else {
-                    self.fail("The DLLs were placed, but reading them back failed. Export the log.")
+                    self.fail(L("The DLLs were placed, but reading them back failed. Export the log."))
                 }
             } catch {
                 self.fail(error.localizedDescription)
@@ -372,13 +372,13 @@ enum VCRedistInstaller {
             let task = URLSession.shared.downloadTask(with: package.url) { temp, response, failure in
                 if let failure { continuation.resume(throwing: failure); return }
                 guard let temp, let http = response as? HTTPURLResponse else {
-                    continuation.resume(throwing: VCRedistError.message("No response from Microsoft's download server.")); return
+                    continuation.resume(throwing: VCRedistError.message(L("No response from Microsoft's download server."))); return
                 }
                 guard http.statusCode == 200 else {
-                    continuation.resume(throwing: VCRedistError.message("Microsoft's download server answered \(http.statusCode) for \(package.fileName).")); return
+                    continuation.resume(throwing: VCRedistError.message(LF("Microsoft's download server answered %@ for %@.", String(describing: (http.statusCode)), String(describing: (package.fileName))))); return
                 }
                 guard response?.url?.host == VCRedistPin.host, response?.url?.scheme == "https" else {
-                    continuation.resume(throwing: VCRedistError.message("\(package.fileName) was served from an unexpected address.")); return
+                    continuation.resume(throwing: VCRedistError.message(LF("%@ was served from an unexpected address.", String(describing: (package.fileName))))); return
                 }
                 // The temporary file is removed when this closure returns: keep it.
                 try? FileManager.default.removeItem(at: kept)

@@ -80,8 +80,8 @@ enum SettingsPages {
 
     /// The rows of the Settings tab, in groups.
     static let groups: [(String?, [Page])] = [
-        ("Getting games", [.steam, .gog, .itch, .epic, .ea, .runtimes]),
-        ("Running games", [.graphics, .display, .memory, .pointer]),
+        (L("Getting games"), [.steam, .gog, .itch, .epic, .ea, .runtimes]),
+        (L("Running games"), [.graphics, .display, .memory, .pointer]),
         ("Device", [.jit, .signing, .saves, .drives]),
         (nil, [.appearance, .advanced, .credits]),
     ]
@@ -233,15 +233,15 @@ struct SettingsPageView: View {
 struct SettingsCreditsSection: View {
     var body: some View {
         Section {
-            MadeiraCredit(name: "Will Faust", handle: "willfaust", role: "Created Madeira")
-            MadeiraCredit(name: "Nick", handle: "125hz", role: "32-bit game support, the game library and Madeira Dock")
-            MadeiraCredit(name: "Jfishin", handle: "Jfishin", role: "The original native Steam sign-in, library and downloads")
-            MadeiraCredit(name: "Jesse", handle: "JesseLovelace", role: "Steam Cloud saves, faster game launches, and fixes that let more games run")
-            MadeiraCredit(name: "Dan Perks", handle: "danperks", role: "In-app JIT without StikDebug, and pairing without a computer")
-            MadeiraCredit(name: "bahacan16", handle: "bahacan16", role: "Direct3D 12 and DXMT fixes, game launcher windows, per-game settings, PlayStation controllers, and save backups")
-            MadeiraCredit(name: "spitefulowl", handle: "spitefulowl", role: "Wine and FEX runtime fixes, DXMT texture and memory fixes, audio, the swap tier, and library launch options")
-            MadeiraCredit(name: "meshoklv", handle: "meshoklv", role: "Controller fixes for games that ship their own XInput or need focus, touch taps that stay off the mouse, and a crash-guard fix")
-            MadeiraCredit(name: "TheHadesc", handle: "TheHadesc", role: "Madeira Dock starts for games whose Steam launch entries do not start at zero, and a touch gamepad that survives the in-game keyboard")
+            MadeiraCredit(name: "Will Faust", handle: "willfaust", role: L("Created Madeira"))
+            MadeiraCredit(name: "Nick", handle: "125hz", role: L("32-bit game support, the game library and Madeira Dock"))
+            MadeiraCredit(name: "Jfishin", handle: "Jfishin", role: L("The original native Steam sign-in, library and downloads"))
+            MadeiraCredit(name: "Jesse", handle: "JesseLovelace", role: L("Steam Cloud saves, faster game launches, and fixes that let more games run"))
+            MadeiraCredit(name: "Dan Perks", handle: "danperks", role: L("In-app JIT without StikDebug, and pairing without a computer"))
+            MadeiraCredit(name: "bahacan16", handle: "bahacan16", role: L("Direct3D 12 and DXMT fixes, game launcher windows, per-game settings, PlayStation controllers, and save backups"))
+            MadeiraCredit(name: "spitefulowl", handle: "spitefulowl", role: L("Wine and FEX runtime fixes, DXMT texture and memory fixes, audio, the swap tier, and library launch options"))
+            MadeiraCredit(name: "meshoklv", handle: "meshoklv", role: L("Controller fixes for games that ship their own XInput or need focus, touch taps that stay off the mouse, and a crash-guard fix"))
+            MadeiraCredit(name: "TheHadesc", handle: "TheHadesc", role: L("Madeira Dock starts for games whose Steam launch entries do not start at zero, and a touch gamepad that survives the in-game keyboard"))
         } header: { Text("Credits") } footer: {
             Text("Madeira is built on Wine, FEX-Emu, DXMT by Feifan He (3Shain) with the Direct3D 9 frontend by David Acevedo (dacevedo12), rpmalloc by Mattias Jansson, StikDebug, StikJIT and idevice. Thank you to everyone who contributes to these projects.")
         }
