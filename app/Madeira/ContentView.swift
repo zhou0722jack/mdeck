@@ -2572,6 +2572,9 @@ struct ContentView: View {
         // madeira-bcd: a game seen for the first time starts with Madeira's recommended
         // settings (GameRecommendationsApply.swift).
         var entry = entry
+        // Also repairs the installer card saved by build 6, which used a
+        // services batch that exited before SteamSetup was created.
+        SteamClient.normalizeLaunch(&entry)
         let isNew = !library.entries.contains { $0.id == entry.id }
         if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }
         // A Steam game starts through Madeira Dock with its own launch profile (SteamGames.swift),

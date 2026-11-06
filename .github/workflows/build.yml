@@ -31,6 +31,8 @@ jobs:
         run: python3 tests/host/check-localization.py
       - name: Check bundled Steam installer
         run: python3 tests/host/check-bundled-steam.py
+      - name: Check frontend launch profiles
+        run: python3 tests/host/check-frontend.py
       - name: Check build reuse rules
         run: |
           python3 tests/host/check-build-inputs.py

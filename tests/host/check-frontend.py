@@ -45,6 +45,7 @@ import tempfile
 
 root = Path(__file__).resolve().parents[2]
 lib = (root / 'app/Madeira/Library.swift').read_text()
+steam_client = (root / 'app/Madeira/SteamClient.swift').read_text()
 display = (root / 'app/Madeira/GuestDisplay.swift').read_text()
 bridge = (root / 'app/Madeira/WineProcessBridge.m').read_text()
 server = (root / 'build/ntdll-unix/server_ios.c').read_text()
@@ -76,6 +77,7 @@ def block(text, header):
 swift = r'''
 import Foundation
 func L(_ text: String) -> String { text }   // Library.swift's lookup; English here
+func LF(_ text: String, _ args: CVarArg...) -> String { String(format: text, arguments: args) }
 #if canImport(CoreGraphics)
 import CoreGraphics   // CGRect.width and friends: Foundation alone no longer re-exports them on macOS (Swift 6.4)
 #endif
@@ -142,6 +144,8 @@ func env(_ name: String) -> String? { getenv(name).map { String(cString: $0) } }
 swift += block(lib, 'enum LaunchArgumentText {') + '\n'
 swift += block(pad_assist, 'struct PadAssistSettings: Codable, Equatable, Sendable') + '\n'
 swift += block(lib, 'struct LibraryEntry: Codable, Identifiable') + '\n'
+swift += 'enum SteamClient {\n' + re.search(r'    static let installerID = .*', steam_client)[0] + '\n'
+swift += block(steam_client, '    static func normalizeLaunch(') + '\n}\n'
 swift += block(lib, 'enum SyncEngine: String, CaseIterable, Identifiable') + '\n'
 swift += '\n'.join(l for l in display.splitlines() if not l.startswith('import ')) + '\n'
 swift += block(lib, 'final class LibraryController: ObservableObject, @unchecked Sendable') + '\n'
@@ -172,6 +176,26 @@ desk.configureLaunch()
 expect(env("MADEIRA_EXE") == "explorer.exe" && env("MADEIRA_DESKTOP") == "1", "desktop starts explorer in desktop mode")
 expect(env("MADEIRA_SCREEN_W") == "1280" && env("MADEIRA_SCREEN_H") == "720", "desktop size exported")
 expect(published == (1280, 720), "desktop size published to the display shim")
+
+// A build-6 installer entry has startServices=true. Normalize it before launch
+// so explorer creates NSIS directly, without the failing cmd /c services batch.
+var installer = LibraryEntry(title: "Steam 安装程序", relativePath: "Madeira/Installers/SteamSetup.exe", bits: 32)
+installer.id = SteamClient.installerID
+installer.startServices = true
+installer.arguments = "/D=C:\\Program Files\\Steam Client"
+installer.resolution = "1280x720"
+SteamClient.normalizeLaunch(&installer)
+installer.configureLaunch()
+expect(installer.servicesScript == nil && installer.runsInDesktop,
+       "saved Steam installer bypasses the services batch and stays in the desktop")
+expect(env("MADEIRA_EXE") == "explorer.exe" && env("MADEIRA_ARGS") ==
+       "/desktop=shell,1280x720 \"C:\\Madeira\\Installers\\SteamSetup.exe\" /D=C:\\Program Files\\Steam Client",
+       "Steam installer command launches the executable directly and retains the final NSIS directory argument")
+var ordinaryServices = LibraryEntry(title: "Other", relativePath: "Other/setup.exe", bits: 32)
+ordinaryServices.startServices = true
+SteamClient.normalizeLaunch(&ordinaryServices)
+expect(ordinaryServices.startServices == true && ordinaryServices.launchMode == nil,
+       "installer correction leaves other programs' service settings unchanged")
 
 // A direct game: its Windows path and arguments; no desktop state left over.
 var game = LibraryEntry(title: "Game", relativePath: "Games/Some Game/bin/game.exe", bits: 32)
@@ -561,6 +585,9 @@ check('__attribute__((weak)) int madeira_dxmt_has_40_cap(void) {\n    return 0;'
       and 'madeira_dxmt_has_40_cap() != 0 && panelMaxFPS >= 120' in fps
       and 'ProMotionIntent.has40Cap || mode == 4' in lib, 'the 40 FPS cap is offered only with DXMT support and a 120 Hz panel')
 check('LibraryView(play: launchLibraryEntry' in content, 'ContentView shows the library when it is the chosen interface')
+launch_entry = block(content, 'private func launchLibraryEntry(')
+check(launch_entry.index('SteamClient.normalizeLaunch(&entry)') < launch_entry.index('GameRecommendations.prepare'),
+      'library starts normalize saved Steam installer profiles before recommendations and JIT continuation')
 check('runWineFullSequence(profile: entry)' in content and 'profile.applyEnvironment()' in content,
       'library launches use the shared launch path with the profile applied')
 check('Button("Use New Interface")' in content, 'the developer interface can switch back to the library')
