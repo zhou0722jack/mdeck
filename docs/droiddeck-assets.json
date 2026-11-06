@@ -1,0 +1,254 @@
+{
+  "assets": [
+    {
+      "file": "LICENSE-MaterialSymbols.txt",
+      "bytes": 11358,
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+    },
+    {
+      "file": "LICENSE-Roboto.txt",
+      "bytes": 4393,
+      "sha256": "ee94f8704aa81e9a3bf4271e8320e99d975a3ee08ea45a088b494b918476ec12"
+    },
+    {
+      "file": "MaterialSymbolsOutlined.ttf",
+      "bytes": 10744832,
+      "sha256": "f7837ba8573d9a7a74931618ced8307bc81f96d49af296bf6c8052c772ed5282"
+    },
+    {
+      "file": "Roboto.ttf",
+      "bytes": 488584,
+      "sha256": "d7598e12c5dbef095ff8272cfc55da0250bd07fbdecbac8a530b9b277872a134"
+    },
+    {
+      "file": "droiddeck-startup.webm",
+      "bytes": 936398,
+      "sha256": "7da5ceeb892a1328ed36fb7b40708eb03ef7ca74f1fbaa713f5631ba4a5b0d00"
+    },
+    {
+      "file": "emu_cemu.png",
+      "bytes": 11984,
+      "sha256": "6458a99b8bd54e44857efa0f82bfd6035e7e072e7e080e3330e4e2cfe89cbd33"
+    },
+    {
+      "file": "emu_dolphin.png",
+      "bytes": 18387,
+      "sha256": "454594b9000672770e346f62b725cf675a9366814bec153e7a0de0513467c54e"
+    },
+    {
+      "file": "emu_duckstation.png",
+      "bytes": 48659,
+      "sha256": "a91fa558298e64ab7fc13e8c1573cab42c7fa7421408e81135d8dbf022ddc2fe"
+    },
+    {
+      "file": "emu_melonds.png",
+      "bytes": 43505,
+      "sha256": "4f423b93c72b910301482f39a456f04ea9d8d4ef34a07ee2223b46e666625673"
+    },
+    {
+      "file": "emu_pcsx2.png",
+      "bytes": 93501,
+      "sha256": "956278a74b5ed2e6ea7a17dfa95f984282af3252a61838e7cb4cf2e0ed80ca87"
+    },
+    {
+      "file": "emu_ppsspp.png",
+      "bytes": 7428,
+      "sha256": "ce44f95f5e4fbb3160e4e32a74a6c233b692c3e0b82ca123fe4b9b410b1df032"
+    },
+    {
+      "file": "emu_retroarch.png",
+      "bytes": 7046,
+      "sha256": "16af431437e9d18f63de7b3ca3fc416ca0550d0838af2954648f358dd8aad7c7"
+    },
+    {
+      "file": "emu_rpcs3.png",
+      "bytes": 1187,
+      "sha256": "1a9d0aee096320a2c2eb670885f6b4ae14e1065324f3c86a78333511594e7225"
+    },
+    {
+      "file": "game-105600.jpg",
+      "bytes": 70134,
+      "sha256": "479e05949954b697ef817508f68e83eaa026cd9b2ae9f645da47b0f25d2d3e4c"
+    },
+    {
+      "file": "game-1091500.jpg",
+      "bytes": 54176,
+      "sha256": "a1573da17e1df32341f5f3cb9989ff29cf828015b40c2e312180d7f6e9be0dba"
+    },
+    {
+      "file": "game-1145360.jpg",
+      "bytes": 74589,
+      "sha256": "276839b5b89186a26008136acb43f0f822226eebf98f1793f50638de7fc8cd3a"
+    },
+    {
+      "file": "game-1240440.jpg",
+      "bytes": 66595,
+      "sha256": "9c799c19647788857d260e02fe905e7495f28950ae5fb02e5443cc6e395d25ee"
+    },
+    {
+      "file": "game-1245620.jpg",
+      "bytes": 52021,
+      "sha256": "07686e3df7b0b815eda6126a2b5186cc84d75fe46a3e452b69bccd82c8523242"
+    },
+    {
+      "file": "game-250900.jpg",
+      "bytes": 57183,
+      "sha256": "30b38b6ba017287cb6e7f5a3e92932876a766d77ac6b7bd4c797d5816bd94221"
+    },
+    {
+      "file": "game-368260.jpg",
+      "bytes": 75541,
+      "sha256": "fb65718eef9134d8f446e0f687c39ed2a2cf2b619e8dbfb80092c1eee1784925"
+    },
+    {
+      "file": "game-391540.jpg",
+      "bytes": 6576,
+      "sha256": "9bf9277d8d2f9fbaf6cb559eff2f1509a4f8fad87c1cd6cb20b06ed58e46a56e"
+    },
+    {
+      "file": "game-413150.jpg",
+      "bytes": 76943,
+      "sha256": "930b43387ec88141e1298a4d0e2cf648d20bab591d7947aff8a20907123f00f8"
+    },
+    {
+      "file": "game-548430.jpg",
+      "bytes": 74829,
+      "sha256": "3a207c90a691717c03fe6686a61d49b319e6bbaec3c601524c371dff3516ddeb"
+    },
+    {
+      "file": "game-620.jpg",
+      "bytes": 52764,
+      "sha256": "4e387956ce49985b1d9079047856270736125083de5a1e884af88e38c7edf653"
+    },
+    {
+      "file": "game-782330.jpg",
+      "bytes": 85479,
+      "sha256": "5462e465dcdb34a71bb14658a8330e08033a42ce157fe7b7295d5ea3a146b0e1"
+    },
+    {
+      "file": "library_hero-105600.jpg",
+      "bytes": 225301,
+      "sha256": "0714ca0d60efdbef47a2e9e79f7dc6ea0ef642906adb7d0adc322c95a15f5246"
+    },
+    {
+      "file": "library_hero-1091500.jpg",
+      "bytes": 222935,
+      "sha256": "44c73149490ecf4e211e1d7698e457a9694999d5f9b6ffec136a87c2b720b98b"
+    },
+    {
+      "file": "library_hero-1145360.jpg",
+      "bytes": 474286,
+      "sha256": "17a9996dd0835f0e3fed220b002deb918b33efcea2addc69e193ffc3e8e5a36b"
+    },
+    {
+      "file": "library_hero-1240440.jpg",
+      "bytes": 322404,
+      "sha256": "503a71009cf4bbe53bcb78f845b17ac68d31e4ae246b47e9d16cbfd828c35fdc"
+    },
+    {
+      "file": "library_hero-1245620.jpg",
+      "bytes": 203966,
+      "sha256": "45cb3b1f7a0542b494466dac2b40f05250ec4ce633c26752d3f4ef0b9ec2ce03"
+    },
+    {
+      "file": "library_hero-250900.jpg",
+      "bytes": 351606,
+      "sha256": "af30739c3bc9c297f78e6369742b4454598a7d11e7433a33b143d6666e7227be"
+    },
+    {
+      "file": "library_hero-368260.jpg",
+      "bytes": 480912,
+      "sha256": "c4d98be88ede6105881513a5abffc255557239f90ca9677f06e482f4eb47ae50"
+    },
+    {
+      "file": "library_hero-391540.jpg",
+      "bytes": 141426,
+      "sha256": "3d62dad842a47b69422df6f71081c9fd5e7cf227625e86ed72b474452f94278f"
+    },
+    {
+      "file": "library_hero-413150.jpg",
+      "bytes": 249959,
+      "sha256": "a2fbe21c4563660f29db2120c3f96b13aaf84ecfa056af1f8812169b035be23e"
+    },
+    {
+      "file": "library_hero-548430.jpg",
+      "bytes": 422349,
+      "sha256": "80a17c45e20b2d7995ff2bd4bb80f7463cbc38c01c8fcafa4d787160f556deee"
+    },
+    {
+      "file": "library_hero-620.jpg",
+      "bytes": 252292,
+      "sha256": "553cfc3ae693fb971c4e355890347697c535274bb232e1d72126a97a202aa9b4"
+    },
+    {
+      "file": "library_hero-782330.jpg",
+      "bytes": 461578,
+      "sha256": "e0ef3b261a20bd20ec90cc342a0a50801e925093d777af8f5b9e8dcee5c331b8"
+    },
+    {
+      "file": "logo-105600.png",
+      "bytes": 90883,
+      "sha256": "335a2476afda5192ffc464f814b6819fa670a214792b325382c1cede50aebf77"
+    },
+    {
+      "file": "logo-1091500.png",
+      "bytes": 80192,
+      "sha256": "4e37537b920d1d777b4182aa1814f729f170e04de49e4d62652046a34b4dce98"
+    },
+    {
+      "file": "logo-1145360.png",
+      "bytes": 70480,
+      "sha256": "bf9471cf60082037dcc792b98e37a677a213e66d22a1632fc13850acf10cfec3"
+    },
+    {
+      "file": "logo-1240440.png",
+      "bytes": 89290,
+      "sha256": "2c3fc39f516949b903a56a981510bd571d6b49a3148eac6f4852d0f7517fc8c8"
+    },
+    {
+      "file": "logo-1245620.png",
+      "bytes": 86158,
+      "sha256": "5a289d0179106e0887be0b11f8c08cf8c706aef506b67dec2ee1db9ec439a340"
+    },
+    {
+      "file": "logo-250900.png",
+      "bytes": 116833,
+      "sha256": "aeb7480b69a5c06fe9ca5f8f57cecfa81601c5ce3335377543bd4a39c8579290"
+    },
+    {
+      "file": "logo-368260.png",
+      "bytes": 68527,
+      "sha256": "672afad757510d0322328bf9f214755038ee0211d21294d7bfb0a65d93ea7c48"
+    },
+    {
+      "file": "logo-391540.png",
+      "bytes": 15355,
+      "sha256": "404168c7d2c2127056f2585c77c43d8aef07130a93e842105251e8fa3f4587ea"
+    },
+    {
+      "file": "logo-413150.png",
+      "bytes": 93533,
+      "sha256": "eedc1998546e0c7442bcd7ac32c452283d4dcb8d14a8d47bfacba1d224f67f9d"
+    },
+    {
+      "file": "logo-548430.png",
+      "bytes": 149812,
+      "sha256": "78cc3a2097385ccf5aff889a6c886ee7a17e423f51ddc389e19bf26fdd44b6a2"
+    },
+    {
+      "file": "logo-620.png",
+      "bytes": 27432,
+      "sha256": "f8bf75478c9c2731c8ede1dce2408b7ea57922f0ad49161ef02f517708d53dd7"
+    },
+    {
+      "file": "logo-782330.png",
+      "bytes": 203256,
+      "sha256": "94ed3a0c6eb07bd8268bf3c259991c94e28335389582c59539460290a4c85266"
+    },
+    {
+      "file": "logo.png",
+      "bytes": 27071,
+      "sha256": "814151f4e582c8a08b20f42ac00bf6bf1c22bf50944e62d0ce8eceac1507c678"
+    }
+  ]
+}
