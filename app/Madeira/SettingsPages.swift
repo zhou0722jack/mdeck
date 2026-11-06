@@ -142,7 +142,9 @@ struct SettingsPageView: View {
     @State private var restartNotice = false
 
     var body: some View {
-        Form { content }
+        Form { content.listRowBackground(DeckAppearance.shared.palette().surface) }
+            .modifier(DeckFormSkin())
+            .toolbar(.visible, for: .navigationBar)
             .navigationTitle(page.title).navigationBarTitleDisplayMode(.inline)
             .alert("Restart Madeira", isPresented: $restartNotice) {
                 Button("OK", role: .cancel) {}
@@ -199,6 +201,7 @@ struct SettingsPageView: View {
     }
 
     @ViewBuilder private var appearance: some View {
+        DeckAppearanceControls()
         Section {
             Toggle("Liquid metal", isOn: $liquidMetal.on)
         } footer: {

@@ -166,7 +166,7 @@ struct EASignInCard: View {
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
             }.padding(14)
-                .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                .background(DeckAppearance.shared.palette().surface, in: RoundedRectangle(cornerRadius: 16))
         }.buttonStyle(.plain)
     }
 }
@@ -210,7 +210,7 @@ struct EAGameCell: View {
                     Spacer(minLength: 6)
                     pills(download, entry).fixedSize()
                 }.padding(.horizontal, 8).padding(.vertical, 5)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+                    .background(DeckAppearance.shared.palette().surface, in: RoundedRectangle(cornerRadius: 10))
             } else if list {
                 HStack(spacing: 14) {
                     EAGameArtwork(item: item).frame(width: 48, height: 72)
@@ -221,7 +221,7 @@ struct EAGameCell: View {
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                }.padding(10).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                }.padding(10).background(DeckAppearance.shared.palette().surface, in: RoundedRectangle(cornerRadius: 16))
             } else {
                 VStack(alignment: .leading, spacing: 6) {
                     EAGameArtwork(item: item).aspectRatio(2.0 / 3.0, contentMode: .fit)

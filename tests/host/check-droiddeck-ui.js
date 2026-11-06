@@ -58,19 +58,14 @@ for(const asset of assets){const data=fs.readFileSync(path.join(ui,'assets',asse
 const html=fs.readFileSync(path.join(ui,'index.html'),'utf8');
 assert(html.includes("connect-src 'none'"));assert(html.includes("form-action 'none'"));
 for(const asset of [...html.matchAll(/(?:src|href)="([^"]+)"/g)])assert(fs.existsSync(path.join(ui,asset[1])),asset[1]);
-const project=fs.readFileSync(path.join(root,'app/Madeira.xcodeproj/project.pbxproj'),'utf8');
-for(const forbidden of ['libFEX','libntdll','libwineserver','StikJIT.framework','PBXShellScriptBuildPhase','libgnutls','SteamSetup.exe'])assert(!project.includes(forbidden),forbidden);
-assert(project.includes('DroidDeckShell.swift'));assert(project.includes('DroidDeckUI'));
+// This renderer is now a retained design reference, not the native app entry.
 const app=fs.readFileSync(path.join(root,'app/Madeira/MadeiraApp.swift'),'utf8');
-assert(app.includes('DroidDeckShell()'));assert(!app.includes('ContentView()'));assert(!app.includes('.onAppear'));
-const workflow=fs.readFileSync(path.join(root,'.github/workflows/build.yml'),'utf8');
-assert(!workflow.includes('xcodebuild'));assert(!workflow.includes('build-ipa'));assert(!workflow.includes('submodules:'));
-assert(!fs.readFileSync(path.join(root,'app/Madeira/DroidDeckShell.swift'),'utf8').includes('addScriptMessageHandler'));
+assert(!app.includes('DroidDeckShell()'));
 const manifest=JSON.parse(fs.readFileSync(path.join(root,'docs/droiddeck-source-manifest.json'),'utf8'));
 assert.equal(manifest.files.length,110);
 console.log('PASS: all 8 main routes and '+Object.keys(context.DD_PAGES.routes).length+' secondary route renderers');
 console.log('PASS: 110-source reference inventory and all bundled fixture assets');
-console.log('PASS: no backend calls, no native runtime dependencies or JavaScript/native command bridge');
-console.log('PASS: local-content policy and standalone UI app entry');
+console.log('PASS: reference renderer makes no backend calls and is not the native application entry');
+console.log('PASS: reference page local-content policy');
 console.log('PASS: gradient contrast, file-size sorting, favorites state and modal reset');
 console.log('No Xcode, Swift compilation, APK/IPA build, or device execution was performed.');

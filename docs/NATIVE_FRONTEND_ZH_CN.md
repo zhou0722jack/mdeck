@@ -1,0 +1,74 @@
+# mdeck 原生前端重构
+
+当前分支：`codex/droiddeck-ui`。
+
+本轮按用户要求，把前一版 DroidDeck 视觉移植稿重新实现为原生 SwiftUI。
+应用不再加载 HTML、JavaScript 或 WKWebView 主界面。之前的网页文件留作
+视觉参考，但不在 Xcode 应用资源中；原生应用目标、依赖和启动流程恢复自
+`e5a3600979a3a36cf2b9ac85123c42cfecb82632`。
+
+## 采用的视觉设计
+
+- 保留前一版的深色背景、蓝色强调色、圆角卡片和胶囊按钮。
+- 横屏采用 92pt 侧栏，可关闭标签缩至 64pt；竖屏采用底部滚动导航。
+- 主导航为 Steam、游戏库、商店、桌面、组件、应用、设置、更新。
+- 设置采用移植稿的概览、手柄、启动器、存储、诊断、智能眼镜六个页签。
+- 原生 `matchedGeometryEffect` 移动选中框，SwiftUI 弹簧实现页签切换，
+  非对称过渡实现侧栏与页面切换；减少动态效果或关闭动画时停止这些动画。
+- 游戏详情使用横幅、真实游戏信息、游玩按钮和可滚动的设置页签。
+- 游戏中的设置面板从右侧进入，保留原来的控制、性能和退出动作。
+- RGB 主题循环在游戏运行或应用进入后台时暂停，避免为颜色变化持续刷新游戏界面。
+- 图标使用原生 SF Symbols；封面来自 mdeck 现有游戏记录和图片缓存，
+  不再使用网页移植稿中的样例游戏列表。
+
+主题和样式集中在 `app/Madeira/DeckDesign.swift`，不是 WebView 包装层。
+原生页面仍由各自的 SwiftUI View 持有输入、导航、弹窗和状态。
+
+## 现有页面与按钮的保留方式
+
+原有界面的源码清单见 `native-ui-inventory.json`。清单以原生基线提交生成，
+覆盖 39 个文件中的 174 个原生视图类型及按钮/开关/选择器的直接文本。
+该清单用于发现误删，并不等同于 174 个页面全部完成实机测试。
+
+| 前一版设计区域 | 原生实现与功能来源 | 保留的原有入口 |
+| --- | --- | --- |
+| Steam 首页 | `LibraryView.deckSteamHome`；真实 `SteamClient` 启动 | Steam 安装器、客户端启动、JIT、Steam 与 Dock 设置 |
+| 游戏库 | `LibraryView.library` / `zoomableLibrary`，原有游戏模型 | 搜索、排序、分组、紧凑布局、可缩放网格、添加 EXE |
+| 商店 | `deckStores`、各商店原生设置和原有游戏库分区 | Steam、GOG、Epic、itch.io、EA 登录与库、Workshop |
+| 桌面 | `deckDesktop`、原来的桌面 `LibraryEntry` | 打开桌面、桌面配置、指针、显示、图形、内存、外部盘 |
+| 组件 | `deckComponents`、`SettingsPageView` | Wine Mono、VC++、Gecko、图形后端、内存和全部配置 |
+| 应用 | `deckApps`，实际的本地非商店条目 | EXE 浏览器、已有程序的详情与启动 |
+| 设置 | `deckSettings`、原来的 17 个设置分类 | JIT、签名、存档、外部盘、帮助、旧界面、鸣谢等 |
+| 更新 | `deckUpdates`，真实 Steam 下载状态 | 刷新、下载状态、各游戏原有的更新/修复/管理入口 |
+| 游戏详情 | 原生详情头、页签与 `pageSections` | 显示、手柄、启动、兼容性、Steam/DLC、云、Workshop、GOG、itch、成就、文件和高级设置 |
+| 运行中面板 | `LibraryHUD` 原生窗口覆盖层 | 全部既有性能、显示、触控、手柄映射、陀螺仪、退出按钮 |
+| 首次配置与 JIT | 原来的原生引导和配对页面，应用新按钮样式 | 外部脚本、内置 JIT、配对、LocalDevVPN、快捷指令 |
+
+没有对应新设计的功能不删除：旧详情导航、共享/应用配置、复制配置、
+帮助、推荐设置重置、开发者界面等仍可从各自的原生页面打开。
+原来的高级设置开关和页面分组开关也保留。
+
+反过来，移植稿有而 mdeck 尚无实现的入口，也以原生按钮保留，包括
+Flathub、开机动画、智能眼镜、头部追踪、校准、空间设置和应用更新。
+这些按钮标为“待接入”，点击只说明当前状态，不伪造成功结果或操作设备。
+更新页的游戏刷新和已有下载状态则仍连接原来的 Steam 模型。
+
+## 验证范围
+
+本轮执行：
+
+```sh
+python3 tests/host/check-native-deck.py
+python3 tests/host/check-localization.py --static-only
+python3 tests/host/check-jit-method.py
+python3 tests/host/check-jit-network.py --static-only
+python3 tests/host/check-onboarding.py --static-only
+```
+
+原生检查核对视图与按钮文本保留、原有 UI 源码仍在应用目标中、共享 scheme
+指向正确的应用 target，以及新入口不再使用网页壳。还执行了 Swift 源码
+语法解析和 Xcode 工程 plist 格式检查；语法解析不生成二进制。
+
+遵照“先不构建”，没有类型检查整个原生工程、链接原生库、构建或安装 IPA。
+旧的网页预览与截图只表示视觉参考，不能作为本轮原生界面的运行截图。
+实际 SwiftUI 布局、手柄焦点、弹窗层级和设备运行效果仍须下一次获准构建后验证。

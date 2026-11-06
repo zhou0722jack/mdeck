@@ -648,6 +648,7 @@ struct SteamWorkshopHub: View {
                     }
                 }
             }
+            .modifier(DeckFormSkin())
             .navigationTitle("Steam Workshop").navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
             .task(id: installed.map(\.id)) {

@@ -2994,35 +2994,35 @@ enum LibraryStoreTab: String, CaseIterable, Identifiable {
 struct LibraryStoreTabBar: View {
     let tabs: [LibraryStoreTab]
     @Binding var selection: String
+    @Environment(\.deckPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ObservedObject private var appearance = DeckAppearance.shared
+    @Namespace private var selectedTab
 
     private var picked: Binding<LibraryStoreTab> {
         Binding(get: { LibraryStoreTab.current(selection, in: tabs) },
-                set: { tab in withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.2)) { selection = tab.rawValue } })
+                set: { tab in withAnimation(reduceMotion || !appearance.animations ? nil : .spring(response: 0.35, dampingFraction: 0.78)) { selection = tab.rawValue } })
     }
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            Picker("Store", selection: picked) {
-                ForEach(tabs) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            .fixedSize()
-            .frame(maxWidth: .infinity)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(tabs) { tab in
-                        let on = picked.wrappedValue == tab
-                        Button { picked.wrappedValue = tab } label: {
-                            Text(tab.title).font(.subheadline.weight(.semibold))
-                                .padding(.horizontal, 14).padding(.vertical, 7)
-                                .foregroundStyle(on ? Color.white : Color.primary)
-                                .background(Capsule().fill(on ? Color.accentColor : Color(uiColor: .tertiarySystemFill)))
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(on ? .isSelected : [])
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(tabs) { tab in
+                    let on = picked.wrappedValue == tab
+                    Button { picked.wrappedValue = tab } label: {
+                        Text(tab.title).font(.system(size: 12, weight: .medium))
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                            .foregroundStyle(on ? palette.text : palette.muted)
+                            .background {
+                                if on { Capsule().fill(palette.accent.opacity(0.16)).matchedGeometryEffect(id: "store-choice", in: selectedTab) }
+                                else { Capsule().fill(palette.surface) }
+                            }
+                            .overlay(Capsule().stroke(on ? palette.accent.opacity(0.7) : palette.line, lineWidth: 1))
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(on ? .isSelected : [])
                 }
-            }
+            }.padding(2)
         }
         .accessibilityLabel("Store")
     }
@@ -3293,6 +3293,14 @@ struct LibraryGroupedGames<LocalCell: View>: View {
 }
 
 struct LibraryView: View {
+    @Environment(\.deckPalette) private var palette
+    @ObservedObject private var appearance = DeckAppearance.shared
+    @State private var deckDestination: DeckDestination = .steam
+    @State private var deckSettingsPage: DeckSettingsRoute?
+    @State private var deckWorkshop = false
+    @State private var deckSettingFocus: SettingsPages.Page?
+    @State private var deckAppFocus: UUID?
+    @State private var deckSetupTab: DeckSetupTab = .overview
     @ObservedObject private var model = LibraryModel.shared
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -3372,35 +3380,26 @@ struct LibraryView: View {
             }
     }
     var body: some View {
-        // The system tab bar: on iOS 26 it is the floating Liquid Glass bar whose
-        // glass selection slides between the tabs and follows a drag. Icons only; the
-        // names stay for VoiceOver.
-        TabView(selection: Binding(get: { tab }, set: { switchTab(to: $0) })) {
-            // The card layouts: the zoomable page or the original one (LibraryGridArm).
-            Group { if LibraryGridArm.zoomable(setting: zoomableGrid, layout: layout) { zoomableLibrary } else { library } }
-                .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
-                .tabItem { Image(systemName: "square.grid.2x2.fill").accessibilityLabel("Library") }
-                .tag(0)
-            settingsTab
-                .tabItem { Image(systemName: "gearshape.fill").accessibilityLabel("Settings") }
-                .tag(1)
-        }
-        // The system search field (Liquid Glass on iOS 26) in the title's place, left
-        // of the library's buttons, on both tabs; each tab keeps its own text.
-        .background(LibraryNavSearch(text: tab == 0 ? $search : $settingsSearch,
-                                     placeholder: tab == 0 ? L("Search your library") : L("Search settings"))
-            .frame(width: 0, height: 0))
-        // Each tab is hosted by the tab bar controller, so a toolbar set inside a tab
-        // would not reach the navigation bar: the library's lives here.
-        // The title is a large leading toolbar item, level with the library's
-        // buttons like an App Store tab title; the bar's centred one is cleared.
-        // The trailing glass group changes with the tab (switchTab animates it),
-        // which iOS 26 draws as a Liquid Glass morph between the two.
-        .navigationTitle("")
-        .toolbar {
-            LibraryLargeTitle()
-            if tab == 0 { libraryToolbar } else { settingsToolbar }
-        }
+        deckLayout
+            .toolbar(.hidden, for: .navigationBar)
+            .modifier(LibrarySheets(model: model, browser: $browser, selected: $selected, play: play, jit: jit))
+            .sheet(item: $deckSettingsPage) { route in
+                NavigationStack {
+                    SettingsPageView(page: route.page, startDock: startDock)
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { deckSettingsPage = nil } } }
+                }
+            }
+            .sheet(isPresented: $deckWorkshop) { SteamWorkshopHub() }
+            .sheet(item: $settingsSheet, onDismiss: { settingsRefresh += 1 }) { sheet in
+                switch sheet {
+                case .allSettings: AllSettingsView()
+                case .steamSignIn: SteamSignInView()
+                case .gogSignIn: GOGSignInView()
+                case .epicSignIn: EpicSignInView()
+                case .eaSignIn: EASignInView()
+                case .dock: MadeiraDockView(start: startDock)
+                }
+            }
         .sheet(isPresented: $steamClientPresented, onDismiss: {
             if let entry = pendingSteamClientLaunch {
                 pendingSteamClientLaunch = nil
@@ -3411,6 +3410,11 @@ struct LibraryView: View {
                 pendingSteamClientLaunch = entry
                 steamClientPresented = false
             }
+        }
+        .alert("Restart Madeira", isPresented: $restartNotice) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Close Madeira from the app switcher and open it again to switch interfaces.")
         }
         // On the tab view, not inside one tab's page: an alert attached to the Library
         // page cannot present while Settings is showing, so an error raised there (its
@@ -3440,12 +3444,21 @@ struct LibraryView: View {
         // on either tab (start() does nothing while liquid metal is off).
         .onAppear { GlassSkin.shared.start() }
         .onDisappear { GlassSkin.shared.stop() }
+        .onChange(of: deckDestination) { _, route in
+            tab = route == .settings ? 1 : 0
+            deckSettingFocus = deckSettingChoices.first
+        }
         .onReceive(controller.commands) { command in
-            if selected == nil, !browser, !onboarding.presented, command == "tab" { switchTab(to: 1 - tab) }
+            guard selected == nil, !browser, !onboarding.presented, deckSettingsPage == nil,
+                  !deckWorkshop, !steamClientPresented, settingsSheet == nil else { return }
+            if command == "tab" {
+                let routes = DeckDestination.allCases
+                let index = routes.firstIndex(of: deckDestination) ?? 0
+                deckDestination = routes[(index + 1) % routes.count]
+            } else { deckController(command) }
         }
     }
-    @ToolbarContentBuilder private var libraryToolbar: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
+    private var libraryOptionsMenu: some View {
             Menu {
                 if zoomableGrid {
                     // The new grid is sized by pinching, so the layout menu has no card sizes: one "Cards" entry
@@ -3482,7 +3495,9 @@ struct LibraryView: View {
                     Label("Folder size", systemImage: "internaldrive").tag("size")
                 }
             } label: { Label("Library options", systemImage: "line.3.horizontal.decrease") }
-        }
+    }
+    @ToolbarContentBuilder private var libraryToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) { libraryOptionsMenu }
         ToolbarItem(placement: .topBarTrailing) { Button { browser = true } label: { Label("Add executable", systemImage: "plus") } }
     }
     @ToolbarContentBuilder private var settingsToolbar: some ToolbarContent {
@@ -3498,12 +3513,18 @@ struct LibraryView: View {
     }
     private func switchTab(to newTab: Int) {
         guard newTab != tab else { return }
-        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .default) { tab = newTab }
+        withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .default) {
+            tab = newTab
+            deckDestination = newTab == 0 ? .library : .settings
+        }
     }
     /// Settings search: a section shows when the search is empty or matches one of its words.
     private func settingsShow(_ words: String...) -> Bool {
         let q = settingsSearch.trimmingCharacters(in: .whitespaces)
-        return q.isEmpty || words.contains { $0.localizedCaseInsensitiveContains(q) || q.localizedCaseInsensitiveContains($0) }
+        return q.isEmpty || words.contains {
+            $0.localizedCaseInsensitiveContains(q) || q.localizedCaseInsensitiveContains($0) ||
+            L($0).localizedCaseInsensitiveContains(q)
+        }
     }
     /// The Display and Memory and sync settings, on the long page and as pages.
     static var runtimeSettingsShown: Bool { MadeiraConfig.flag("MADEIRA_RUNTIME_SETTINGS") }
@@ -3518,6 +3539,7 @@ struct LibraryView: View {
     }
     private var settings: some View {
         Form {
+            DeckAppearanceControls()
             // The status sits on the page, not in a card; JIT is enabled from the
             // toolbar's Enable JIT button.
             if settingsShow("ready to play", "JIT", "Memory+", "StikDebug", "status") {
@@ -3602,30 +3624,17 @@ struct LibraryView: View {
                 SettingsCreditsSection()
             }
         }
-        .alert("Restart Madeira", isPresented: $restartNotice) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Close Madeira from the app switcher and open it again to switch interfaces.")
-        }
+
         // The Settings sheets hang off the Form, never off one of its rows: a Form
         // may rebuild its rows while a sheet slides up over it, and a sheet whose
         // owning row is rebuilt closes again at once.
-        .sheet(item: $settingsSheet, onDismiss: { settingsRefresh += 1 }) { sheet in
-            switch sheet {
-            case .allSettings: AllSettingsView()
-            case .steamSignIn: SteamSignInView()
-            case .gogSignIn: GOGSignInView()
-            case .epicSignIn: EpicSignInView()
-            case .eaSignIn: EASignInView()
-            case .dock: MadeiraDockView(start: startDock)
-            }
-        }
+
     }
     private var library: some View {
         GeometryReader { viewport in
         ScrollViewReader { reader in
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 20) {
                 if !storeTabs.isEmpty { LibraryStoreTabBar(tabs: storeTabs, selection: $storeTab) }
                 desktopButton
                 // The library's sections, as in the fork: Steam (installed and downloading
@@ -3721,7 +3730,6 @@ struct LibraryView: View {
                 withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.18)) { focused = ids[(index + delta + ids.count) % ids.count] }
             }
         }
-        .modifier(LibrarySheets(model: model, browser: $browser, selected: $selected, play: play, jit: jit))
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refreshFlag() } }
         .onAppear {
             if focused == nil { focused = LibraryEntry.desktopID }
@@ -3752,7 +3760,7 @@ struct LibraryView: View {
                 } else {
                     Label("Desktop", systemImage: "desktopcomputer")
                         .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                        .background(DeckAppearance.shared.palette().surface, in: Capsule())
                 }
             }.buttonStyle(.plain)
                 .animation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.4), value: liquidMetal.on)
@@ -3761,7 +3769,7 @@ struct LibraryView: View {
             Button { steamClientPresented = true } label: {
                 Label("Steam", systemImage: "play.circle")
                     .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                    .background(DeckAppearance.shared.palette().surface, in: Capsule())
             }
             .buttonStyle(.plain)
             .disabled(model.current != nil || model.launching)
@@ -3782,7 +3790,7 @@ struct LibraryView: View {
                     } else {
                         Label("Big Picture", systemImage: "gamecontroller")
                             .font(.subheadline.weight(.medium)).padding(.horizontal, 14).frame(minHeight: 44)
-                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                            .background(DeckAppearance.shared.palette().surface, in: Capsule())
                     }
                 }.buttonStyle(.plain)
                     .animation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.4), value: liquidMetal.on)
@@ -3813,7 +3821,6 @@ struct LibraryView: View {
                 withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeOut(duration: 0.18)) { focused = ids[(index + delta + ids.count) % ids.count] }
             }
         }
-        .modifier(LibrarySheets(model: model, browser: $browser, selected: $selected, play: play, jit: jit))
         .onChange(of: scenePhase) { _, phase in if phase == .active { model.refreshFlag() } }
         .onAppear {
             if focused == nil { focused = LibraryEntry.desktopID }
@@ -3836,7 +3843,7 @@ struct LibraryView: View {
                         Spacer(minLength: 6)
                         LibraryBadges(entry: entry).foregroundStyle(.secondary).fixedSize()
                     }.padding(.horizontal, 8).padding(.vertical, 5)
-                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+                        .background(DeckAppearance.shared.palette().surface, in: RoundedRectangle(cornerRadius: 10))
                 } else if list {
                     HStack(spacing: 14) {
                         LibraryArtwork(entry: entry).frame(width: 48, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
@@ -3845,7 +3852,7 @@ struct LibraryView: View {
                         }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                    }.padding(10).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
+                    }.padding(10).background(DeckAppearance.shared.palette().surface, in: RoundedRectangle(cornerRadius: 16))
                 } else {
                     VStack(alignment: .leading, spacing: 6) {
                         LibraryArtwork(entry: entry).aspectRatio(2.0 / 3.0, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 12))
@@ -3861,6 +3868,377 @@ struct LibraryView: View {
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(focused == entry.id && controller.connected ? Color.accentColor : .clear, lineWidth: 2))
             .id(entry.id)
             .task(id: entry.id, priority: .utility) { await model.refreshMetadata(entry.id) }
+    }
+}
+
+private extension LibraryView {
+    var deckSettingChoices: [SettingsPages.Page] {
+        switch deckDestination {
+        case .stores: return [.steam, .gog, .itch, .epic, .ea].filter(\.shown)
+        case .components: return [.runtimes, .graphics, .display, .memory, .advanced].filter(\.shown)
+        case .settings:
+            switch deckSetupTab {
+            case .overview: return SettingsPages.groups.flatMap { $0.1 }.filter(\.shown)
+            case .controller: return [.pointer]
+            case .launcher: return [.appearance]
+            case .storage: return [.saves, .drives, .runtimes].filter(\.shown)
+            case .diagnostics: return [.advanced]
+            case .glasses: return []
+            }
+        default: return []
+        }
+    }
+
+    func deckController(_ command: String) {
+        let moves = ["left", "right", "up", "down"].contains(command)
+        if deckDestination == .apps {
+            let apps = model.entries.filter { $0.desktop != true && $0.steamAppID == nil && $0.epicAppName == nil && $0.gogProductID == nil && $0.itchGameID == nil && $0.eaOfferID == nil }
+            if !apps.isEmpty {
+                let index = apps.firstIndex { $0.id == deckAppFocus } ?? 0
+                if moves {
+                    let delta = command == "left" || command == "up" ? -1 : 1
+                    deckAppFocus = apps[(index + delta + apps.count) % apps.count].id
+                } else if command == "accept" { selected = apps[index] }
+            }
+        } else if !deckSettingChoices.isEmpty {
+            let choices = deckSettingChoices
+            if moves {
+                let index = choices.firstIndex(of: deckSettingFocus ?? choices[0]) ?? 0
+                let delta = command == "left" || command == "up" ? -1 : 1
+                deckSettingFocus = choices[(index + delta + choices.count) % choices.count]
+            } else if command == "accept" {
+                deckSettingsPage = DeckSettingsRoute(page: deckSettingFocus ?? choices[0])
+            }
+        } else if command == "accept" {
+            if deckDestination == .steam { play(SteamClient.entry(install: !SteamClient.installed)) }
+            if deckDestination == .desktop { selected = model.entries.first { $0.desktop == true } ?? .desktopEntry }
+        }
+        if command == "add" { browser = true }
+        if command == "back", deckDestination != .library { deckDestination = .library }
+    }
+
+    var deckLayout: some View {
+        GeometryReader { geometry in
+            let portrait = geometry.size.height > geometry.size.width
+            Group {
+                if portrait {
+                    VStack(spacing: 0) {
+                        deckPage
+                        DeckNavigation(selection: $deckDestination, horizontal: true)
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        DeckNavigation(selection: $deckDestination, horizontal: false)
+                        deckPage
+                    }
+                }
+            }
+            .background(palette.background)
+            .foregroundStyle(palette.text)
+        }
+    }
+
+    var deckPage: some View {
+        VStack(spacing: 0) {
+            deckHeading
+            if deckDestination == .library {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(palette.muted)
+                    TextField("Search your library", text: $search).autocorrectionDisabled()
+                    if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") } }
+                }.padding(12).background(palette.surface, in: RoundedRectangle(cornerRadius: 11))
+                    .padding(.horizontal, 20).padding(.bottom, 8)
+            }
+            Group {
+                switch deckDestination {
+                case .steam: deckSteamHome
+                case .library:
+                    if LibraryGridArm.zoomable(setting: zoomableGrid, layout: layout) { zoomableLibrary }
+                    else { library }
+                case .stores: deckStores
+                case .desktop: deckDesktop
+                case .components: deckComponents
+                case .apps: deckApps
+                case .settings: deckSettings
+                case .updates: deckUpdates
+                case .diagnostics: deckDiagnostics
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .id(deckDestination)
+            .transition(.opacity.combined(with: .offset(y: 12)))
+        }
+        .animation(UIAccessibility.isReduceMotionEnabled || !appearance.animations ? nil : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.3), value: deckDestination)
+    }
+
+    var deckHeading: some View {
+        DeckPageHeading(title: deckDestination.title) {
+            if deckDestination == .library {
+                libraryOptionsMenu.labelStyle(.iconOnly).frame(width: 42, height: 42)
+                DeckIconButton(title: L("Add executable"), symbol: "plus") { browser = true }
+            }
+            if deckDestination == .settings || deckDestination == .components || deckDestination == .diagnostics {
+                DeckIconButton(title: L("All settings"), symbol: "slider.horizontal.3") { settingsSheet = .allSettings }
+            }
+            if deckDestination != .library {
+                Button(action: enableJIT) { Label("Enable JIT", systemImage: "bolt.fill") }
+                    .buttonStyle(DeckButtonStyle())
+                    .disabled(jitState.enabled)
+            }
+        }
+    }
+
+    var deckSteamHome: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .bottomLeading) {
+                palette.background
+                HStack(spacing: 14) {
+                    ForEach(Array(model.entries.filter { $0.desktop != true }.prefix(6))) { entry in
+                        LibraryArtwork(entry: entry)
+                            .frame(width: max(130, geometry.size.width / 5), height: geometry.size.height * 0.85)
+                            .clipShape(RoundedRectangle(cornerRadius: 14))
+                    }
+                }
+                .rotationEffect(.degrees(12)).offset(x: geometry.size.width * 0.35, y: -25)
+                .opacity(0.62).allowsHitTesting(false)
+                LinearGradient(colors: [palette.background, palette.background.opacity(0.86), .clear], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(colors: [.clear, palette.background], startPoint: .top, endPoint: .bottom)
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 12) {
+                        DeckMark().frame(width: 48, height: 48)
+                        Text("mdeck").font(.system(size: 40, weight: .bold, design: .rounded))
+                    }
+                    LibraryStatus()
+                    Spacer(minLength: 40)
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 12) { deckSteamActions }
+                        VStack(alignment: .leading, spacing: 12) { deckSteamActions }
+                    }
+                    Button { deckSettingsPage = DeckSettingsRoute(page: .steam) } label: {
+                        Label("Steam and Dock", systemImage: "gearshape")
+                    }.buttonStyle(DeckButtonStyle())
+                }.padding(28)
+            }.clipped()
+        }
+    }
+
+    @ViewBuilder var deckSteamActions: some View {
+        Button { play(SteamClient.entry(install: false)) } label: {
+            Label("Start Steam", systemImage: "play.fill")
+        }.buttonStyle(DeckButtonStyle(primary: true)).disabled(!SteamClient.installed || model.launching)
+        Button { play(SteamClient.entry(install: true)) } label: {
+            Label("Run Steam installer", systemImage: "shippingbox")
+        }.buttonStyle(DeckButtonStyle()).disabled(model.launching)
+    }
+
+    var deckDesktop: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                ZStack {
+                    LinearGradient(colors: [palette.surface, palette.raised], startPoint: .topLeading, endPoint: .bottomTrailing)
+                    Image(systemName: "desktopcomputer").font(.system(size: 76, weight: .ultraLight)).foregroundStyle(palette.accent.opacity(0.55))
+                }.frame(height: 220).clipShape(RoundedRectangle(cornerRadius: 18))
+                HStack(spacing: 12) {
+                    Button { play(model.entries.first { $0.desktop == true } ?? .desktopEntry) } label: {
+                        Label("Open desktop", systemImage: "play.fill")
+                    }.buttonStyle(DeckButtonStyle(primary: true))
+                    Button { selected = model.entries.first { $0.desktop == true } ?? .desktopEntry } label: {
+                        Label("Desktop settings", systemImage: "gearshape")
+                    }.buttonStyle(DeckButtonStyle())
+                }
+                DeckSettingsTiles(pages: [.pointer, .display, .graphics, .memory, .drives]) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                DeckPendingFeatureButton(title: L("Flathub"), symbol: "square.grid.2x2")
+                    .padding(16).background(palette.surface, in: RoundedRectangle(cornerRadius: 13))
+                Button { browser = true } label: { Label("Add executable", systemImage: "plus") }
+                    .buttonStyle(DeckButtonStyle())
+            }.padding(22).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+        }
+    }
+
+    var deckStores: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Getting games").font(.headline)
+                DeckSettingsTiles(pages: [.steam, .gog, .itch, .epic, .ea], focused: deckSettingFocus) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                Text("Library").font(.headline)
+                ForEach(LibraryStoreTab.allCases.filter { $0 != .all }) { store in
+                    Button {
+                        storeTab = store.rawValue
+                        group = "platform"
+                        deckDestination = .library
+                    } label: {
+                        HStack {
+                            Label(store.title, systemImage: "square.stack")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                        }
+                        .padding(16).foregroundStyle(palette.text)
+                        .background(palette.surface, in: RoundedRectangle(cornerRadius: 12))
+                    }.buttonStyle(.plain)
+                }
+                if SteamOwnedLibrary.workshopEnabled {
+                    Button { deckWorkshop = true } label: { Label("Steam Workshop", systemImage: "square.stack.3d.up") }
+                        .buttonStyle(DeckButtonStyle())
+                }
+            }.padding(22).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+        }
+    }
+
+    var deckComponents: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("Running games").font(.headline)
+                DeckSettingsTiles(pages: [.runtimes, .graphics, .display, .memory, .advanced], focused: deckSettingFocus) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                Button { settingsSheet = .allSettings } label: { Label("All settings", systemImage: "slider.horizontal.3") }
+                    .buttonStyle(DeckButtonStyle())
+            }.padding(22).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+        }
+    }
+
+    var deckSettings: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Image(systemName: "magnifyingglass").foregroundStyle(palette.muted)
+                TextField("Search settings", text: $settingsSearch)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                if !settingsSearch.isEmpty { Button { settingsSearch = "" } label: { Image(systemName: "xmark.circle.fill") } }
+            }
+            .padding(12).background(palette.surface, in: RoundedRectangle(cornerRadius: 11)).padding(.horizontal, 22).padding(.bottom, 12)
+            DeckSetupTabs(selected: $deckSetupTab).padding(.horizontal, 20).padding(.bottom, 10)
+            if !SettingsPages.enabled || !settingsSearch.trimmingCharacters(in: .whitespaces).isEmpty {
+                settings.modifier(DeckFormSkin())
+            } else {
+                switch deckSetupTab {
+                case .overview:
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            LibraryStatus()
+                            ForEach(Array(SettingsPages.groups.enumerated()), id: \.offset) { _, section in
+                                if let title = section.0 { Text(title).font(.caption.weight(.semibold)).foregroundStyle(palette.muted).textCase(.uppercase) }
+                                DeckSettingsTiles(pages: section.1, focused: deckSettingFocus) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                            }
+                            Button { settingsSheet = .allSettings } label: { Label("All settings", systemImage: "slider.horizontal.3") }
+                                .buttonStyle(DeckButtonStyle())
+                            Button { deckDestination = .diagnostics } label: { Label("Diagnostics", systemImage: "waveform.path.ecg") }
+                                .buttonStyle(DeckButtonStyle())
+                        }.padding(22).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+                    }
+                case .controller:
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            Image(systemName: "gamecontroller").font(.system(size: 90, weight: .ultraLight))
+                                .foregroundStyle(palette.accent).frame(maxWidth: .infinity).padding(.vertical, 25)
+                            Text("Controller layouts, bindings, gyro and turbo are saved per game.").foregroundStyle(palette.muted)
+                            Button { deckDestination = .library } label: { Label("Choose a game", systemImage: "rectangle.stack") }
+                                .buttonStyle(DeckButtonStyle(primary: true))
+                            DeckSettingsTiles(pages: [.pointer]) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                        }.padding(22)
+                    }
+                case .launcher:
+                    Form {
+                        DeckAppearanceControls()
+                        Section {
+                            Button { deckSettingsPage = DeckSettingsRoute(page: .appearance) } label: { Label("Appearance", systemImage: "paintpalette") }
+                            DeckPendingFeatureButton(title: L("Boot animation"), symbol: "play.rectangle")
+                        }
+                    }.modifier(DeckFormSkin())
+                case .storage:
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            DeckSettingsTiles(pages: [.saves, .drives, .runtimes]) { deckSettingsPage = DeckSettingsRoute(page: $0) }
+                            Button { browser = true } label: { Label("Add executable", systemImage: "folder") }
+                                .buttonStyle(DeckButtonStyle())
+                        }.padding(22)
+                    }
+                case .diagnostics: deckDiagnostics
+                case .glasses:
+                    Form {
+                        Section("Smart glasses") {
+                            DeckPendingFeatureButton(title: L("Smart glasses"), symbol: "eyeglasses")
+                            DeckPendingFeatureButton(title: L("Head tracking"), symbol: "person.crop.circle")
+                            DeckPendingFeatureButton(title: L("Calibration"), symbol: "scope")
+                            DeckPendingFeatureButton(title: L("Spatial setup"), symbol: "view.3d")
+                        }
+                    }.modifier(DeckFormSkin())
+                }
+            }
+        }
+    }
+
+    var deckDiagnostics: some View {
+        Form {
+            Section { LibraryStatus() }
+            Section("Diagnostics") {
+                Toggle("Extended logging", isOn: $input.diagnostics)
+                ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
+                ClaudeHelpButton(entry: nil)
+            }
+            Section("Live logs") { LibraryLiveLogs().frame(height: 240) }
+            Section {
+                Button("All settings") { settingsSheet = .allSettings }
+                Button("Run setup again") { onboarding.rerun() }
+                Button("Use developer interface") {
+                    developerUI = true
+                    FrontendChoice.choose(new: false)
+                    restartNotice = true
+                }
+            }
+        }.modifier(DeckFormSkin())
+    }
+
+    var deckApps: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Button { browser = true } label: { Label("Add executable", systemImage: "plus") }
+                    .buttonStyle(DeckButtonStyle(primary: true))
+                let local = model.entries.filter {
+                    $0.desktop != true && $0.steamAppID == nil && $0.gogProductID == nil &&
+                    $0.epicAppName == nil && $0.itchGameID == nil && $0.eaOfferID == nil
+                }
+                if local.isEmpty {
+                    ContentUnavailableView(L("Apps"), systemImage: "app.dashed",
+                        description: Text("Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."))
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 14)], spacing: 18) {
+                        ForEach(local) { entry in
+                            Button { selected = entry } label: {
+                                VStack(alignment: .leading, spacing: 9) {
+                                    LibraryArtwork(entry: entry).aspectRatio(1, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 14))
+                                    Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                                }.foregroundStyle(palette.text)
+                            }.buttonStyle(LibraryCardButtonStyle())
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(deckAppFocus == entry.id && controller.connected ? palette.accent : .clear, lineWidth: 2))
+                        }
+                    }
+                }
+            }.padding(22).frame(maxWidth: 1100).frame(maxWidth: .infinity)
+        }
+    }
+
+    var deckUpdates: some View {
+        Form {
+            Section {
+                Text(BuildStamp.text).foregroundStyle(.secondary)
+                DeckPendingFeatureButton(title: L("Check for updates"), symbol: "arrow.clockwise")
+            } header: { Text("App version") }
+            Section {
+                Button {
+                    Task { await SteamGamesSection.refresh() }
+                } label: { Label("Refresh", systemImage: "arrow.clockwise") }
+                if steamLibrary.downloads.isEmpty { Text("No active downloads").foregroundStyle(.secondary) }
+                ForEach(Array(steamLibrary.downloads.keys).sorted(), id: \.self) { appID in
+                    if let download = steamLibrary.downloads[appID] { SteamDownloadStatus(download: download) }
+                }
+            } header: { Text("Downloads") }
+            Section {
+                Button { storeTab = LibraryStoreTab.steam.rawValue; group = "platform"; deckDestination = .library } label: {
+                    Label("Steam", systemImage: "gamecontroller")
+                }
+                Button { deckDestination = .stores } label: { Label("Stores", systemImage: "bag") }
+            } footer: {
+                Text("Open a game's details to update, repair, or manage its downloads.")
+            }
+        }.modifier(DeckFormSkin())
     }
 }
 
@@ -3955,6 +4333,10 @@ private struct LibraryPlayStyle: ButtonStyle {
 }
 
 struct LibraryDetail: View {
+    @Environment(\.deckPalette) private var deckPalette
+    @Environment(\.accessibilityReduceMotion) private var deckReducedMotion
+    @State private var deckSelectedPage: Page?
+    @Namespace private var deckDetailSelection
     @State internal var entry: LibraryEntry
     var play: (LibraryEntry) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -4183,7 +4565,13 @@ struct LibraryDetail: View {
     }
 
     @ViewBuilder private func page(_ page: Page) -> some View {
-        Form {
+        Form { pageSections(page) }
+            .modifier(DeckFormSkin())
+            .navigationTitle(page.title).navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+    }
+
+    @ViewBuilder private func pageSections(_ page: Page) -> some View {
             switch page {
             case .display: displayPage
             case .controls: controlsPage
@@ -4202,8 +4590,6 @@ struct LibraryDetail: View {
             case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)
             case .advanced: advancedPage
             }
-        }
-        .navigationTitle(page.title).navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder private var displayPage: some View {
@@ -4486,47 +4872,65 @@ struct LibraryDetail: View {
         }
     }
 
+    private var deckDetailHeader: some View {
+        ZStack(alignment: .bottomLeading) {
+            artwork(backdrop: true)
+                .overlay(LinearGradient(colors: [.black.opacity(0.18), deckPalette.background], startPoint: .top, endPoint: .bottom))
+                .clipped()
+            VStack(alignment: .leading, spacing: 14) {
+                Text(entry.title).font(.system(size: 30, weight: .bold)).foregroundStyle(deckPalette.text)
+                LibraryBadges(entry: entry).foregroundStyle(deckPalette.muted)
+                if let appID = entry.steamAppID, let summary = SteamOwnedLibrary.shared.playtime[appID]?.summary {
+                    Text(summary).font(.subheadline).foregroundStyle(deckPalette.muted)
+                } else if let played = entry.lastPlayed {
+                    Text(LF("Last played %@", String(describing: (played.formatted(.relative(presentation: .named))))))
+                        .font(.subheadline).foregroundStyle(deckPalette.muted)
+                }
+                if DockOffline.enabled, let appID = entry.steamAppID, !entry.startsSteamGameDirectly { DockOfflineMark(appID: appID) }
+                Button(action: start) {
+                    HStack(spacing: 10) {
+                        if model.startingJIT == entry.id {
+                            ProgressView().tint(deckPalette.onAccent)
+                            Text("Starting JIT").fontWeight(.semibold)
+                        } else {
+                            Image(systemName: "play.fill"); Text("Play").fontWeight(.semibold)
+                        }
+                    }.frame(minWidth: 100, minHeight: 30)
+                }
+                .buttonStyle(DeckButtonStyle(primary: true)).disabled(leaving)
+                .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { playFrame = $0 }
+            }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
+        }.frame(height: 250)
+    }
+
+    private var deckDetailTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(pageGroups.flatMap { $0 }, id: \.self) { item in
+                    Button {
+                        withAnimation(deckReducedMotion ? nil : .spring(response: 0.35, dampingFraction: 0.8)) { deckSelectedPage = item }
+                    } label: {
+                        Label(item.title, systemImage: item.symbol)
+                            .font(.system(size: 13, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 11)
+                            .foregroundStyle(deckSelectedPage == item ? deckPalette.accent : deckPalette.muted)
+                            .background {
+                                if deckSelectedPage == item {
+                                    Capsule().fill(deckPalette.accent.opacity(0.15)).matchedGeometryEffect(id: "detail-page", in: deckDetailSelection)
+                                }
+                            }
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal, 18).padding(.vertical, 6)
+        }.background(deckPalette.surface)
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
-            Form {
-                Section {
-                    HStack(spacing: 20) {
-                        artwork(backdrop: false).frame(width: 120, height: 180).clipShape(RoundedRectangle(cornerRadius: 14))
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(entry.title).font(.title2.bold())
-                            LibraryBadges(entry: entry)
-                            if let appID = entry.steamAppID, let summary = SteamOwnedLibrary.shared.playtime[appID]?.summary {
-                                Text(summary).font(.subheadline).foregroundStyle(.secondary)
-                            } else if let played = entry.lastPlayed {
-                                Text(LF("Last played %@", String(describing: (played.formatted(.relative(presentation: .named)))))).font(.subheadline).foregroundStyle(.secondary)
-                            }
-                            // A game Valve's client starts (Madeira Dock): can it start without a connection?
-                            if DockOffline.enabled, let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
-                                DockOfflineMark(appID: appID)
-                            }
-                            Button(action: start) {
-                                HStack(spacing: 10) {
-                                    // Enabling JIT can take seconds with nothing else on screen.
-                                    if model.startingJIT == entry.id {
-                                        ProgressView().tint(.white)
-                                        Text("Starting JIT").fontWeight(.semibold)
-                                    } else {
-                                        Image(systemName: "play.fill"); Text("Play").fontWeight(.semibold)
-                                    }
-                                }.frame(minWidth: 100, minHeight: 30)
-                            }
-                            .buttonStyle(LibraryPlayStyle(pending: leaving)).disabled(leaving)
-                            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { playFrame = $0 }
-                        }
-                    }.padding(.vertical, 24)
-                        .listRowBackground(
-                            artwork(backdrop: true).blur(radius: 4)
-                                .overlay(Color(uiColor: .secondarySystemGroupedBackground).opacity(0.48))
-                                .overlay(alignment: .bottom) {
-                                    LinearGradient(colors: [.clear, Color(uiColor: .secondarySystemGroupedBackground)], startPoint: .top, endPoint: .bottom).frame(height: 70)
-                                }.clipped()
-                        )
-                }
+            VStack(spacing: 0) {
+                deckDetailHeader
+                deckDetailTabs
+                Form {
+                    if let selection = deckSelectedPage { pageSections(selection) }
                 // A Play error sits under Play.
                 if let error { Section { Text(error).foregroundStyle(.red) } }
                 // A running update blocks Play: its progress shows here too.
@@ -4585,6 +4989,10 @@ struct LibraryDetail: View {
                     readSetup { try GameSetup.read(file: try result.get()) }
                 }
             }
+                .modifier(DeckFormSkin())
+            }
+            .background(deckPalette.background)
+            .onAppear { if deckSelectedPage == nil { deckSelectedPage = pageGroups.first?.first } }
             .navigationTitle("Game details").navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Page.self) { item in page(item) }
             .toolbarBackground(.regularMaterial, for: .navigationBar)
@@ -5654,8 +6062,8 @@ struct LibraryHUD: View {
                         .clipShape(RoundedRectangle(cornerRadius: 28))
                         .overlay(RoundedRectangle(cornerRadius: 28).stroke(.white.opacity(0.15)))
                         .shadow(color: .black.opacity(0.6), radius: 30, y: 12)
-                        .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                        .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
+                        .position(x: geo.size.width - min(460, geo.size.width - 32) / 2 - 16, y: geo.size.height / 2)
+                        .transition(reduceMotion ? .opacity : .move(edge: .trailing).combined(with: .opacity))
                 }
             }
             .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: model.menu)

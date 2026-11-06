@@ -14,10 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Check UI sources, resources and backend isolation
-        run: node tests/host/check-droiddeck-ui.js
+      - name: Check native UI routes and retained controls
+        run: python3 tests/host/check-native-deck.py
+      - name: Check Simplified Chinese strings without compilation
+        run: python3 tests/host/check-localization.py --static-only
       - name: Check whitespace
         run: git diff --check

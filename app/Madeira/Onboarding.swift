@@ -250,7 +250,7 @@ struct OnboardingView: View {
                 .animation(.default, value: jitPath)
                 .animation(.default, value: pairing.phase)
             }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .background(DeckAppearance.shared.palette().background.ignoresSafeArea())
         }
         .interactiveDismissDisabled()
         .sheet(isPresented: $showSignIn) { SteamSignInView() }
@@ -290,11 +290,11 @@ struct OnboardingView: View {
     private func primary(_ title: String, symbol: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(L(title), systemImage: symbol).fontWeight(.semibold).frame(maxWidth: .infinity, minHeight: 36)
-        }.buttonStyle(.borderedProminent).controlSize(.large)
+        }.buttonStyle(DeckButtonStyle(primary: true)).controlSize(.large)
     }
 
     private func secondary(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(L(title), action: action).frame(maxWidth: .infinity, minHeight: 44)
+        Button(L(title), action: action).frame(maxWidth: .infinity, minHeight: 44).buttonStyle(DeckButtonStyle())
     }
 
     private func point(_ number: Int, _ text: LocalizedStringKey, done: Bool = false) -> some View {

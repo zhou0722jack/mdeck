@@ -1,5 +1,8 @@
 # DroidDeck 界面移植分支
 
+> 本文记录前一版网页视觉参考稿。当前应用已按用户要求改成原生 SwiftUI，
+> 不再加载此网页界面。请以 [原生重构说明](NATIVE_FRONTEND_ZH_CN.md) 为准。
+
 分支：`codex/droiddeck-ui`。
 
 参考版本固定为 DroidDeck **0.6.9**，提交

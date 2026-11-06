@@ -1,0 +1,717 @@
+{
+  "baseline": "e5a3600979a3a36cf2b9ac85123c42cfecb82632",
+  "purpose": "Inventory of existing native UI surfaces; preserve unmatched functional entries during redesign.",
+  "files": [
+    {
+      "file": "app/Madeira/AppleSignIn.swift",
+      "views": [
+        "AppleSignInSheet"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Sign In",
+        "Verify"
+      ]
+    },
+    {
+      "file": "app/Madeira/ClaudeHelp.swift",
+      "views": [
+        "ClaudeHelpButton"
+      ],
+      "controlLabels": [
+        "Get Help from Claude"
+      ]
+    },
+    {
+      "file": "app/Madeira/ConfigCatalog.swift",
+      "views": [
+        "AllSettingsView",
+        "ConfigOptionRow",
+        "SettingsSearchResults"
+      ],
+      "controlLabels": [
+        "Add to madeira.cfg",
+        "Done",
+        "Reset"
+      ]
+    },
+    {
+      "file": "app/Madeira/ContentView.swift",
+      "views": [
+        "HoldKeyView",
+        "JoystickPadOverlay",
+        "JoystickFace",
+        "JoystickKeyView",
+        "MadeiraMetalView",
+        "ContentView",
+        "SetupGuideView",
+        "TouchControlsOverlay",
+        "GlassShape",
+        "TouchControlButton",
+        "MappingPanel"
+      ],
+      "controlLabels": [
+        "All settings",
+        "Cancel",
+        "Choose",
+        "Clear Log",
+        "Close Madeira",
+        "D3D12 M2 ABI",
+        "D3D12 cube",
+        "Done",
+        "Enable JIT",
+        "Later",
+        "Launch anyway",
+        "Madeira Dock",
+        "OK",
+        "Steam Testing",
+        "Steam sign-in",
+        "Stray (UE4, -dx11)",
+        "Thumper (standalone)",
+        "Try again",
+        "Use New Interface",
+        "Valley of the Ancient (UE5)",
+        "Wait and sync",
+        "Wine Virtual Desktop",
+        "arm64 DX11 cube",
+        "x64 DX11 cube",
+        "x64 call cost",
+        "x64 clock test"
+      ]
+    },
+    {
+      "file": "app/Madeira/DockStartScreen.swift",
+      "views": [
+        "SteamLaunchBackdrop"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/EAGames.swift",
+      "views": [
+        "EAGamesSection",
+        "EASheets",
+        "EASignInCard",
+        "EAGameArtwork",
+        "EAGameCell",
+        "EADownloadStatus",
+        "EAGameSheet",
+        "EAEntrySection",
+        "EASettingsSection",
+        "EASignInView",
+        "EALoginWebView"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Cancel download",
+        "Done",
+        "Keep downloading",
+        "OK",
+        "Paste the sign-in address",
+        "Pause download",
+        "Reload",
+        "Resume download",
+        "Sign in",
+        "Sign out",
+        "Sign out of EA",
+        "Uninstall"
+      ]
+    },
+    {
+      "file": "app/Madeira/EpicCloud.swift",
+      "views": [
+        "EpicCloudSection",
+        "EpicCloudSettingRows"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Keep Epic's saves…",
+        "Keep this device's saves…",
+        "Sync now",
+        "Sync saves with Epic Cloud",
+        "Try again",
+        "Upload newer saves automatically",
+        "Upload this device's saves",
+        "Use Epic's saves"
+      ]
+    },
+    {
+      "file": "app/Madeira/EpicGames.swift",
+      "views": [
+        "EpicGamesSection",
+        "EpicSheets",
+        "EpicSignInCard",
+        "EpicGameArtwork",
+        "EpicGameCell",
+        "EpicDownloadStatus",
+        "EpicGameSheet",
+        "EpicEntrySection",
+        "EpicSettingsSection",
+        "EpicSignInView",
+        "EpicLoginWebView"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Cancel download",
+        "Done",
+        "Keep downloading",
+        "OK",
+        "Paste a sign-in code",
+        "Pause download",
+        "Reload",
+        "Resume download",
+        "Sign in",
+        "Sign out",
+        "Sign out of Epic Games",
+        "Start without Easy Anti-Cheat",
+        "Uninstall"
+      ]
+    },
+    {
+      "file": "app/Madeira/ExternalDrives.swift",
+      "views": [
+        "ExternalGamesSheet",
+        "ExternalDrivesSection",
+        "GameMoveSection"
+      ],
+      "controlLabels": [
+        "Add drive or folder",
+        "Close",
+        "Find games on \\(folder.name)",
+        "Install Steam games on",
+        "Remove"
+      ]
+    },
+    {
+      "file": "app/Madeira/FPSOverlay.swift",
+      "views": [
+        "FPSOverlay"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/GOGGames.swift",
+      "views": [
+        "GOGGamesSection",
+        "GOGSheets",
+        "GOGSignInCard",
+        "GOGGameArtwork",
+        "GOGGameCell",
+        "GOGDownloadStatus",
+        "GOGGameSheet",
+        "GOGSetupRows",
+        "GOGEntrySection",
+        "GOGSettingsSection",
+        "GOGSignInView",
+        "GOGLoginWebView"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Cancel download",
+        "Done",
+        "Keep downloading",
+        "OK",
+        "Paste the sign-in address",
+        "Pause download",
+        "Program",
+        "Reload",
+        "Resume download",
+        "Sign in",
+        "Sign out",
+        "Sign out of GOG",
+        "Uninstall"
+      ]
+    },
+    {
+      "file": "app/Madeira/GameIniFiles.swift",
+      "views": [
+        "GameIniFilesSection",
+        "IniFilePicker",
+        "IniFileEditor"
+      ],
+      "controlLabels": [
+        "OK",
+        "Save"
+      ]
+    },
+    {
+      "file": "app/Madeira/GameSetupShare.swift",
+      "views": [
+        "GameSetupShareSheet",
+        "GameSetupApplySheet",
+        "GameSetupInboxSheet",
+        "GameSetupInboxPresenter"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Done",
+        "OK",
+        "Settings files",
+        "Touch controls and controller"
+      ]
+    },
+    {
+      "file": "app/Madeira/GamepadInput.swift",
+      "views": [
+        "ClaimGamepadEvents"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/GestureZones.swift",
+      "views": [
+        "GestureZoneSurface",
+        "GestureZonesLayer",
+        "GestureZoneEditBox",
+        "GestureZonePanel",
+        "LayerButtons"
+      ],
+      "controlLabels": [
+        "Directions",
+        "Kind"
+      ]
+    },
+    {
+      "file": "app/Madeira/HardwareInput.swift",
+      "views": [
+        "HardwareInputSettings"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/InteractionFrameRate.swift",
+      "views": [
+        "InteractionFrameRateInstaller"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/ItchGames.swift",
+      "views": [
+        "ItchGamesSection",
+        "ItchSheets",
+        "ItchGameArtwork",
+        "ItchGameCell",
+        "ItchDownloadStatus",
+        "ItchGameSheet",
+        "ItchEntrySection",
+        "ItchFindView",
+        "ItchSettingsSection",
+        "ItchSignInView"
+      ],
+      "controlLabels": [
+        "Add",
+        "Cancel",
+        "Cancel download",
+        "Done",
+        "Keep downloading",
+        "OK",
+        "Open",
+        "Pause download",
+        "Remove from this library",
+        "Resume download",
+        "Sign in",
+        "Sign out",
+        "Sign out of itch.io",
+        "Uninstall"
+      ]
+    },
+    {
+      "file": "app/Madeira/JITPairing.swift",
+      "views": [
+        "OnDevicePairingPanel"
+      ],
+      "controlLabels": [
+        "Cancel pairing"
+      ]
+    },
+    {
+      "file": "app/Madeira/JITSetup.swift",
+      "views": [
+        "JITSettingsSection",
+        "ExternalJITScriptInstructions",
+        "ExternalJITScriptSection",
+        "JITSetupView"
+      ],
+      "controlLabels": [
+        "Check external script attachment",
+        "Check setup",
+        "Connect with \\(JITNetworkShortcut.name)",
+        "Done",
+        "Enable JIT",
+        "Enable JIT with StikDebug",
+        "Import pairing file",
+        "JIT method",
+        "Method",
+        "Reset Developer Disk Image",
+        "Stop waiting",
+        "\\(JITNetworkShortcut.name) shortcut"
+      ]
+    },
+    {
+      "file": "app/Madeira/Library.swift",
+      "views": [
+        "LibraryLargeTitle",
+        "LibraryTitleText",
+        "LibraryTitleAnchor",
+        "LibraryNavSearch",
+        "LibraryArtwork",
+        "AmbientRays",
+        "AmbientGlow",
+        "AmbientGlowLayer",
+        "AmbientGlowCard",
+        "LiquidMetalFill",
+        "LibraryCardArtworkPress",
+        "LibraryBadges",
+        "LibraryStatus",
+        "LibrarySectionHeader",
+        "LibraryStoreTabBar",
+        "LibraryCells",
+        "LibraryGroupedGames",
+        "LibraryView",
+        "LibrarySheets",
+        "ExecutableBrowser",
+        "LibraryDetail",
+        "LibraryGameConfigEditor",
+        "SteamSearchView",
+        "ControllerBindsPage",
+        "DockOfflineMark",
+        "ControllerModeChoice",
+        "LaunchFlagChips",
+        "FPSChoice",
+        "DisplayRateSettings",
+        "MadeiraCredit",
+        "MemoryHostTestRow",
+        "RuntimeMemorySyncSettings",
+        "LibraryPointerSettings",
+        "GraphicsSettings",
+        "LibraryPillGlass",
+        "SessionMenuBackground",
+        "OverlayStyleSettings",
+        "LibraryFloatingItem",
+        "LibraryHUD",
+        "LibraryLiveLogs",
+        "FrameTimeGraph",
+        "LibraryMetrics",
+        "LaunchEntrance",
+        "SmartPunctuationOff"
+      ],
+      "controlLabels": [
+        "32-bit programs",
+        "Apply Shared Setup",
+        "Aspect & scaling",
+        "Background",
+        "Button style",
+        "CPU cores reported",
+        "Capture the next frame",
+        "Choose a File",
+        "Choose cover image",
+        "Colour by frame rate",
+        "Controller",
+        "Controller binds",
+        "Copy Settings",
+        "D3D9 anisotropic filtering",
+        "Default",
+        "Done",
+        "Eco mode",
+        "Edit controls",
+        "Extended logging",
+        "FPS limit",
+        "Fast semaphore waits (experimental)",
+        "Fast synchronization",
+        "Find on Steam",
+        "Frame generation (experimental)",
+        "GPU sync",
+        "Graph span",
+        "Group by",
+        "Gyro aim & turbo",
+        "Hold the display at its maximum rate",
+        "Keyboard",
+        "Labels",
+        "Layout",
+        "Library layout",
+        "Liquid metal",
+        "Live logs",
+        "MetalFX upscaling",
+        "New library grid",
+        "OK",
+        "Paste from Clipboard",
+        "Performance overlay",
+        "Pointer mode",
+        "Remove",
+        "Remove from library",
+        "Reset",
+        "Reset all to defaults",
+        "Reset overlay style",
+        "Reset to Recommended",
+        "Reset to defaults",
+        "Resolution",
+        "Session",
+        "Share Setup",
+        "Show game view",
+        "Sort by",
+        "Start",
+        "Start Windows services first",
+        "Store",
+        "Swap coverage",
+        "Sync engine",
+        "Touch controls",
+        "Updates",
+        "Use developer interface",
+        "Zoom haptics"
+      ]
+    },
+    {
+      "file": "app/Madeira/LibraryGridHost.swift",
+      "views": [
+        "LibraryGridHostView"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/LibraryGridPage.swift",
+      "views": [
+        "LibraryGridPage",
+        "LibraryGridHeader",
+        "LibraryGridNotInstalledToggle"
+      ],
+      "controlLabels": [
+        "OK"
+      ]
+    },
+    {
+      "file": "app/Madeira/MadeiraDockView.swift",
+      "views": [
+        "MadeiraDockView",
+        "DockInstallRequestRows"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Done",
+        "Download Valve's client components (about 73 MB)",
+        "Record as done",
+        "Record as done…",
+        "Reset and sign out of Rockstar",
+        "Reset at next start",
+        "Reset one-time installs…",
+        "Sign in to Steam",
+        "Smaller JIT pool (512 MB) for this launch"
+      ]
+    },
+    {
+      "file": "app/Madeira/Onboarding.swift",
+      "views": [
+        "OnboardingView",
+        "SteamSettingsSection"
+      ],
+      "controlLabels": [
+        "Downloads from PCs on this network",
+        "Game language",
+        "Sign out",
+        "Sign out of Steam",
+        "Steam Cloud saves",
+        "Use it for JIT"
+      ]
+    },
+    {
+      "file": "app/Madeira/PadAssist.swift",
+      "views": [
+        "PadAssistPage"
+      ],
+      "controlLabels": [
+        "Active",
+        "Gyro",
+        "Gyro aim",
+        "Invert left and right",
+        "Invert up and down",
+        "Moves",
+        "Turn with"
+      ]
+    },
+    {
+      "file": "app/Madeira/SavesAndShortcuts.swift",
+      "views": [
+        "ActivitySheet",
+        "SavesSection"
+      ],
+      "controlLabels": [
+        "Restore"
+      ]
+    },
+    {
+      "file": "app/Madeira/SettingsPages.swift",
+      "views": [
+        "SettingsPagesList",
+        "SettingsPageView",
+        "SettingsCreditsSection"
+      ],
+      "controlLabels": [
+        "All settings",
+        "Extended logging",
+        "Liquid metal",
+        "New library grid",
+        "OK",
+        "Touch control buttons",
+        "Use developer interface",
+        "Zoom haptics"
+      ]
+    },
+    {
+      "file": "app/Madeira/SigningRefresh.swift",
+      "views": [
+        "SigningSettingsSection",
+        "SigningRefreshOffer"
+      ],
+      "controlLabels": [
+        "Forget Apple sign-in",
+        "Refresh Now",
+        "Sign In…"
+      ]
+    },
+    {
+      "file": "app/Madeira/SteamAchievements.swift",
+      "views": [
+        "AchievementBannerView",
+        "AchievementIcon",
+        "SteamAchievementsSection"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/SteamClient.swift",
+      "views": [
+        "SteamClientView"
+      ],
+      "controlLabels": [
+        "Done"
+      ]
+    },
+    {
+      "file": "app/Madeira/SteamGames.swift",
+      "views": [
+        "SteamGamesSection",
+        "SteamSignInCard",
+        "SteamGameArtwork",
+        "SteamArtworkBlurSpot",
+        "SteamGameCell",
+        "SteamDownloadStatus",
+        "SteamGameLanguagePicker",
+        "SteamBranchPicker",
+        "SteamDLCRows",
+        "SteamGameSheet",
+        "SteamCloudQuitRow",
+        "SteamCloudSection",
+        "SteamEntrySection"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Cancel download",
+        "Check",
+        "Done",
+        "Game language",
+        "Install on",
+        "Keep downloading",
+        "Keep the Steam Cloud saves…",
+        "Keep this device's saves",
+        "Keep this device's saves…",
+        "OK",
+        "One-time installs",
+        "Pause update",
+        "Program",
+        "Remove beta code",
+        "Replace the Steam Cloud saves and close",
+        "Replace the cloud saves",
+        "Resume update",
+        "Smaller JIT pool (512 MB) for this launch",
+        "Start with",
+        "Steam starts",
+        "Sync now",
+        "Try again",
+        "Uninstall",
+        "Upload saves and close Madeira",
+        "Use the Steam Cloud saves",
+        "Version"
+      ]
+    },
+    {
+      "file": "app/Madeira/SteamWorkshop.swift",
+      "views": [
+        "SteamWorkshopItemRow",
+        "SteamWorkshopSections",
+        "SteamWorkshopBrowseView",
+        "SteamWorkshopHub"
+      ],
+      "controlLabels": [
+        "Done",
+        "Load more",
+        "OK",
+        "Remove",
+        "Show",
+        "Subscribe",
+        "Unsubscribe"
+      ]
+    },
+    {
+      "file": "app/Madeira/SwiftSteam/SteamSignInView.swift",
+      "views": [
+        "SteamSignInView"
+      ],
+      "controlLabels": [
+        "Get a new code",
+        "Sign out",
+        "Sign-in method",
+        "Start over"
+      ]
+    },
+    {
+      "file": "app/Madeira/TouchControlPresets.swift",
+      "views": [
+        "ControlLayoutMenu"
+      ],
+      "controlLabels": [
+        "Cancel",
+        "Create new layout",
+        "Delete",
+        "Delete \\u{201C}\\(a.name)\\u{201D}",
+        "Replace"
+      ]
+    },
+    {
+      "file": "app/Madeira/TouchGamepad.swift",
+      "views": [
+        "TouchPadSurface"
+      ],
+      "controlLabels": []
+    },
+    {
+      "file": "app/Madeira/VCRedist.swift",
+      "views": [
+        "VCRedistSettingsSection"
+      ],
+      "controlLabels": [
+        "Remove",
+        "Remove the runtime"
+      ]
+    },
+    {
+      "file": "app/Madeira/WineGecko.swift",
+      "views": [
+        "WineGeckoSettingsSection"
+      ],
+      "controlLabels": [
+        "Remove",
+        "Remove Wine Gecko"
+      ]
+    },
+    {
+      "file": "app/Madeira/WineMono.swift",
+      "views": [
+        "WineMonoSettingsSection"
+      ],
+      "controlLabels": [
+        "Remove",
+        "Remove Wine Mono"
+      ]
+    }
+  ]
+}

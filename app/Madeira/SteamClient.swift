@@ -120,6 +120,7 @@ struct SteamClientView: View {
                     Text("Starting the installer or Steam uses the same JIT setup as a game. In external script mode, run Madeira's script in StikDebug first. Steam compatibility on this device still needs testing.")
                 }
             }
+            .modifier(DeckFormSkin())
             .navigationTitle("Steam")
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } } }
         }

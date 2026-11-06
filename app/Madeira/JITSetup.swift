@@ -827,6 +827,7 @@ struct JITSetupView: View {
                     Section { LabeledContent("TXM/SPTM", value: txm ? L("Present") : L("Not present")) }
                 }
             }
+            .modifier(DeckFormSkin())
             .navigationTitle("JIT setup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
