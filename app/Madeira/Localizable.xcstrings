@@ -1,6 +1,215 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "JIT activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JIT 活性"
+          }
+        }
+      }
+    },
+    "Enabled": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已开启"
+          }
+        }
+      }
+    },
+    "View status details": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看状态详情"
+          }
+        }
+      }
+    },
+    "JIT status uses the same runtime check as Settings. It does not use the allow-jit signing flag.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JIT 状态与设置页使用同一项运行时检查，不以 allow-jit 签名标志判断。"
+          }
+        }
+      }
+    },
+    "Probe interval": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测间隔"
+          }
+        }
+      }
+    },
+    "5 seconds": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 秒"
+          }
+        }
+      }
+    },
+    "Probe buffer": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测缓冲区"
+          }
+        }
+      }
+    },
+    "Successful probes": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "成功探测次数"
+          }
+        }
+      }
+    },
+    "Last probe result": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近探测返回值"
+          }
+        }
+      }
+    },
+    "Not tested yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚未探测"
+          }
+        }
+      }
+    },
+    "Last probe time": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最近探测时间"
+          }
+        }
+      }
+    },
+    "The ring completes one cycle every 5 seconds. Green means the latest probe returned 42; red means untested, unavailable, failed or stale. Animation alone does not prove JIT is working.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "外圈每 5 秒完成一轮。绿色表示最近探测返回 42；红色表示尚未探测、不可用、失败或结果过期。转圈本身不代表 JIT 正常。"
+          }
+        }
+      }
+    },
+    "The probe reuses a separate 16 KiB buffer, wipes its code each round and releases its mappings before Steam starts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测复用独立的 16 KiB 缓冲区，每轮擦除代码，并在启动 Steam 前释放映射。"
+          }
+        }
+      }
+    },
+    "Waiting for JIT": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在等待 JIT"
+          }
+        }
+      }
+    },
+    "Probe paused": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测已暂停"
+          }
+        }
+      }
+    },
+    "Probe failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测失败"
+          }
+        }
+      }
+    },
+    "Probe stopped before Steam startup": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测已在启动 Steam 前停止"
+          }
+        }
+      }
+    },
+    "Probe passed": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测通过"
+          }
+        }
+      }
+    },
+    "Probe failed or result expired": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "探测失败或结果已过期"
+          }
+        }
+      }
+    },
     "Overview": {
       "extractionState": "manual",
       "localizations": {
@@ -55404,7 +55613,7 @@
     "JIT is ready. A separate 16 KiB probe runs every 5 seconds until Steam starts.": {
       "localizations": {
         "zh-Hans": {
-          "stringUnit": { "state": "translated", "value": "JIT 已就绪。启动 Steam 前，每 5 秒执行并回收一次独立的 16 KiB 探测缓冲区。" }
+          "stringUnit": { "state": "translated", "value": "JIT 已就绪。启动 Steam 前，每 5 秒复用独立的 16 KiB 缓冲区进行探测并清空代码。" }
         }
       },
       "extractionState": "manual"

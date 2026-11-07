@@ -123,6 +123,10 @@ enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
     func enable(completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
 }
 enum StikJITHelper { static var scriptURL: URL? { nil }; static var ready: Bool { true } }
+struct EntitlementStatus {
+    var increasedMemory = true
+    static func check() -> Self { Self() }
+}
 struct JITSetupView: View { var body: some View { EmptyView() } }
 enum SettingsPages {
     enum Page: String, CaseIterable {

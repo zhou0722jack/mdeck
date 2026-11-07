@@ -4062,9 +4062,9 @@ private extension LibraryView {
                         DeckSteamLogo(progress: 0, ink: palette.text, signal: signal).frame(width: 48, height: 48)
                         Text("mdeck").font(.system(size: 40, weight: .bold, design: .rounded))
                     }.modifier(DeckHomeRise(index: 0, enabled: appearance.animations))
+                    AppEntryJITIndicators().modifier(DeckHomeRise(index: 1, enabled: appearance.animations))
                     Spacer(minLength: 40)
-                    deckSteamActions.modifier(DeckHomeRise(index: 1, enabled: appearance.animations))
-                    AppEntryJITStatus().modifier(DeckHomeRise(index: 2, enabled: appearance.animations))
+                    deckSteamActions.modifier(DeckHomeRise(index: 2, enabled: appearance.animations))
                     if !SteamClient.installed {
                         Text("Steam will open its installer on the first launch.")
                             .font(.footnote).foregroundStyle(palette.muted)

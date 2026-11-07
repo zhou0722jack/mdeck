@@ -41,6 +41,7 @@ jobs:
           python3 tests/host/check-app-entry-jit.py
           python3 tests/host/check-wine-diagnostic-startup.py
           python3 tests/host/check-crt-callsite-diagnostics.py
+          python3 tests/host/check-opengl-wow64-teb.py
           python3 tests/host/check-desktop-button-click.py
           python3 tests/host/check-chinese-fonts.py
           python3 tests/host/check-nls-extra-switch.py

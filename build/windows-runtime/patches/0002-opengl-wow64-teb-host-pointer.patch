@@ -1,0 +1,20 @@
+--- a/dlls/opengl32/unix_private.h
++++ b/dlls/opengl32/unix_private.h
+@@ -85,9 +85,16 @@
+     return tmp;
+ }
+ 
+-static inline TEB *get_teb64( ULONG teb32 )
++static inline TEB *get_teb64( ULONG_PTR teb32 )
+ {
++#ifdef WINE_IOS
++    /* A thread_attach argument has already crossed the outer unix-call
++     * boundary and is a full host pointer. Embedded PTR32 fields instead
++     * still need their process window. Do not truncate or add B twice. */
++    TEB32 *teb32_ptr = teb32 > ~(ULONG)0 ? (TEB32 *)teb32 : ios_wow_host_ptr( (ULONG)teb32 );
++#else
+     TEB32 *teb32_ptr = ULongToPtr( teb32 );
++#endif
+     return (TEB *)((char *)teb32_ptr + teb32_ptr->WowTebOffset);
+ }
+ 

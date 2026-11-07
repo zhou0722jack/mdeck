@@ -28,21 +28,24 @@ func LF(_ key: String, _ args: CVarArg...) -> String { String(format:key,argumen
 @MainActor final class LogStore { static let shared=LogStore(); func log(_ value:String) {} }
 extension AppEntryJIT.Services { static var live: Self { fatalError("live service is never used") } }
 @MainActor final class Fake {
-    var ready=false, attached=false, enableCalls=0, probes=0, cancels=0
+    var ready=false, attached=false, enableCalls=0, probes=0, cancels=0, releases=0
     var intervals:[TimeInterval]=[]
     var enables:[(Result<Void,Error>)->Void]=[]
     var executions:[(Int64)->Void]=[]
+    var cleanups:[(Int64)->Void]=[]
     var tick:(()->Void)?
     func services() -> AppEntryJIT.Services {
         .init(enable:{ self.enableCalls+=1; self.enables.append($0) },
               ready:{ self.ready }, attached:{ self.attached },
               probe:{ self.probes+=1; self.executions.append($0) },
+              release:{ self.releases+=1; self.cleanups.append($0) },
               schedule:{ interval,tick in self.intervals.append(interval); self.tick=tick
                   return { self.cancels+=1; self.tick=nil }
               })
     }
     func enabled() { ready=true; attached=true; let f=enables.removeFirst(); f(.success(())) }
     func completed(_ result:Int64) { let f=executions.removeFirst(); f(result) }
+    func released(_ result:Int64=0) { let f=cleanups.removeFirst(); f(result) }
 }
 @main struct Check {
     @MainActor static func main() {
@@ -61,6 +64,11 @@ extension AppEntryJIT.Services { static var live: Self { fatalError("live servic
         precondition(fake.probes==1)
         fake.completed(42)
         precondition(model.successfulProbes==1)
+        precondition(model.lastProbeResult==42 && model.lastProbeFinishedAt != nil)
+        precondition(model.probeIsHealthy(at:model.lastProbeFinishedAt!))
+        precondition(!model.probeIsHealthy(at:model.lastProbeFinishedAt!.addingTimeInterval(11)))
+        precondition(abs(AppEntryJIT.cycleProgress(at:Date(timeIntervalSince1970:2.5),since:Date(timeIntervalSince1970:0)) - 0.5)<0.001)
+        precondition(AppEntryJIT.cycleProgress(at:Date(timeIntervalSince1970:5),since:Date(timeIntervalSince1970:0))==0)
         fake.tick?()
         precondition(fake.probes==2)
         model.sceneChanged(active:false,allowed:true)
@@ -84,14 +92,18 @@ extension AppEntryJIT.Services { static var live: Self { fatalError("live servic
         staleTimer?(); model.sceneChanged(active:true,allowed:true)
         precondition(fake.probes==4)
         fake.completed(42)
+        precondition(starts==0 && fake.releases==1)
+        fake.released()
         precondition(starts==1 && failures==0 && model.state == .stopped)
+        precondition(!model.deferLaunchUntilProbeFinishes({starts+=1},failed:{_ in failures+=1}))
         model.tick(); staleTimer?()
         precondition(fake.probes==4)
         print("PASS: launch stops timer, drains the in-flight native cleanup once and never resumes probes")
 
         fake=Fake(); model=AppEntryJIT(services:fake.services())
         model.sceneChanged(active:true,allowed:true)
-        precondition(!model.deferLaunchUntilProbeFinishes({ starts+=1 },failed:{_ in failures+=1}))
+        precondition(model.deferLaunchUntilProbeFinishes({ starts+=1 },failed:{_ in failures+=1}))
+        fake.released()
         fake.enabled()
         precondition(fake.probes==0 && fake.intervals.isEmpty && model.state == .stopped)
         print("PASS: a late initial attachment cannot restart the loop after a launch handoff")
@@ -99,6 +111,7 @@ extension AppEntryJIT.Services { static var live: Self { fatalError("live servic
         fake=Fake(); model=AppEntryJIT(services:fake.services())
         model.sceneChanged(active:true,allowed:true); fake.enabled()
         fake.completed(-1)
+        precondition(model.lastProbeResult == -1 && !model.probeIsHealthy(at:.now))
         precondition(fake.tick==nil && model.state == .failed)
         model.sceneChanged(active:false,allowed:true); model.sceneChanged(active:true,allowed:true)
         precondition(fake.probes==1 && model.state == .failed)
@@ -108,11 +121,36 @@ extension AppEntryJIT.Services { static var live: Self { fatalError("live servic
         precondition(model.deferLaunchUntilProbeFinishes({ starts+=1 },failed:{_ in failures+=1}))
         let before=starts
         fake.completed(-4)
+        fake.released(-4)
         precondition(starts==before && failures==1 && model.state == .failed)
         var refused=false
         model.enable { result in if case .failure = result { refused=true } }
         precondition(refused && fake.enableCalls==2)
         print("PASS: failed native probes stop retries; failed unmapping refuses launch and requests reopening")
+
+        fake=Fake(); model=AppEntryJIT(services:fake.services())
+        model.sceneChanged(active:true,allowed:true); fake.enabled()
+        for _ in 0..<1000 { fake.completed(42); fake.tick?() }
+        precondition(fake.probes==1001 && fake.enableCalls==1 && fake.releases==0)
+        let launchCount=starts
+        precondition(model.deferLaunchUntilProbeFinishes({starts+=1},failed:{_ in failures+=1}))
+        fake.completed(42)
+        precondition(starts==launchCount && fake.releases==1)
+        model.tick(); precondition(fake.probes==1001)
+        fake.released()
+        precondition(starts==launchCount+1)
+        print("PASS: 1000 scheduled rounds do not reattach or release early; startup waits for scratch release")
+
+        fake=Fake(); model=AppEntryJIT(services:fake.services())
+        model.sceneChanged(active:true,allowed:true); fake.enabled(); fake.completed(42)
+        let beforeReleaseFailure=starts
+        precondition(model.deferLaunchUntilProbeFinishes({starts+=1},failed:{_ in failures+=1}))
+        precondition(model.deferLaunchUntilProbeFinishes({starts+=1},failed:{_ in failures+=1}))
+        precondition(fake.releases==1)
+        fake.released(-4)
+        precondition(starts==beforeReleaseFailure && model.state == .failed)
+        model.tick(); precondition(fake.probes==1)
+        print("PASS: duplicate handoffs share one release; failure blocks startup after a successful last probe")
     }
 }
 '''
@@ -201,11 +239,33 @@ int main(void) {
     const int64_t expected[]={42,-2,-2,-1,-1,-1,-1,-3,42,-4,-4};
     for(scenario=OK;scenario<=RX_FREE_FAIL;scenario++) {
         allocs=frees=0;owned_rx=NULL;owned_rw=0;
-        assert(jit_entry_probe_once()==expected[scenario]);
+        scratch_cleanup_failed=0;
+        int64_t result=jit_entry_probe_once();
+        if(scenario==RW_FREE_FAIL || scenario==RX_FREE_FAIL) {
+            assert(result==42);assert(jit_entry_probe_release()==-4);
+            assert(jit_entry_probe_once()==-4);
+        } else {
+            assert(result==expected[scenario]);
+            assert(jit_entry_probe_release()==0);
+        }
         assert(allocs==frees);
         struct sigaction restored;assert(!sigaction(SIGBUS,NULL,&restored));assert(restored.sa_handler==previous_fault);
     }
     assert(old_faults==1);
+    scratch_cleanup_failed=0;scenario=OK;allocs=frees=0;owned_rx=NULL;owned_rw=0;
+    for(unsigned round=0;round<1000;round++) {
+        assert(jit_entry_probe_once()==42 && allocs==2 && frees==0);
+        const unsigned char *p=(void *)owned_rw;
+        for(unsigned i=0;i<16384;i++) assert(p[i]==0);
+    }
+    assert(jit_entry_probe_release()==0 && allocs==frees);
+    scenario=OK;allocs=frees=0;owned_rx=NULL;owned_rw=0;
+    assert(jit_entry_probe_once()==42 && allocs==2);
+    scenario=NO_DEBUGGER;
+    assert(jit_entry_probe_once()==-2 && allocs==2 && frees==0);
+    scenario=OK;
+    assert(jit_entry_probe_once()==42 && allocs==2 && frees==0);
+    assert(jit_entry_probe_release()==0 && frees==2);
     old.sa_flags=SA_RESETHAND;assert(!sigaction(SIGBUS,&old,NULL));
     struct sigaction configured;assert(!sigaction(SIGBUS,NULL,&configured));
     force_one_shot=1;
@@ -215,11 +275,12 @@ int main(void) {
     assert(restored.sa_handler==previous_fault && restored.sa_flags==configured.sa_flags);
     assert(probe_previous[0].sa_flags & SA_RESETHAND);
     scenario=FOREIGN_FAULT;allocs=frees=0;owned_rx=NULL;owned_rw=0;
-    assert(jit_entry_probe_once()==42 && allocs==frees);
+    assert(jit_entry_probe_once()==42);
+    assert(jit_entry_probe_release()==0 && allocs==frees);
     assert(!sigaction(SIGBUS,NULL,&restored));assert(restored.sa_handler==SIG_DFL && old_faults==2);
     assert(!pthread_mutex_lock(&probe_lock));assert(jit_entry_probe_once()==-5);pthread_mutex_unlock(&probe_lock);
     assert(!sigaction(SIGBUS,&saved,NULL));
-    puts("PASS: real 16KiB allocation/alias cleanup, remap/protection failures, own execution fault and foreign signal chaining");
+    puts("PASS: 1000 rounds reuse exactly one debugger allocation, wipe code each round and release both aliases at handoff; failure/signal paths verified");
     return 0;
 }
 '''

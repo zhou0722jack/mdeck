@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * One independent pre-Wine probe. Never borrows or frees the production pool. */
+ * Independent pre-Wine scratch pair: prepare once, wipe code every round,
+ * release at Wine handoff. Never borrows or frees the production pool. */
 #include "JITAllocator.h"
 #include <TargetConditionals.h>
 #include <mach/mach.h>
@@ -12,11 +13,16 @@
 #include <setjmp.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdio.h>
 
 #define ENTRY_PROBE_BYTES 0x4000
 
 #if defined(__aarch64__) && !TARGET_OS_SIMULATOR
 static pthread_mutex_t probe_lock = PTHREAD_MUTEX_INITIALIZER;
+static void *scratch_rx;
+static vm_address_t scratch_rw;
+static int scratch_writable;
+static int scratch_cleanup_failed;
 static _Thread_local sigjmp_buf probe_return;
 static _Thread_local volatile uintptr_t probe_pc;
 static const int probe_signals[] = { SIGBUS, SIGSEGV, SIGILL };
@@ -73,6 +79,26 @@ static int probe_protection(void *address, vm_prot_t required) {
         (vm_address_t)address - start + ENTRY_PROBE_BYTES <= size && (info.protection & required) == required;
 }
 
+static void probe_wipe(void) {
+    if (scratch_rw && scratch_writable) {
+        memset((void *)scratch_rw, 0, ENTRY_PROBE_BYTES);
+        sys_dcache_flush((void *)scratch_rw, ENTRY_PROBE_BYTES);
+        if (scratch_rx) sys_icache_invalidate(scratch_rx, ENTRY_PROBE_BYTES);
+    }
+}
+
+static int64_t probe_release_locked(void) {
+    if (scratch_cleanup_failed) return -4;
+    probe_wipe();
+    const mach_port_t task = mach_task_self();
+    if (scratch_rw && vm_deallocate(task, scratch_rw, ENTRY_PROBE_BYTES) != KERN_SUCCESS) scratch_cleanup_failed = 1;
+    if (scratch_rx && vm_deallocate(task, (vm_address_t)scratch_rx, ENTRY_PROBE_BYTES) != KERN_SUCCESS) scratch_cleanup_failed = 1;
+    scratch_rw = 0;
+    scratch_rx = NULL;
+    scratch_writable = 0;
+    return scratch_cleanup_failed ? -4 : 0;
+}
+
 #ifndef MADEIRA_ENTRY_PROBE_EXECUTE
 #define MADEIRA_ENTRY_PROBE_EXECUTE(address) (((int64_t (*)(void))(address))())
 #endif
@@ -86,25 +112,32 @@ int64_t jit_entry_probe_once(void) {
         pthread_mutex_unlock(&probe_lock);
         return -2;
     }
-    jit_arm_trap_fallback();
     const uint32_t code[] = { 0xD2800540u, 0xD65F03C0u }; /* mov x0,#42; ret */
     const mach_port_t task = mach_task_self();
-    void *rx = jit26_prepare_region(NULL, ENTRY_PROBE_BYTES);
-    vm_address_t rw = 0;
     vm_prot_t current = 0, maximum = 0;
-    int writable = 0;
     int64_t result = -1;
-    if (!rx) goto done;
-    if (vm_remap(task, &rw, ENTRY_PROBE_BYTES, 0, VM_FLAGS_ANYWHERE, task, (vm_address_t)rx,
-                 FALSE, &current, &maximum, VM_INHERIT_NONE) != KERN_SUCCESS) goto done;
-    if (rw == (vm_address_t)rx) { rw = 0; goto done; }
-    if (vm_protect(task, rw, ENTRY_PROBE_BYTES, FALSE, VM_PROT_READ | VM_PROT_WRITE) != KERN_SUCCESS ||
-        !probe_protection((void *)rw, VM_PROT_READ | VM_PROT_WRITE)) goto done;
-    writable = 1;
-    memcpy((void *)rw, code, sizeof(code));
-    sys_dcache_flush((void *)rw, sizeof(code));
-    sys_icache_invalidate(rx, sizeof(code));
-    if (!probe_protection(rx, VM_PROT_READ | VM_PROT_EXECUTE) || memcmp(rx, code, sizeof(code))) goto done;
+    if (scratch_cleanup_failed) { pthread_mutex_unlock(&probe_lock); return -4; }
+    if (!scratch_rx) {
+        // Exactly one debugger transaction while waiting at the frontend.
+        // Repeated BRKs can suspend the entire task when StikDebug is no
+        // longer servicing its background debug session. A worker queue and
+        // an in-process timeout cannot recover a task-wide debugger stop.
+        jit_arm_trap_fallback();
+        fprintf(stderr, "[jit-entry] scratch prepare begin: one debugger request, 16KiB\n");
+        scratch_rx = jit26_prepare_region(NULL, ENTRY_PROBE_BYTES);
+        fprintf(stderr, "[jit-entry] scratch prepare returned: %s\n", scratch_rx ? "allocated" : "failed");
+        if (!scratch_rx) goto done;
+        if (vm_remap(task, &scratch_rw, ENTRY_PROBE_BYTES, 0, VM_FLAGS_ANYWHERE, task, (vm_address_t)scratch_rx,
+                     FALSE, &current, &maximum, VM_INHERIT_NONE) != KERN_SUCCESS) goto done;
+        if (scratch_rw == (vm_address_t)scratch_rx) { scratch_rw = 0; goto done; }
+        if (vm_protect(task, scratch_rw, ENTRY_PROBE_BYTES, FALSE, VM_PROT_READ | VM_PROT_WRITE) != KERN_SUCCESS ||
+            !probe_protection((void *)scratch_rw, VM_PROT_READ | VM_PROT_WRITE)) goto done;
+        scratch_writable = 1;
+    }
+    memcpy((void *)scratch_rw, code, sizeof(code));
+    sys_dcache_flush((void *)scratch_rw, sizeof(code));
+    sys_icache_invalidate(scratch_rx, sizeof(code));
+    if (!probe_protection(scratch_rx, VM_PROT_READ | VM_PROT_EXECUTE) || memcmp(scratch_rx, code, sizeof(code))) goto done;
 
     struct sigaction handler;
     memset(&handler, 0, sizeof(handler));
@@ -120,8 +153,8 @@ int64_t jit_entry_probe_once(void) {
     }
     if (installed == 3) {
         if (sigsetjmp(probe_return, 1) == 0) {
-            probe_pc = (uintptr_t)rx;
-            result = MADEIRA_ENTRY_PROBE_EXECUTE(rx);
+            probe_pc = (uintptr_t)scratch_rx;
+            result = MADEIRA_ENTRY_PROBE_EXECUTE(scratch_rx);
         } else {
             result = -3;
         }
@@ -133,13 +166,22 @@ int64_t jit_entry_probe_once(void) {
             sigaction(probe_signals[i], &probe_previous[i], NULL);
     }
 done:
-    if (rw && writable) { memset((void *)rw, 0, ENTRY_PROBE_BYTES); sys_dcache_flush((void *)rw, ENTRY_PROBE_BYTES); }
-    int cleanup_failed = 0;
-    if (rw && vm_deallocate(task, rw, ENTRY_PROBE_BYTES) != KERN_SUCCESS) cleanup_failed = 1;
-    if (rx && vm_deallocate(task, (vm_address_t)rx, ENTRY_PROBE_BYTES) != KERN_SUCCESS) cleanup_failed = 1;
+    probe_wipe();
+    if (result != 42 && probe_release_locked() != 0) result = -4;
     pthread_mutex_unlock(&probe_lock);
-    return cleanup_failed ? -4 : result;
+    return result;
 #else
     return -1;
+#endif
+}
+
+int64_t jit_entry_probe_release(void) {
+#if defined(__aarch64__) && !TARGET_OS_SIMULATOR
+    if (pthread_mutex_trylock(&probe_lock)) return -5;
+    int64_t result = probe_release_locked();
+    pthread_mutex_unlock(&probe_lock);
+    return result;
+#else
+    return 0;
 #endif
 }
