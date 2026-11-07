@@ -704,7 +704,6 @@ OVERLAY = {
                         "name of the PCI id. Per game: Game details > Graphics card the game sees."},
     "ags-rewrite": {"title": "D3D12 AMD AGS 64-bit atomics rewrite"},
     "env.MADEIRA_EXE": {"title": "Program to start at launch (Windows path or name)"},
-    "env.MADEIRA_ONBOARDING": {"title": "First-run Steam setup"},
     "env.MADEIRA_XINPUT": {"title": "Physical controllers (XInput)"},
     "env.MADEIRA_TOUCH_XINPUT": {"title": "Touch controller as XInput player 1"},
     "env.MADEIRA_DINPUT_PAD": {"title": "DirectInput joystick from the host gamepad"},
@@ -1162,12 +1161,10 @@ OVERLAY = {
                 "note": "Empty: Wine takes the user locale from the device's language. en_US.UTF-8 gives the game an English "
                         "system and user locale, for a game that fails right after loading a non-English OEM code page. "
                         "Read at session start."},
-    "env.MADEIRA_NLS_EXTRA": {"category": "Wine core (ntdll)", "title": "Extra code page tables", "kind": "bool", "default": "0",
-                "note": "Default off. 1: a code page table that is not loaded for every game (932, 936, 949, 950, 874, 1250, "
-                        "1251, 1253-1258) is read from the app's nls/extra folder when the game asks for it; without the line "
-                        "such a request fails (GetCPInfo and MultiByteToWideChar return an error), as before. For a game that "
-                        "converts its text in one of those pages. Logged as [nls-extra]; [nls-missing] names a table that was "
-                        "not found. Read at every request."},
+    "env.MADEIRA_NLS_EXTRA": {"category": "Wine core (ntdll)", "title": "Extra code page tables", "kind": "bool", "default": "1",
+                "note": "On by default: missing code page tables, including Chinese page 936, are read from the app's "
+                        "nls/extra folder when requested. 0 disables the extra tables. Existing nls/ tables keep priority. "
+                        "Logged as [nls-extra]; [nls-missing] names a table that was not found. Read at every request."},
     "env.MADEIRA_JAPANESE": {"category": "Wine core (ntdll)", "title": "Japanese locale and fonts", "kind": "bool", "default": "0",
                 "note": "Default off. 1: the game runs with a Japanese system and user locale (LC_ALL = ja_JP.UTF-8, ANSI and OEM code page 932) and the extra code page tables (env.MADEIRA_NLS_EXTRA), and a Japanese font (Noto Sans JP) is installed in C:\\windows\\Fonts with MS Gothic, MS PGothic, MS UI Gothic, MS Mincho, Meiryo and Yu Gothic mapped onto it. For Japanese games and visual novels whose text shows as squares or gibberish, or that do not start. Game details › Compatibility › Japanese locale sets it for one game. Logged as [japanese]. Read at session start."},
     "env.MADEIRA_ALIAS_RELEASE": {"category": "Memory & JIT pool", "title": "Drop a released arena's code copies", "kind": "bool",

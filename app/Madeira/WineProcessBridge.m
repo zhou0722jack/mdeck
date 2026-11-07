@@ -37,6 +37,7 @@
 #include "WineServerBridge.h"
 #include "PrefixExtractor.h"
 #include "FEXBridge.h"  // fex_get_jit_write_offset()
+#include "ChineseFonts.h"
 
 /* Write end of the pipe on fd 0, or -1 when stdin was left alone. The app's
  * host writes the guest's keystrokes here. */
@@ -691,6 +692,7 @@ void madeira_seed_prefix_if_needed(const char *prefix_path) {
         /* ml581: see madeira_undo_appdata_skeleton() above. */
         madeira_undo_appdata_skeleton( prefix );
         madeira_ensure_locallow( prefix );
+        madeira_chinese_fonts( prefix, NSBundle.mainBundle.resourcePath );
         madeira_japanese_prefix( prefix );
     }
 }

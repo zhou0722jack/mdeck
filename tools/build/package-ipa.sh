@@ -57,9 +57,19 @@ bundle_required=(
   "$APP/prefix-template.tar.gz"
   "$APP/arm64ec-windows/xtajit64.dll"
   "$APP/x86_64-vcruntime/vcruntime140.dll"
+  "$APP/fonts-zh/NotoSansSC-Regular.otf"
+  "$APP/fonts-zh/LICENSE-NotoSansSC-OFL-1.1.txt"
+  "$APP/fonts-zh/NOTICE.txt"
+  "$APP/fonts-zh/source.json"
 )
 for path in "${bundle_required[@]}"; do
   [[ -e "$path" ]] || { echo "ERROR: required bundle resource missing: $path" >&2; exit 1; }
+done
+for resource in NotoSansSC-Regular.otf LICENSE-NotoSansSC-OFL-1.1.txt NOTICE.txt source.json; do
+  cmp -s "$ROOT/app/Madeira/fonts-zh/$resource" "$APP/fonts-zh/$resource" || {
+    echo "ERROR: bundled Chinese font resource differs from source: $resource" >&2
+    exit 1
+  }
 done
 codesign -d --entitlements :- "$APP" 2>/dev/null | grep -q 'com.apple.security.cs.allow-jit' || {
   echo "ERROR: packaged app is missing the allow-jit entitlement" >&2

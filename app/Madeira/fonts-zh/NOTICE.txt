@@ -1,0 +1,12 @@
+Noto Sans SC Regular (unmodified)
+
+Font copyright notice, as embedded in the original font:
+© 2014-2021 Adobe (http://www.adobe.com/).
+
+Licensed under the SIL Open Font License, Version 1.1.
+See LICENSE-NotoSansSC-OFL-1.1.txt in this directory.
+
+Source: https://github.com/notofonts/noto-cjk
+Commit: f8d157532fbfaeda587e826d4cd5b21a49186f7c
+Path: Sans/SubsetOTF/SC/NotoSansSC-Regular.otf
+SHA-256: faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9

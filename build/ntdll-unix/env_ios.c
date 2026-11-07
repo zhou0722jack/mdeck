@@ -100,23 +100,21 @@ const WCHAR system_dir[] = {'\\','?','?','\\','C',':','\\','w','i','n','d','o','
 
 static CPTABLEINFO unix_cp = { CP_UTF8, 4, '?', 0xfffd, '?', '?' };
 
-/* NLS-EXTRA, opt-in: env.MADEIRA_NLS_EXTRA = 1 lets a code page table that is missing from nls/ be taken from
- * nls/extra/<name>.nls (Wine's own c_932, c_936, c_949, c_950, c_874, c_1250 ... c_1258, when the bundle carries them
- * there). Without the switch such a request fails as it always did (NtGetNlsSectionPtr returns
- * STATUS_OBJECT_NAME_NOT_FOUND, so GetCPInfo and MultiByteToWideChar fail for that code page). Many programs, the Steam
- * client among them, ask for these pages and cope without them, so the extra tables are offered only to a program whose
- * own config sets the switch; a program that dereferences the missing table is the case it is for. The variable is read
- * at every request, not cached. Log tag [nls-extra]. */
+/* NLS-EXTRA, default on: missing code page tables are read from nls/extra.
+ * This includes the device's Chinese ANSI/OEM page 936, needed during CRT
+ * initialization before the installer can show a window. Explicit 0 opts
+ * out; read at every request so per-game settings still take precedence. */
 static char *nls_extra_path( const char *dir, const char *name, char *path )
 {
     static unsigned int reports;
     const char *e = getenv( "MADEIRA_NLS_EXTRA" );
     char *extra;
 
-    if (!e || strcmp( e, "1" ) || !access( path, R_OK )) return path;
+    if ((e && !strcmp( e, "0" )) || !access( path, R_OK )) return path;
     if (asprintf( &extra, "%s/nls/extra/%s.nls", dir, name ) == -1) return path;
     if (access( extra, R_OK )) { free( extra ); return path; }
-    if (reports++ < 16) dprintf( 2, "[nls-extra] %s.nls comes from nls/extra (MADEIRA_NLS_EXTRA=1)\n", name );
+    if (reports++ < 16) dprintf( 2, "[nls-extra] %s.nls comes from nls/extra (enabled by %s)\n", name,
+                               e ? "configuration" : "default" );
     free( path );
     return extra;
 }
@@ -2679,7 +2677,7 @@ NTSTATUS WINAPI NtGetNlsSectionPtr( ULONG type, ULONG id, void *unknown, void **
             /* [nls-missing], log only: which code page tables were asked for and not found (at most 8 lines per session). */
             static unsigned int missing_reports;
             if (type == NLS_SECTION_CODEPAGE && missing_reports++ < 8)
-                dprintf( 2, "[nls-missing] code page %u has no table (status %08x); env.MADEIRA_NLS_EXTRA = 1 supplies the extra tables\n",
+                dprintf( 2, "[nls-missing] code page %u has no table (status %08x); check bundled nls/extra and any explicit MADEIRA_NLS_EXTRA=0\n",
                          id, (unsigned int)status );
             return status;
         }

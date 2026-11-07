@@ -25,11 +25,15 @@ python3 tests/host/check-deck-startup.py --static-only
 ```
 
 Xcode 工程为 `app/Madeira.xcodeproj`，应用目标为 `Madeira`。
-本轮应用与 JIT 助手的构建号为 **11**，IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成。
+本轮应用与 JIT 助手的构建号为 **12**，IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成。
 此前的 `dist/native-build8/Madeira.ipa` 包含前一轮原生界面，不包含本次启动流程。
 Build 10 改为双击启动动画跳过，并直接运行 Steam 安装器，避免先启动 explorer 桌面。
 Build 11 加入受“扩展日志”控制的运行库调用来源诊断，以及异常处理的线程状态检查。
 它用于继续定位 Steam 初始化故障，不代表安装器已经修复。
+当前源码另已修正子按钮查询顶层窗口时对无客户端对象桌面的识别，加入 Noto Sans SC 中文字体与旧环境字体回退迁移，
+并将“附加代码页”设为默认开启（显式设为 0 仍可关闭）。这些改动从 Build 12 起打包，尚未在 iPad 上验收。
+针对性检查：`python3 tests/host/check-desktop-button-click.py`、
+`python3 tests/host/check-chinese-fonts.py`、`python3 tests/host/check-nls-extra-switch.py`。
 新启动流程的模型行为测试与 iOS 视图类型检查可运行
 `DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer python3 tests/host/check-deck-startup.py --typecheck-ios`。
 

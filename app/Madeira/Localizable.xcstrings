@@ -37729,6 +37729,28 @@
       },
       "extractionState": "manual"
     },
+    "On by default: missing code page tables, including Chinese page 936, are read from the app's nls/extra folder when requested. 0 disables the extra tables. Existing nls/ tables keep priority. Logged as [nls-extra]; [nls-missing] names a table that was not found. Read at every request.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "默认开启：程序请求缺失的代码页时，从应用的 nls/extra 目录读取，包括简体中文代码页 936。设为 0 可关闭附加代码页。优先使用 nls/ 中已有的表。日志标记为 [nls-extra]；[nls-missing] 表示未找到相应代码页。每次请求都会读取此设置。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Wine caches channel options on their first use, before the guest's env loop.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wine 会在首次使用日志通道时缓存其设置；应用会在来宾环境初始化之前应用这些设置。"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
     "Extra code page tables": {
       "localizations": {
         "zh-Hans": {
