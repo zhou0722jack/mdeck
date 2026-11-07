@@ -163,7 +163,7 @@ enum LibraryGridStore: String, CaseIterable {
         let library = SteamOwnedLibrary.enabled, account = SteamOwnedLibrary.shared
         let owned = library ? account.owned : []
         let total = items(installed: SteamGamesModel.shared.games, owned: owned, search: "").count
-        return SteamGamesRules.showsSection(dock: MadeiraDock.enabled, library: library,
+        return SteamGamesRules.showsSection(dock: true, library: library,
                                             signedIn: library && account.signedIn, count: total)
     }
 
@@ -223,11 +223,11 @@ struct LibraryGridPageModel: Equatable {
         } else {
             // A store tab shows only its own section, as on the original page.
             let tab = inputs.tab
-            let steamFirst = MadeiraDock.enabled && LibraryGridSteamItems.hasInstalled
+            let steamFirst = LibraryGridSteamItems.hasInstalled
             if steamFirst && tab.shows(.steam) { page.steamSection(inputs, part: .installed) }
             if LibraryGridSteamItems.shown {
                 if tab.shows(.other) { page.othersSection(inputs) }
-                if MadeiraDock.enabled && tab.shows(.steam) { page.steamSection(inputs, part: steamFirst ? .notInstalled : .all) }
+                if tab.shows(.steam) { page.steamSection(inputs, part: steamFirst ? .notInstalled : .all) }
             } else if !tab.shows(.other) {
                 // Another store's tab: no games you added.
             } else if LibraryModel.shared.entries.filter({ $0.desktop != true && $0.listedInLibrary && $0.steamAppID == nil && $0.epicAppName == nil
@@ -464,7 +464,7 @@ struct LibraryGridInputsKey: Hashable {
         stores = i.stores
         tabs = i.tabs; tab = i.tab
         otherIDs = i.others.map(\.id)
-        switches = [SteamGamesSection.collapsible, MadeiraDock.enabled, LibraryGridSteamItems.shown, SteamOwnedLibrary.enabled]
+        switches = [SteamGamesSection.collapsible, LibraryGridSteamItems.shown, SteamOwnedLibrary.enabled]
         metadataMovesCards = i.sort == "size" || i.sort == "added"
     }
 }
@@ -524,7 +524,7 @@ struct LibraryGridPage: View {
     private struct SteamSheetID: Identifiable { let id: Int }
 
     private var storeTabs: [LibraryStoreTab] {
-        group == "platform" ? LibraryStoreTab.available(steam: MadeiraDock.enabled && (LibraryGridSteamItems.shown || LibraryGridSteamItems.hasInstalled)) : []
+        group == "platform" ? LibraryStoreTab.available(steam: LibraryGridSteamItems.shown || LibraryGridSteamItems.hasInstalled) : []
     }
 
     var body: some View {

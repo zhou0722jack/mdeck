@@ -140,13 +140,20 @@ enum MadeiraDock {
     /// the ones on external drives, as drive_c-relative steamapps folders. Read-only.
     static func steamLibraries(drive: URL) -> [String] {
         let clientLibrary = SteamRuntimeFiles.relativeRoot + "/steamapps"
-        var libraries = [clientLibrary]
-        if let data = try? Data(contentsOf: drive.appendingPathComponent(clientLibrary + "/libraryfolders.vdf")),
-           data.count <= 1 << 20, var parser = try? SteamKeyValues(data), let root = try? parser.read() {
-            for (_, entry) in (root["libraryfolders"]?.fields ?? [:]).sorted(by: { $0.key < $1.key }) {
-                guard let path = entry["path"]?.string?.replacingOccurrences(of: "\\\\", with: "\\"),
-                      let relative = libraryRelative(path) else { continue }
-                if !libraries.contains(where: { $0.caseInsensitiveCompare(relative) == .orderedSame }) { libraries.append(relative) }
+        // Discovery is shared with the interactive client and requires no
+        // Dock binary or pinned client download. Prefer the current client.
+        let interactive = "Program Files/Steam Client/steamapps"
+        var libraries = [interactive, clientLibrary]
+        for rootPath in ["Program Files/Steam Client", SteamRuntimeFiles.relativeRoot] {
+            for sub in ["steamapps", "config"] {
+                if let data = try? Data(contentsOf: drive.appendingPathComponent(rootPath + "/" + sub + "/libraryfolders.vdf")),
+                   data.count <= 1 << 20, var parser = try? SteamKeyValues(data), let root = try? parser.read() {
+                    for (_, entry) in (root["libraryfolders"]?.fields ?? [:]).sorted(by: { $0.key < $1.key }) {
+                        guard let path = entry["path"]?.string?.replacingOccurrences(of: "\\\\", with: "\\"),
+                              let relative = libraryRelative(path) else { continue }
+                        if !libraries.contains(where: { $0.caseInsensitiveCompare(relative) == .orderedSame }) { libraries.append(relative) }
+                    }
+                }
             }
         }
         // Libraries on external drives (ExternalDrives.swift). They are reached

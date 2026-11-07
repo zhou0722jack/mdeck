@@ -2589,6 +2589,19 @@ struct ContentView: View {
     /// developer interface's buttons.
     private func launchLibraryEntry(_ entry: LibraryEntry) {
         guard !steamPreparation.presented else { return }
+        if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
+            guard MadeiraDock.validAppID(appID),
+                  let game = SteamGamesModel.shared.games.first(where: { $0.id == appID }), game.installed else {
+                library.error = L("Steam no longer lists this game as installed. Refresh the library and try again."); return
+            }
+            guard SteamOwnedLibrary.shared.downloads[appID] == nil else {
+                library.error = L("This game's update has not finished. Resume it and wait for it to complete before playing."); return
+            }
+            guard cloudClear(appID, name: entry.title, retry: { launchLibraryEntry(entry) }) else { return }
+            library.save(entry)
+            launchLibraryEntry(SteamClient.entry(install: !SteamClient.installed, appID: appID))
+            return
+        }
         if SteamClient.owns(entry) {
             library.error = nil
             steamPreparation.request(target: SteamClient.windowsExecutable, installer: false) { request in
@@ -2597,7 +2610,7 @@ struct ContentView: View {
                 library.jitNotice = nil
                 // Components can take minutes; inspect the exact client folder
                 // after they finish, not before starting their downloads.
-                let resolved = SteamClient.entry(install: !SteamClient.installed)
+                let resolved = SteamClient.entry(install: !SteamClient.installed, appID: entry.steamClientAppID)
                 steamPreparation.resolvedRoute(installer: resolved.id == SteamClient.installerID)
                 launchPreparedLibraryEntry(resolved, steamRequest: request)
                 if let message = library.error ?? library.restartNotice ?? library.jitNotice {
@@ -2619,19 +2632,10 @@ struct ContentView: View {
         let isNew = !library.entries.contains { $0.id == entry.id }
         if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }
         SteamClient.normalizeLaunch(&entry)
-        // A Steam game starts through Madeira Dock with its own launch profile (SteamGames.swift),
-        // unless its Game details page chose "The game": then its own program starts below, like
-        // any library game (SteamDirectStart).
-        if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
-            guard let game = MadeiraDock.games(drive: MadeiraDock.drive).first(where: { $0.id == appID }) else {
-                library.error = L("Steam no longer lists this game as installed. Refresh the library and try again."); return
-            }
-            LogStore.shared.log("[steam-games] play app=\(appID)")
-            // madeira-bcd: the game's own options (AVX, NVIDIA, Wine's C++ runtime, its
-            // config file) -- this path never reached BCDLaunch, so a Steam game ran without them.
-            BCDLaunch.applyLibrary(entry)
-            startDock(game, compactPool: MadeiraDockModel.shared.compactPool, profile: entry)
-            return
+        // A resumed/retried game request must pass the same component and
+        // interactive-client route as the initial library button.
+        if entry.steamAppID != nil, !entry.startsSteamGameDirectly {
+            launchLibraryEntry(entry); return
         }
         if let appID = entry.steamAppID {
             guard cloudClear(appID, name: entry.title, retry: { launchLibraryEntry(entry) }) else { return }
@@ -2738,7 +2742,13 @@ struct ContentView: View {
         let program = entry.desktop == true ? "explorer.exe"
             : entry.launchWindowsPath.split(separator: "\\").last.map(String.init) ?? entry.launchWindowsPath
         LogStore.shared.startSessionLog(program: program)
-        library.begin(entry)
+        // A client route is transient: never save -applaunch into the global
+        // client profile or replace a game's own launch/settings record.
+        if let appID = entry.steamClientAppID,
+           var game = library.entries.first(where: { $0.steamAppID == appID }) {
+            game.lastPlayed = Date(); library.save(game)
+        }
+        library.begin(entry, remember: entry.steamClientAppID == nil)
         if SteamClient.owns(entry), steamPreparation.sessionStarted(entry.id) { DeckSteamNativeFrames.begin() }
         runWineFullSequence(profile: entry)
     }

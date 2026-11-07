@@ -232,6 +232,8 @@ struct LibraryEntry: Codable, Identifiable {
     /// ml2021: Valve's client in Big Picture, inside the Wine desktop (the library's
     /// Big Picture button; C:\big-picture.bat, written at every launch).
     var bigPicture: Bool?
+    /// A transient request for the interactive Steam client to launch this App ID.
+    var steamClientAppID: Int?
     /// Touch controls' opacity (0.15...1, nil = 0.7) and overall size (0.5...2,
     /// nil = 1) in this game's sessions.
     var controlOpacity: Double?
@@ -1149,6 +1151,16 @@ final class LibraryModel: ObservableObject {
         guard !readOnly else { error = L("The library file could not be read. Preserve or repair it before making changes."); return }
         var next = entries
         var entry = entry
+        // Session-menu edits of a transient Steam route belong to the game,
+        // never to Steam's global profile or its -applaunch command line.
+        if let appID = entry.steamClientAppID {
+            guard let original = entries.first(where: { $0.steamAppID == appID }) else { return }
+            entry.id = original.id; entry.relativePath = original.relativePath
+            entry.steamAppID = appID; entry.steamClientAppID = nil
+            entry.arguments = original.arguments; entry.launchMode = original.launchMode
+            entry.startServices = original.startServices; entry.bits = original.bits
+            entry.workingDirectory = original.workingDirectory; entry.lastPlayed = original.lastPlayed
+        }
         // madeira-bcd: a game seen for the first time gets Madeira's recommended settings
         // (GameRecommendationsApply.swift): a finished Steam download, a new or saved entry.
         let isNew = !next.contains { $0.id == entry.id || (entry.steamAppID != nil && $0.steamAppID == entry.steamAppID) }
@@ -1907,7 +1919,9 @@ final class LibraryModel: ObservableObject {
     }
     func saveCurrentProfile() {
         let controls = TouchControlsModel.shared
-        if let id = current, var entry = entries.first(where: { $0.id == id }) {
+        let profile = activeEntry?.steamClientAppID != nil ? activeEntry
+            : current.flatMap { id in entries.first(where: { $0.id == id }) }
+        if var entry = profile {
             entry.controls = controls.controls
             entry.zones = GestureZonesModel.shared.zones
             if ControlPresetsModel.enabled { entry.controlLayout = controls.layoutID }
@@ -3419,7 +3433,7 @@ struct LibraryView: View {
     // The store tab shown with Group by Platform (LibraryStoreTab).
     @AppStorage(LibraryStoreTab.key) private var storeTab = LibraryStoreTab.all.rawValue
     private var storeTabs: [LibraryStoreTab] {
-        group == "platform" ? LibraryStoreTab.available(steam: MadeiraDock.enabled && (SteamGamesSection.shown || SteamGamesSection.hasInstalled)) : []
+        group == "platform" ? LibraryStoreTab.available(steam: SteamGamesSection.shown || SteamGamesSection.hasInstalled) : []
     }
     private var currentTab: LibraryStoreTab { LibraryStoreTab.current(storeTab, in: storeTabs) }
     // The sections follow the Steam section's games and sign-in (SteamGames.swift).
@@ -3527,7 +3541,7 @@ struct LibraryView: View {
                 let routes = DeckDestination.allCases
                 let index = routes.firstIndex(of: deckDestination) ?? 0
                 deckDestination = routes[(index + 1) % routes.count]
-            } else { deckController(command) }
+            } else if deckDestination != .library && deckDestination != .stores { deckController(command) }
         }
     }
     private var libraryOptionsMenu: some View {
@@ -3643,19 +3657,6 @@ struct LibraryView: View {
                     RuntimeMemorySyncSettings(open: { settingsSheet = $0 }, refresh: settingsRefresh)
                 }
             }
-            if SteamSettingsSection.shown, settingsShow("Steam", "Dock", "sign in", "account", "setup") {
-                SteamSettingsSection(open: { settingsSheet = $0 })
-            }
-            if GOGLibrary.enabled, settingsShow("GOG", "GOG Galaxy", "sign in", "account") {
-                GOGSettingsSection(open: { settingsSheet = $0 })
-            }
-            if ItchLibrary.enabled, settingsShow("itch.io", "itch", "API key", "sign in", "account") { ItchSettingsSection() }
-            if EpicLibrary.enabled, settingsShow("Epic", "Epic Games", "sign in", "account") {
-                EpicSettingsSection(open: { settingsSheet = $0 })
-            }
-            if EALibrary.enabled, settingsShow("EA", L("EA app"), "Origin", "sign in", "account") {
-                EASettingsSection(open: { settingsSheet = $0 })
-            }
             if settingsShow(".NET", "Mono", "Wine Mono", "framework", "download") { WineMonoSettingsSection() }
             if VCRedistModel.enabled, settingsShow("Visual C++", "C++", "runtime", "redist", "vcredist", "download") { VCRedistSettingsSection() }
             if settingsShow("Gecko", "Wine Gecko", "web", "HTML", "Internet Explorer", "download") { WineGeckoSettingsSection() }
@@ -3669,14 +3670,7 @@ struct LibraryView: View {
                 }
             }
             if settingsShow("appearance", "grid", "library", "new", "zoom", "pinch", "haptics", "cards") {
-                Section {
-                    Toggle("New library grid", isOn: $zoomableGrid)
-                    if zoomableGrid {
-                        Toggle("Zoom haptics", isOn: $zoomHaptics)
-                    }
-                } footer: {
-                    Text("Pinch the library's cards to change how many fit across. Off, the cards use the original grid. Zoom haptics click as the pinch crosses a size.")
-                }
+                DeckSteamCatalogDisplaySettings()
             }
             if settingsShow("interface", "developer") {
                 Section {
@@ -3727,7 +3721,7 @@ struct LibraryView: View {
                 } else {
                 // A store tab shows only its own section (LibraryStoreTab).
                 let tab = currentTab
-                let steamFirst = MadeiraDock.enabled && SteamGamesSection.hasInstalled
+                let steamFirst = SteamGamesSection.hasInstalled
                 if steamFirst && tab.shows(.steam) {
                     SteamGamesSection(search: search, layout: layout, sort: sort, width: viewport.size.width,
                                       part: .installed, open: { selected = $0 })
@@ -3750,7 +3744,7 @@ struct LibraryView: View {
                             }
                         }
                     }
-                    if MadeiraDock.enabled && tab.shows(.steam) {
+                    if tab.shows(.steam) {
                         SteamGamesSection(search: search, layout: layout, sort: sort, width: viewport.size.width,
                                           part: steamFirst ? .notInstalled : .all, open: { selected = $0 })
                     }
@@ -3946,7 +3940,7 @@ struct LibraryView: View {
 private extension LibraryView {
     var deckSettingChoices: [SettingsPages.Page] {
         switch deckDestination {
-        case .stores: return [.steam, .gog, .itch, .epic, .ea].filter(\.shown)
+        case .stores: return []
         case .components: return [.runtimes, .graphics, .display, .memory, .advanced].filter(\.shown)
         case .settings:
             switch deckSetupTab {
@@ -4012,21 +4006,12 @@ private extension LibraryView {
 
     var deckPage: some View {
         VStack(spacing: 0) {
-            deckHeading
-            if deckDestination == .library {
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass").foregroundStyle(palette.muted)
-                    TextField("Search your library", text: $search).autocorrectionDisabled()
-                    if !search.isEmpty { Button { search = "" } label: { Image(systemName: "xmark.circle.fill") } }
-                }.padding(12).background(palette.surface, in: RoundedRectangle(cornerRadius: 11))
-                    .padding(.horizontal, 20).padding(.bottom, 8)
-            }
+            if deckDestination != .library && deckDestination != .stores { deckHeading }
             Group {
                 switch deckDestination {
                 case .steam: deckSteamHome
                 case .library:
-                    if LibraryGridArm.zoomable(setting: zoomableGrid, layout: layout) { zoomableLibrary }
-                    else { library }
+                    DeckSteamCatalog(mode: .library, play: play, backToLibrary: {})
                 case .stores: deckStores
                 case .desktop: deckDesktop
                 case .components: deckComponents
@@ -4045,14 +4030,10 @@ private extension LibraryView {
 
     var deckHeading: some View {
         DeckPageHeading(title: deckDestination.title) {
-            if deckDestination == .library {
-                libraryOptionsMenu.labelStyle(.iconOnly).frame(width: 42, height: 42)
-                DeckIconButton(title: L("Add executable"), symbol: "plus") { browser = true }
-            }
             if deckDestination == .settings || deckDestination == .components || deckDestination == .diagnostics {
                 DeckIconButton(title: L("All settings"), symbol: "slider.horizontal.3") { settingsSheet = .allSettings }
             }
-            if deckDestination != .library && deckDestination != .steam {
+            if deckDestination != .library && deckDestination != .steam && deckDestination != .stores {
                 Button(action: enableJIT) { Label("Enable JIT", systemImage: "bolt.fill") }
                     .buttonStyle(DeckButtonStyle())
                     .disabled(jitState.enabled)
@@ -4087,9 +4068,14 @@ private extension LibraryView {
     }
 
     var deckSteamActions: some View {
-        Button { play(SteamClient.entry(install: !SteamClient.installed)) } label: {
-            Label("Start Steam", systemImage: "play.fill")
-        }.buttonStyle(DeckButtonStyle(primary: true)).disabled(model.launching)
+        VStack(alignment: .leading, spacing: 12) {
+            Button { play(SteamClient.entry(install: !SteamClient.installed)) } label: {
+                Label("Start Steam", systemImage: "play.fill")
+            }.buttonStyle(DeckButtonStyle(primary: true)).disabled(model.launching)
+            Button { deckSettingsPage = DeckSettingsRoute(page: .steam) } label: {
+                Label("Steam settings", systemImage: "gearshape")
+            }.buttonStyle(DeckButtonStyle())
+        }
     }
 
     var deckDesktop: some View {
@@ -4117,32 +4103,7 @@ private extension LibraryView {
     }
 
     var deckStores: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Getting games").font(.headline)
-                DeckSettingsTiles(pages: [.steam, .gog, .itch, .epic, .ea], focused: deckSettingFocus) { deckSettingsPage = DeckSettingsRoute(page: $0) }
-                Text("Library").font(.headline)
-                ForEach(LibraryStoreTab.allCases.filter { $0 != .all }) { store in
-                    Button {
-                        storeTab = store.rawValue
-                        group = "platform"
-                        deckDestination = .library
-                    } label: {
-                        HStack {
-                            Label(store.title, systemImage: "square.stack")
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                        }
-                        .padding(16).foregroundStyle(palette.text)
-                        .background(palette.surface, in: RoundedRectangle(cornerRadius: 12))
-                    }.buttonStyle(.plain)
-                }
-                if SteamOwnedLibrary.workshopEnabled {
-                    Button { deckWorkshop = true } label: { Label("Steam Workshop", systemImage: "square.stack.3d.up") }
-                        .buttonStyle(DeckButtonStyle())
-                }
-            }.padding(22).frame(maxWidth: 1000).frame(maxWidth: .infinity)
-        }
+        DeckSteamCatalog(mode: .store, play: play) { deckDestination = .library }
     }
 
     var deckComponents: some View {
@@ -4326,14 +4287,18 @@ private struct LibrarySheets: ViewModifier {
             }
             .sheet(item: $selected) { entry in
                 // The details page stays up until the session's starting screen takes over (or an error needs the library's alert).
-                LibraryDetail(entry: entry, play: { profile in
-                    play(profile)
-                    // Not while Play is still enabling JIT: the session's start, an error, or
-                    // JIT setup closes the page then.
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
-                        if selected?.id == entry.id, model.startingJIT != entry.id { selected = nil }
-                    }
-                })
+                if let appID = entry.steamAppID {
+                    SteamLibraryPreview(appID: appID, entry: entry, play: play)
+                } else {
+                    LibraryDetail(entry: entry, play: { profile in
+                        play(profile)
+                        // Not while Play is still enabling JIT: the session's start,
+                        // an error, or JIT setup closes the page then.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 15) {
+                            if selected?.id == entry.id, model.startingJIT != entry.id { selected = nil }
+                        }
+                    })
+                }
             }
             .onChange(of: model.current) { _, current in if current != nil { selected = nil } }
             .onChange(of: model.error) { _, error in if error != nil { selected = nil } }
@@ -4533,8 +4498,8 @@ struct LibraryDetail: View {
             let installed = SteamGamesModel.shared.games.first { $0.id == appID }?.installed ?? false
             if entry.startsSteamGameDirectly {
                 if let blocker = SteamDirectStart.blocker(installed: installed, program: entry.steamProgram) { error = blocker; return }
-            } else if let blocker = SteamGamesRules.blocker(installed: installed, client: MadeiraDock.clientInstalled, signedIn: SteamSignIn.isSignedIn) {
-                error = blocker; return
+            } else if !installed {
+                error = L("Steam no longer lists this game as installed. Refresh the library and try again."); return
             }
         }
         leaving = true
@@ -4621,7 +4586,7 @@ struct LibraryDetail: View {
         case .display: return entry.metalFXUpscale.map { "\(entry.resolution) · MetalFX \($0 == 2 ? "2" : "1.5")×" } ?? entry.resolution
         case .controls: return entry.controllerMode == "keys" ? "Keyboard and mouse" : entry.controllerMode == "dinput" ? "XInput and DirectInput" : nil
         case .launch: return entry.usesLaunchOptions ? (entry.runsInDesktop ? L("Wine desktop") : L("Directly")) : nil
-        case .steam: return entry.startsSteamGameDirectly ? "The game" : "Madeira Dock"
+        case .steam: return entry.startsSteamGameDirectly ? "The game" : "Steam"
         case .advanced: return Self.configSummary(bcd.configText)   // madeira-bcd: the game's own config file
         case .iniFiles:
             let count = GameIniFiles.files(entry.windowsPath).count
@@ -5069,7 +5034,7 @@ struct LibraryDetail: View {
             }
             // Play's checks read the installed games and Dock's client state, which the
             // Steam page refreshed when it was on this page.
-            .onAppear { if entry.steamAppID != nil { MadeiraDockModel.shared.refresh(); SteamGamesModel.shared.refresh() } }
+            .onAppear { if entry.steamAppID != nil { SteamGamesModel.shared.refresh() } }
             // madeira-bcd: the game's own switches and config file, and its recommended settings.
             .onAppear {
                 migrateEntryOptions()
@@ -6525,7 +6490,7 @@ struct LibraryHUD: View {
                     Text("Both apply to Direct3D 12 games only. Capture writes the render passes of the next frame to Documents/capture and its draw list to the log. GPU sync: F1 makes every pass wait for the one before (the default), F6 waits only where the game's barriers ask, F5 makes render passes wait at the fragment stage, F0 has no sync at all (expect flicker; for tests).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if let appID = model.activeEntry?.steamAppID, SteamOwnedLibrary.cloudQuitEnabled {
+                if let appID = model.activeEntry?.steamAppID ?? model.activeEntry?.steamClientAppID, SteamOwnedLibrary.cloudQuitEnabled {
                     Divider()
                     SteamCloudQuitRow(appID: appID)
                 }

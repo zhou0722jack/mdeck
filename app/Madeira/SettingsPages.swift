@@ -20,7 +20,7 @@ enum SettingsPages {
 
         var title: String {
             switch self {
-            case .steam: return L("Steam and Dock")
+            case .steam: return L("Steam settings")
             case .gog: return L("GOG")
             case .itch: return L("itch.io")
             case .epic: return L("Epic Games")
@@ -66,10 +66,7 @@ enum SettingsPages {
         @MainActor var shown: Bool {
             switch self {
             case .steam: return SteamSettingsSection.shown
-            case .gog: return GOGLibrary.enabled
-            case .itch: return ItchLibrary.enabled
-            case .epic: return EpicLibrary.enabled
-            case .ea: return EALibrary.enabled
+            case .gog, .itch, .epic, .ea: return false
             case .signing: return SigningRefresh.enabled
             case .graphics: return GraphicsSettings.shown
             case .display, .memory: return LibraryView.runtimeSettingsShown
@@ -80,7 +77,7 @@ enum SettingsPages {
 
     /// The rows of the Settings tab, in groups.
     static let groups: [(String?, [Page])] = [
-        (L("Getting games"), [.steam, .gog, .itch, .epic, .ea, .runtimes]),
+        (L("Getting games"), [.runtimes]),
         (L("Running games"), [.graphics, .display, .memory, .pointer]),
         ("Device", [.jit, .signing, .saves, .drives]),
         (nil, [.appearance, .advanced, .credits]),
@@ -165,7 +162,14 @@ struct SettingsPageView: View {
 
     @ViewBuilder private var content: some View {
         switch page {
-        case .steam: SteamSettingsSection(open: { sheet = $0 })
+        case .steam:
+            SteamClientLaunchSettings()
+            SteamSettingsSection(open: { sheet = $0 })
+            Section("Global settings") {
+                ForEach([SettingsPages.Page.graphics, .display, .memory, .pointer], id: \.self) { page in
+                    NavigationLink(page.title) { SettingsPageView(page: page, startDock: startDock) }
+                }
+            }
         case .gog: GOGSettingsSection(open: { sheet = $0 })
         case .itch: ItchSettingsSection()
         case .epic: EpicSettingsSection(open: { sheet = $0 })
@@ -214,14 +218,7 @@ struct SettingsPageView: View {
         } footer: {
             Text("Glass is the system's Liquid Glass. Solid draws each button as a plain opaque disc; a game's Opacity slider still fades them.")
         }
-        Section {
-            Toggle("New library grid", isOn: $zoomableGrid)
-            if zoomableGrid {
-                Toggle("Zoom haptics", isOn: $zoomHaptics)
-            }
-        } footer: {
-            Text("Pinch the library's cards to change how many fit across. Off, the cards use the original grid. Zoom haptics click as the pinch crosses a size.")
-        }
+        DeckSteamCatalogDisplaySettings()
         Section {
             Toggle("Use developer interface", isOn: Binding(get: { developerUI }, set: { on in
                 developerUI = on; FrontendChoice.choose(new: !on); restartNotice = true

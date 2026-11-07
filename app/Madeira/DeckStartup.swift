@@ -6,7 +6,7 @@ import UIKit
 // MARK: - Startup policy
 
 enum DeckSetupComponent: String, CaseIterable, Identifiable {
-    case mono, visualCPP, gecko, dock
+    case mono, visualCPP, gecko
     var id: String { rawValue }
 }
 
@@ -97,7 +97,7 @@ enum DeckStartupRules {
             }
             running = false
             defaults.set(complete, forKey: DeckStartupRules.completeKey)
-            LogStore.shared.log("[deck-components] preparation ready=\(readyCount)/4")
+            LogStore.shared.log("[deck-components] preparation ready=\(readyCount)/\(DeckSetupComponent.allCases.count)")
             let callbacks = completions
             completions.removeAll()
             let success = complete
@@ -112,7 +112,6 @@ enum DeckStartupRules {
             VCRedistModel.shared.refresh()
             return VCRedistModel.shared.complete
         case .gecko: return WineGeckoModel.available
-        case .dock: return MadeiraDock.bundled && MadeiraDock.clientInstalled
         }
     }
 
@@ -121,8 +120,6 @@ enum DeckStartupRules {
         case .mono: WineMonoModel.shared.install()
         case .visualCPP: VCRedistModel.shared.install()
         case .gecko: WineGeckoModel.shared.install()
-        case .dock:
-            if MadeiraDock.bundled { MadeiraDockModel.shared.prepareClient() }
         }
     }
 
@@ -131,7 +128,6 @@ enum DeckStartupRules {
         case .mono: return WineMonoModel.shared.busy
         case .visualCPP: return VCRedistModel.shared.busy
         case .gecko: return WineGeckoModel.shared.busy
-        case .dock: return MadeiraDockModel.shared.preparing
         }
     }
 
@@ -150,7 +146,6 @@ enum DeckStartupRules {
             case .idle: return .waiting
             }
         case .gecko: return .working(L("Downloading Wine Gecko…"), WineGeckoModel.shared.progress)
-        case .dock: return .working(MadeiraDockModel.shared.progress, nil)
         }
     }
 
@@ -159,8 +154,6 @@ enum DeckStartupRules {
         case .mono: return WineMonoModel.shared.error
         case .visualCPP: return VCRedistModel.shared.error
         case .gecko: return WineGeckoModel.shared.error
-        case .dock:
-            return MadeiraDock.bundled ? MadeiraDockModel.shared.error : L("This build is missing Madeira Dock. Install a complete IPA and try again.")
         }
     }
 }
@@ -512,7 +505,7 @@ struct DeckJITChoiceView: View {
                 }
                 Button("Continue") { choose(selection) }
                     .buttonStyle(DeckButtonStyle(primary: true))
-                Text("Wine Mono, Visual C++, Wine Gecko and Madeira Dock are checked and downloaded together when you start Steam.")
+                Text("Wine Mono, Visual C++ and Wine Gecko are checked and downloaded together when you start Steam.")
                     .font(.footnote).foregroundStyle(palette.muted)
             }.padding(28).frame(maxWidth: 760).frame(maxWidth: .infinity, minHeight: 520)
         }
@@ -551,7 +544,7 @@ struct DeckComponentProgress: View {
             HStack {
                 Text("Preparing components").font(.title3.bold())
                 Spacer()
-                Text("\(preparation.readyCount) / 4").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
+                Text("\(preparation.readyCount) / \(DeckSetupComponent.allCases.count)").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
             }
             ForEach(DeckSetupComponent.allCases) { component in
                 HStack(alignment: .top, spacing: 12) {
@@ -581,7 +574,6 @@ struct DeckComponentProgress: View {
         case .mono: return "Wine Mono"
         case .visualCPP: return "Microsoft Visual C++"
         case .gecko: return "Wine Gecko"
-        case .dock: return "Madeira Dock"
         }
     }
 }

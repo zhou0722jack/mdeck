@@ -182,6 +182,19 @@ func jwt(_ claims: String) -> String {
         require(found.map(\.id) == [10, 30, 20], "games from both C: libraries, sorted by name, invalid and duplicate skipped (\(found.map(\.id)))")
         require(found.first { $0.id == 30 }!.library == "Other/Lib/steamapps", "a game keeps its own library")
 
+        let interactive = drive.appendingPathComponent("Program Files/Steam Client")
+        try write(interactive.appendingPathComponent("steamapps/appmanifest_10.acf"),
+                  "\"AppState\" { \"appid\" \"10\" \"name\" \"alpha\" \"installdir\" \"A\" \"StateFlags\" \"4\" }")
+        try write(interactive.appendingPathComponent("config/libraryfolders.vdf"),
+                  "\"libraryfolders\" { \"0\" { \"path\" \"C:\\\\ClientGames\" } }")
+        try write(drive.appendingPathComponent("ClientGames/steamapps/appmanifest_70.acf"),
+                  "\"AppState\" { \"appid\" \"70\" \"name\" \"New client game\" \"installdir\" \"New\" \"StateFlags\" \"4\" }")
+        let both = MadeiraDock.games(drive: drive)
+        require(both.first { $0.id == 10 }?.library == "Program Files/Steam Client/steamapps",
+                "interactive client wins duplicate App IDs without a Dock download")
+        require(both.contains { $0.id == 70 && $0.library == "ClientGames/steamapps" },
+                "interactive client's config VDF discovers its extra game libraries")
+
         // Shared depots: an app that only lends depots to another install has nothing to
         // start and is left out; one that lends depots but has its own installed stays.
         let sharedDrive = drive.deletingLastPathComponent().appendingPathComponent("shared/drive_c")

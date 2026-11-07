@@ -224,17 +224,26 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
                     '-std=gnu11','-Wall','-Wextra','-Werror','-fsyntax-only',
                     '-I',str(ROOT/'build/win32u-unix'),str(file)],check=True)
     method=source[source.index('    static func configureSession('):source.index('    static func cancelPreparation(')]
+    preferences=source[source.index('    static let bigPictureKey ='):source.index('    /// One controller owns')]
     swift=Path(tmp)/'Session.swift'
     swift.write_text('''import Foundation
-struct LibraryEntry { var id: Int }
+struct LibraryEntry { var id: Int; var steamClientAppID: Int?; var steamAppID: Int?; var arguments = "" }
+final class LibraryModel { static let shared=LibraryModel(); var entries:[LibraryEntry]=[] }
 final class LogStore { static let shared=LogStore(); func log(_ text:String) {} }
 enum SteamClient {
     static let installerID=1
+    static let clientID=2
     static let clientArguments="-no-cef-sandbox -cef-disable-gpu"
     static func owns(_ entry:LibraryEntry)->Bool { entry.id==1 || entry.id==2 }
-''' + method + r'''}
+''' + preferences + method + r'''}
 @main struct Check {
     static func main() {
+        let defaults=UserDefaults.standard
+        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey]
+        let saved=keys.map{defaults.object(forKey:$0)}
+        defer{for (key,value) in zip(keys,saved){defaults.set(value,forKey:key)}}
+        defaults.set(false,forKey:SteamClient.bigPictureKey)
+        defaults.set(SteamClient.clientArguments,forKey:SteamClient.argumentsKey)
         unsetenv("MADEIRA_CHILD_ARGS"); unsetenv("MADEIRA_STEAM_AUTOINSTALL")
         SteamClient.configureSession(LibraryEntry(id:3))
         precondition(getenv("MADEIRA_CHILD_ARGS")==nil)
@@ -251,6 +260,10 @@ enum SteamClient {
         SteamClient.configureSession(LibraryEntry(id:2))
         precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="0")
         precondition(getenv("MADEIRA_STEAM_CONTROLLED_SETUP")==nil)
+        SteamClient.configureSession(LibraryEntry(id:1,steamClientAppID:42))
+        precondition(String(cString:getenv("MADEIRA_CHILD_ARGS")).contains("-applaunch 42"))
+        SteamClient.configureSession(LibraryEntry(id:2))
+        precondition(!String(cString:getenv("MADEIRA_CHILD_ARGS")).contains("-applaunch"))
         let flags=SteamClient.compatibilityArguments("-console \"-cef-disable-gpu\"")
         precondition(flags=="-console \"-cef-disable-gpu\" -no-cef-sandbox")
         precondition(SteamClient.compatibilityArguments(flags)==flags)

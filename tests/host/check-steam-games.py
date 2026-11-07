@@ -76,8 +76,7 @@ detail = library[library.index('struct LibraryDetail: View {'):library.index('st
 steam_section = games[games.index('struct SteamEntrySection'):]
 require('SteamEntrySection(entry: $entry)' in detail and 'if entry.steamAppID != nil {' in detail,
         'Game details: the Steam section for a Steam game')
-for label in ['"Start with"', '"Madeira Dock"', '"Smaller JIT pool (512 MB) for this launch"', '"One-time installs"',
-              '"Run at next start"', '"Skip"', '"Repair installed files"', '"Uninstall"', '"App ID"',
+for label in ['"Start with"', '"Steam"', '"Repair installed files"', '"Uninstall"', '"App ID"',
               '"Free space where the game is installed"', '"Pause update"', '"Resume update"', '"The game"', '"Program"', '"Choose…"']:
     require(label in steam_section, f'Steam section: {label}')
 for label in ['"Library details"', '"Choose cover image"', '"Use Steam artwork"', '"Display"', '"Resolution"',
@@ -137,12 +136,12 @@ require('next.firstIndex(where: { entry.steamAppID != nil && $0.steamAppID == en
         "a Steam game keeps one entry, and a details page saved later keeps the card's newer format")
 launch = content_view[content_view.index('private func launchLibraryEntry('):content_view.index('private func runWineFullSequence(')]
 require('if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {' in launch and
-        'startDock(game, compactPool: MadeiraDockModel.shared.compactPool, profile: entry)' in launch,
-        "Play on a Steam game's Game details page starts it through Madeira Dock with its own profile")
+        'SteamClient.entry(install: !SteamClient.installed, appID: appID)' in launch and 'startDock(' not in launch,
+        "Play uses the interactive Steam client by App ID, without Dock")
 # "Start with: The game" (SteamDirectStart): the program from Steam's launch configuration or the
 # Program picker starts like any library game, without Dock, a sign-in transfer or a client.
 direct = launch[launch.index('if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {'):]
-require(direct.index('startDock(') < direct.index('guard entry.steamProgram?.isEmpty == false else {') <
+require(direct.index('SteamClient.entry(') < direct.index('guard entry.steamProgram?.isEmpty == false else {') <
         direct.index('LibraryModel.executable(entry.launchRelativePath)') < direct.index('entry.configureLaunch()') <
         direct.index('runWineFullSequence(profile: entry)'),
         '"The game": no program chosen, no start; otherwise the program is checked inside drive_c and started as a library game')
@@ -194,6 +193,8 @@ head = dock[dock.index('enum DockPerformancePolicy {'):dock.index('enum MadeiraD
 body = (dock[dock.index('enum MadeiraDock {'):dock.index('    @MainActor private static var lastReport =')] +
         dock[dock.index("    /// The host's environment for one launch."):])
 stubs = r'''
+func L(_ text: String) -> String { text }
+func LF(_ text: String, _ args: CVarArg...) -> String { String(format: text, arguments: args) }
 enum ExternalDrives { static var steamLibraries: [String] { [] } }
 import Foundation
 #if canImport(Glibc)
@@ -259,6 +260,9 @@ func record(_ appID: Int, _ name: String, _ folder: String, flags: Int) -> Strin
                 "a fully installed game (StateFlags 4) in Madeira's Steam library")
         require(found.first { $0.id == 4343 }?.installed == false, "an update in progress is not offered for Play")
         require(first?.windowsInstallPath == "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Fixture Game", "Windows install path")
+        require(SteamInstallPaths.isManaged(library: "Program Files/Steam Client/steamapps") &&
+                !SteamInstallPaths.isManaged(library: "Program Files/Steam Client/../elsewhere"),
+                "native downloads can manage the interactive client's library without accepting parent traversal")
         // The size a Game details page shows comes from the install record.
         try write(apps.appendingPathComponent("appmanifest_4545.acf"),
                   record(4545, "Sized", "Sized", flags: 4).replacingOccurrences(of: "\n}\n", with: "\n\t\"SizeOnDisk\"\t\t\"12345\"\n}\n"))

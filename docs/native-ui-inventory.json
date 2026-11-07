@@ -715,6 +715,23 @@
     }
   ],
   "intentionalRemovals": {
+    "app/Madeira/Library.swift": {
+      "controlLabels": ["Zoom haptics"],
+      "reason": "User requested the Steam-only DroidDeck catalog. Its three layouts and five card sizes replace the legacy pinch-grid controls."
+    },
+    "app/Madeira/SettingsPages.swift": {
+      "controlLabels": ["New library grid", "Zoom haptics"],
+      "reason": "The Steam-only DroidDeck catalog now shares its layout, size and title controls with Appearance settings."
+    },
+    "app/Madeira/SteamGames.swift": {
+      "controlLabels": [
+        "One-time installs",
+        "Smaller JIT pool (512 MB) for this launch",
+        "Last Dock result",
+        "Steam starts"
+      ],
+      "reason": "Steam library starts now use the interactive Steam client, without downloading Dock. These controls applied only to Dock's headless host; first-run dependencies are handled by Steam and the global memory setting remains available."
+    },
     "app/Madeira/Onboarding.swift": {
       "views": [
         "OnboardingView"

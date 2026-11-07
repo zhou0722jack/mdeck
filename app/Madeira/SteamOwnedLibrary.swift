@@ -293,7 +293,7 @@ final class SteamOwnedLibrary: ObservableObject {
 
     /// Off with `env.MADEIRA_STEAM_LIBRARY = 0`, or without Madeira Dock (a
     /// downloaded game starts through it).
-    static var enabled: Bool { MadeiraDock.enabled && SteamSignIn.flag("MADEIRA_STEAM_LIBRARY", default: true) }
+    static var enabled: Bool { SteamSignIn.isEnabled && SteamSignIn.flag("MADEIRA_STEAM_LIBRARY", default: true) }
     /// Owned DLC is listed and downloaded with its game (SteamDLC); off with
     /// `env.MADEIRA_STEAM_DLC = 0`, when downloads take no DLC as before.
     static var dlcEnabled: Bool { SteamSignIn.flag("MADEIRA_STEAM_DLC", default: true) }
@@ -1441,6 +1441,14 @@ final class SteamOwnedLibrary: ObservableObject {
                                                      library: library, installed: true,
                                                      customExecutables: false), title: info.name)
             SteamLog.event("[steam-depot] library entry app=\(appID)")
+            // Downloading uses the native content connection, without starting
+            // Wine or Steam. Register the finished library for the interactive
+            // client as well, so both frontends see the same install record.
+            do { try SteamClient.registerLibraries() }
+            catch {
+                self.error = LF("The game downloaded, but its Steam library could not be registered: %@", error.localizedDescription)
+                SteamLog.event("[steam-depot] app=\(appID) client-library-registration failed")
+            }
             SteamGamesModel.shared.refresh()
             outcome = .completed
         } catch {

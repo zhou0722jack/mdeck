@@ -7,15 +7,14 @@ import SwiftUI
 // MARK: - Settings › Steam
 
 /// The library's Steam settings: the signed-in account, Sign in / Sign out
-/// (SteamSignIn; the token stays in its Keychain store), Madeira Dock's sheet
-/// and its existing account and download settings.
+/// (SteamSignIn; the token stays in its Keychain store), language, cloud and
+/// download settings. Presented from the Steam home page.
 struct SteamSettingsSection: View {
-    /// Opens Steam sign-in or Madeira Dock. LibraryView presents the sheet from the
+    /// Opens Steam sign-in. LibraryView presents the sheet from the
     /// Settings Form: a sheet attached to this section closed again as soon as it
     /// slid up whenever the Form rebuilt its rows.
     let open: (SettingsSheet) -> Void
     @ObservedObject private var signIn = SteamSignInModel.shared
-    @ObservedObject private var dock = MadeiraDockModel.shared
     @ObservedObject private var cloud = SteamCloudSetting.shared
     @State private var confirmSignOut = false
     /// Settings › Steam › Game language (SteamLanguage); "" follows the device.
@@ -25,8 +24,8 @@ struct SteamSettingsSection: View {
     /// A fixed PC address; "" finds the PC through Steam.
     @State private var lanHost = SteamLANSetting.host
 
-    /// Shown when Steam sign-in or Madeira Dock is available.
-    static var shown: Bool { SteamSignIn.isEnabled || MadeiraDock.enabled }
+    /// Shown when the native Steam account connection is available.
+    static var shown: Bool { SteamSignIn.isEnabled }
 
     var body: some View {
         Section {
@@ -60,12 +59,6 @@ struct SteamSettingsSection: View {
                         let trimmed = value.trimmingCharacters(in: .whitespaces)
                         if trimmed.isEmpty || SteamLANSetting.isValidAddress(trimmed) { SteamLANSetting.host = trimmed }
                     }
-                }
-            }
-            if MadeiraDock.enabled {
-                Button { open(.dock) } label: { Label("Madeira Dock", systemImage: "shippingbox") }
-                if let status = dock.status {
-                    Text(status).font(.caption).foregroundStyle(.secondary)
                 }
             }
         } header: {

@@ -10,9 +10,8 @@ import SwiftUI
 // appmanifest_<appid>.acf records in the client's library and the other C:
 // libraries its libraryfolders.vdf lists), and the account's owned games that
 // are not installed yet (SteamOwnedLibrary), which can be installed here.
-// Play starts an installed game through Madeira Dock's launch path
-// (ContentView.startDock), so Valve's own client signs in, checks the licence
-// and starts it. No program names are involved: a game is its App ID.
+// Play uses the interactive Steam client by App ID. Valve's client handles
+// sign-in, licensing and first-run dependencies.
 // Log tag: [steam-games] (App IDs and counts only).
 
 // MARK: - Rules (Foundation only; tests/host/check-onboarding.py compiles this part)
@@ -198,6 +197,14 @@ enum SteamGamesRules {
         add(asset(appID, owned(appID)?.headerImage))
         return urls
     }
+
+    static func backdrops(appID: Int, owned: (Int) -> SteamOwnedGame?) -> [URL] {
+        var urls: [URL] = []
+        if let hero = owned(appID)?.libraryHero, safeAssetName(hero),
+           let url = URL(string: assetBase + "\(appID)/" + hero) { urls.append(url) }
+        if let url = URL(string: assetBase + "\(appID)/library_hero.jpg") { urls.append(url) }
+        return urls + artwork(appID: appID, owned: owned)
+    }
 }
 
 /// "Start with: The game" on a Steam game's Game details page: the game's own
@@ -379,7 +386,7 @@ enum SteamDirectStart {
     private static let snapshotKey = "madeiraSteamInstalledSnapshot.v1"
 
     private init() {
-        guard LibraryGridArm.enabled, MadeiraDock.enabled,
+        guard LibraryGridArm.enabled,
               let data = UserDefaults.standard.data(forKey: Self.snapshotKey),
               let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) else { return }
         games = snapshot.games; builds = snapshot.builds; lastCount = snapshot.games.count
@@ -387,7 +394,6 @@ enum SteamDirectStart {
 
     /// Reads the install records again, off the main thread.
     func refresh() {
-        guard MadeiraDock.enabled else { return }
         guard !scanning else { rescan = true; return }
         scanning = true
         let drive = MadeiraDock.drive
@@ -492,7 +498,7 @@ struct SteamGamesSection: View {
         let library = SteamOwnedLibrary.enabled, account = SteamOwnedLibrary.shared
         let owned = library ? account.owned : []
         let total = SteamGamesRules.items(installed: SteamGamesModel.shared.games, owned: owned, search: "").count
-        return SteamGamesRules.showsSection(dock: MadeiraDock.enabled, library: library,
+        return SteamGamesRules.showsSection(dock: true, library: library,
                                             signedIn: library && account.signedIn, count: total)
     }
 
@@ -678,11 +684,13 @@ struct SteamGameArtwork: View {
     /// card draws its download glyph instead), and a soft circle of blur in the middle
     /// of the art for that glyph to sit on.
     var notDownloaded = false
+    var backdrop = false
     @ObservedObject private var steam = SteamOwnedLibrary.shared
     @State private var index = 0
 
     var body: some View {
-        let urls = SteamGamesRules.artwork(appID: appID) { steam.game($0) }
+        let urls = backdrop ? SteamGamesRules.backdrops(appID: appID) { steam.game($0) }
+            : SteamGamesRules.artwork(appID: appID) { steam.game($0) }
         GeometryReader { geometry in
             ZStack {
                 Color(uiColor: .secondarySystemFill)
@@ -1167,6 +1175,7 @@ struct SteamGameSheet: View {
         let item = SteamGamesRules.items(installed: games.games, owned: owned, search: "").first { $0.id == appID }
         NavigationStack {
             Form {
+                Section { SteamGamePreviewContent(appID: appID) }
                 if let item {
                     Section {
                         HStack(spacing: 20) {
@@ -1482,8 +1491,8 @@ struct SteamCloudSection: View {
 // MARK: - Game details: the Steam section
 
 /// The Steam section of a Steam game's Game details page (LibraryDetail): how
-/// the game starts (Madeira Dock, the default, with its per-launch pool choice and
-/// one-time installs; or The game, its own program without Steam, SteamDirectStart),
+/// the game starts (Steam's interactive client by default, or the game's own
+/// program without Steam, SteamDirectStart),
 /// its update, a repair of its files and Uninstall.
 /// One row of Game details › Steam › Installed DLC.
 struct InstalledDLC: Identifiable, Equatable {
@@ -1495,7 +1504,6 @@ struct SteamEntrySection: View {
     @Binding var entry: LibraryEntry
     /// The game was uninstalled: the page closes without saving.
     var uninstalled: () -> Void
-    @ObservedObject private var dock = MadeiraDockModel.shared
     @ObservedObject private var steam = SteamOwnedLibrary.shared
     @ObservedObject private var games = SteamGamesModel.shared
     @ObservedObject private var languageChoices = SteamGameLanguageChoices.shared
@@ -1507,8 +1515,6 @@ struct SteamEntrySection: View {
     /// Steam's launch configuration is being read.
     @State private var programs: [String] = []
     @State private var resolving = false
-    /// Madeira Dock's "Steam starts" choice (DockStartProgram); nil: Steam's own program.
-    @State private var dockProgram: String?
     /// The DLC Steam's install record lists for this game (app ID, bytes), and their names.
     @State private var installedDLC: [InstalledDLC]?
     @State private var dlcNames: [Int: String] = [:]
@@ -1522,8 +1528,8 @@ struct SteamEntrySection: View {
         let downloads = SteamOwnedLibrary.enabled && managed
         let direct = entry.startsSteamGameDirectly
         Section {
-            Picker("Start with", selection: Binding(get: { direct ? SteamDirectStart.mode : "dock" }, set: { choose($0) })) {
-                Text("Madeira Dock").tag("dock")
+            Picker("Start with", selection: Binding(get: { direct ? SteamDirectStart.mode : "client" }, set: { choose($0) })) {
+                Text("Steam").tag("client")
                 Text("The game").tag(SteamDirectStart.mode)
             }
             if direct {
@@ -1547,32 +1553,8 @@ struct SteamEntrySection: View {
                     }
                 }
             } else {
-                if !dock.clientInstalled {
-                    Text("Needs Valve's client: Settings › Steam › Madeira Dock.")
-                        .font(.caption).foregroundStyle(.orange)
-                }
-                // A program in place of the one Steam's launch entry names (DockStartProgram).
-                Picker("Steam starts", selection: Binding(get: { dockProgram ?? "" }, set: { pickDockProgram($0) })) {
-                    Text("Steam's choice").tag("")
-                    ForEach(dockPrograms, id: \.self) { Text($0).tag($0) }
-                }.pickerStyle(.navigationLink)
-                if dockProgram != nil {
-                    Text("Madeira puts a copy of this program in place of the one Steam starts (the launcher is kept, and goes back with Steam's choice). Steam still starts the game and checks ownership.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    Text("For a game whose launcher closes Madeira when it starts the game (Fallout: New Vegas): pick the game's own program.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Toggle("Smaller JIT pool (512 MB) for this launch", isOn: $dock.compactPool)
-                // The game's One-time installs choice (Madeira Dock, DockInstallers).
-                if DockInstallers.choiceEnabled, dock.installPrograms[appID] != nil {
-                    Picker("One-time installs", selection: Binding(get: { dock.installRunNext[appID] ?? true },
-                                                                   set: { dock.setRunsInstallers(appID, $0) })) {
-                        Text("Run at next start").tag(true)
-                        Text("Skip").tag(false)
-                    }.pickerStyle(.menu)
-                    DockInstallRequestRows(dock: dock, appID: appID, name: entry.title)
-                }
+                Text("Steam starts this game by App ID using the global Steam settings. The Steam client handles sign-in, ownership and first-run dependencies.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             if let download {
                 SteamDownloadStatus(download: download)
@@ -1647,12 +1629,6 @@ struct SteamEntrySection: View {
                 }
             }
             if let freeSpace { LabeledContent("Free space where the game is installed", value: formatBytes(freeSpace)) }
-            if let status = dock.status {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Last Dock result").font(.caption).foregroundStyle(.secondary)
-                    Text(status).font(.footnote)
-                }
-            }
             if managed, download == nil {
                 Button("Uninstall", role: .destructive) { confirmUninstall = true }
             }
@@ -1665,11 +1641,11 @@ struct SteamEntrySection: View {
                 Text("Starts through Valve's Steam client, signed in as you.")
             }
         }
-        .onAppear { dock.refresh(); games.refresh(); dockProgram = DockStartProgram.chosen(appID) }
+        .onAppear { games.refresh() }
         .task(id: "\(String(describing: download?.state)) \(installed?.library ?? "")") {
             freeSpace = SteamOwnedLibrary.drive.appendingPathComponent(installed?.library ?? steam.library(for: appID)).freeSpace
         }
-        .task(id: "\(entry.steamStart ?? "dock") \(installed?.installed == true) \(download == nil)") { await resolveProgram() }
+        .task(id: "\(entry.steamStart ?? "client") \(installed?.installed == true) \(download == nil)") { await resolveProgram() }
         .task(id: "\(installed?.installed == true) \(download == nil) \(games.builds[appID] ?? 0)") { await loadDLC() }
         .task(id: appID) { if downloads { await steam.refreshBranches(appID) } }
         .confirmationDialog("Uninstall \(entry.title)? Its downloaded files are deleted from where it is installed. Saves stored elsewhere are kept.",
@@ -1681,35 +1657,18 @@ struct SteamEntrySection: View {
         }
     }
 
-    /// "Steam starts" rows: the folder's programs, and a kept choice that is not among them.
-    private var dockPrograms: [String] {
-        guard let chosen = dockProgram, !programs.contains(chosen) else { return programs }
-        return [chosen] + programs
-    }
-
-    /// Madeira Dock's "Steam starts": the next Dock start puts the program in place
-    /// (or the kept launcher back for Steam's choice).
-    private func pickDockProgram(_ program: String) {
-        guard let appID = entry.steamAppID else { return }
-        let next: String? = program.isEmpty ? nil : program
-        guard next != dockProgram else { return }
-        dockProgram = next
-        DockStartProgram.setChosen(appID, next)
-        LogStore.shared.log("[dock-start-program] app=\(appID) chosen=\(next ?? "steam")")
-    }
-
     /// The Program picker's rows: the folder's programs, and a kept choice that is not among them.
     private var pickerPrograms: [String] {
         guard let chosen = entry.steamProgram, !programs.contains(chosen) else { return programs }
         return [chosen] + programs
     }
 
-    /// Start with: Madeira Dock (stored as no choice, the default) or The game.
+    /// Start with Steam (the default) or the game's own program.
     private func choose(_ mode: String) {
         let next: String? = mode == SteamDirectStart.mode ? mode : nil
         guard next != entry.steamStart else { return }
         entry.steamStart = next
-        LogStore.shared.log("[steam-start] app=\(entry.steamAppID ?? 0) mode=\(next == nil ? "dock" : "game")")
+        LogStore.shared.log("[steam-start] app=\(entry.steamAppID ?? 0) mode=\(next == nil ? "client" : "game")")
     }
 
     /// The Program picker's choice; it is kept over Steam's launch configuration.
@@ -1747,7 +1706,6 @@ struct SteamEntrySection: View {
         let folder = LibraryModel.drive.appendingPathComponent(entry.relativePath, isDirectory: true)
         let found = await Task.detached(priority: .userInitiated) { SteamDirectStart.programs(in: folder) }.value
         programs = found
-        // Madeira Dock's "Steam starts" needs only the list.
         guard entry.startsSteamGameDirectly else { return }
         if entry.steamProgramSource == "choice", let program = entry.steamProgram, found.contains(program) { return }
         resolving = true

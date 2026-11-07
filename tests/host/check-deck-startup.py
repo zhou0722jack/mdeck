@@ -29,7 +29,8 @@ assert 'DeckStartup.swift in Sources' in project and 'BootAnimation in Resources
 assert '!DeckStartupModel.shared.blocking' in (app / 'SigningRefresh.swift').read_text()
 assert '!DeckSteamLaunchPreparation.shared.presented' in (app / 'SigningRefresh.swift').read_text()
 home = library[library.index('    var deckSteamHome:'):library.index('    var deckDesktop:')]
-assert home.count('Button {') == 1 and 'install: !SteamClient.installed' in home
+assert home.count('Button {') == 2 and 'install: !SteamClient.installed' in home
+assert 'Label("Steam settings"' in home and 'DeckSettingsRoute(page: .steam)' in home
 assert 'LibraryStatus()' not in home and 'enableJIT' not in home and 'Run Steam installer' not in home
 assert 'deckDestination != .library && deckDestination != .steam' in library
 assert 'DeckBootSettings()' in library and 'DeckComponentSetupView()' in library
@@ -37,18 +38,19 @@ assert 'Button("Skip animation")' not in startup
 assert '.onTapGesture(count: 2) { movieFinished = true }' in startup
 assert '.accessibilityAction(named: Text("Skip animation"))' in startup
 assert 'case .graphics:' in (app / 'SettingsPages.swift').read_text()
-print('PASS: old onboarding removed, two JIT choices, one Steam home action, settings retained')
+print('PASS: old onboarding removed, two JIT choices, Steam launch and global settings on home')
 
 for call in ['WineMonoModel.shared.install()', 'VCRedistModel.shared.install()',
-             'WineGeckoModel.shared.install()', 'MadeiraDockModel.shared.prepareClient()']:
+             'WineGeckoModel.shared.install()']:
     assert call in startup
+assert 'MadeiraDock' not in startup and 'case mono, visualCPP, gecko' in startup
 for forbidden in ['runWineFullSequence', 'URLSession', 'setenv(', 'poolSize', 'send_command(']:
     assert forbidden not in startup, forbidden
 assert 'isReady(component)' in startup and 'defaults.set(complete, forKey:' in startup
 content = (app / 'ContentView.swift').read_text()
 gate = content[content.index('    private func launchLibraryEntry('):content.index('    private func launchPreparedLibraryEntry(')]
 assert 'SteamClient.owns(entry)' in gate and 'steamPreparation.request(target: SteamClient.windowsExecutable' in gate
-assert 'let resolved = SteamClient.entry(install: !SteamClient.installed)' in gate
+assert 'let resolved = SteamClient.entry(install: !SteamClient.installed, appID: entry.steamClientAppID)' in gate
 assert 'steamPreparation.resolvedRoute(installer:' in gate
 assert 'launchPreparedLibraryEntry(resolved, steamRequest: request)' in gate and 'TouchControlsHost.attach()' in gate
 assert 'steamPreparation.permitsLaunch(steamRequest)' in content
@@ -119,7 +121,7 @@ import Foundation
         precondition(launch.presented && launch.phase == .components && StartupFixture.calls.isEmpty)
         launch.beginPreparation(); launch.beginPreparation()
         precondition(StartupFixture.calls == DeckSetupComponent.allCases)
-        precondition(StartupFixture.active.count == 4 && StartupFixture.peakDownloads == 4)
+        precondition(StartupFixture.active.count == 3 && StartupFixture.peakDownloads == 3)
         launch.returnToLibrary()
         precondition(launch.presented)
         await wait(preparation)
@@ -172,7 +174,7 @@ import Foundation
         launch.beginPreparation()
         await wait(preparation)
         precondition(launch.presented && launch.phase == .failed && requests.isEmpty)
-        precondition(preparation.readyCount == 3 && !defaults.bool(forKey: DeckStartupRules.completeKey))
+        precondition(preparation.readyCount == 2 && !defaults.bool(forKey: DeckStartupRules.completeKey))
         StartupFixture.failures = []; StartupFixture.calls = []
         launch.retry()
         await wait(preparation)
@@ -199,7 +201,7 @@ import Foundation
         launch.request(target: target, installer: false) { requests.append($0) }
         launch.beginPreparation()
         await wait(preparation)
-        precondition(StartupFixture.calls == [.visualCPP, .dock] && joined == 1 && requests.count == 1)
+        precondition(StartupFixture.calls == [.visualCPP] && joined == 1 && requests.count == 1)
         precondition(launch.sessionStarted(UUID()))
         launch.sessionEnded("Wine stopped before frame")
         precondition(launch.presented && launch.phase == .failed && launch.error == "Wine stopped before frame")
@@ -217,8 +219,8 @@ import Foundation
         MadeiraDock.bundled = false; MadeiraDock.clientInstalled = true
         preparation.prepare()
         await wait(preparation)
-        precondition(!preparation.complete && preparation.readyCount == 3 && !StartupFixture.calls.contains(.dock))
-        print("PASS: active Wine sessions and an incomplete IPA cannot report ready")
+        precondition(preparation.complete && preparation.readyCount == 3 && StartupFixture.calls == [.mono, .visualCPP, .gecko])
+        print("PASS: active Wine sessions cannot prepare; missing Dock never blocks the three required components")
 
         preparation = fresh()
         WineMonoModel.available = true; WineGeckoModel.available = true

@@ -2,8 +2,8 @@
 
 点击首页启动 Steam 后：
 
-1. 检查 Wine Mono、Visual C++、Wine Gecko、Madeira Dock；复用已就绪资源，缺失项并行准备。
-2. 四项就绪后重新检查 `C:\Program Files\Steam Client\Steam.exe`，不使用点击前缓存的结果。
+1. 检查 Wine Mono、Visual C++、Wine Gecko；复用已就绪资源，缺失项并行准备。不再下载 Madeira Dock。
+2. 三项就绪后重新检查 `C:\Program Files\Steam Client\Steam.exe`，不使用点击前缓存的结果。
    宿主端识别 Steam.exe/steam.exe 的大小写，但只允许该目录中的常规文件，忽略 Dock 路径和越界符号链接。
 3. 已有主程序时，使用其实际文件名启动，并补齐 `-no-cef-sandbox`、`-cef-disable-gpu`。
    新安装的默认参数仍使用完整 `SteamClient.clientArguments`，已有用户附加参数保留。
@@ -32,4 +32,4 @@
 实际编译生成的 i386 GUI PE（仅导入 KERNEL32）、窗口适配器及实际 Wine 类名/Edit 读取回归、
 iOS SDK 类型检查、中文本地化与缓存依赖检查。
 这些是组件和编译证据，不代表已在 iPad 上验收控制器初次启动、安装到 Steam 的完整会话。
-本轮不构建 IPA、不提交远程。
+IPA 按用户要求另行构建，构建结果与真机验收分别记录。

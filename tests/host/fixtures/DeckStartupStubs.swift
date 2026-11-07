@@ -25,7 +25,7 @@ func LF(_ key: String, _ arguments: CVarArg...) -> String { String(format: key, 
         WineMonoModel.available = false; WineMonoModel.shared.error = nil
         VCRedistModel.shared.complete = false; VCRedistModel.shared.error = nil
         WineGeckoModel.available = false; WineGeckoModel.shared.error = nil
-        MadeiraDock.bundled = true; MadeiraDock.clientInstalled = false; MadeiraDockModel.shared.error = nil
+        MadeiraDock.bundled = true; MadeiraDock.clientInstalled = false
         MadeiraBuiltInJIT.isAvailable = true
     }
 }
@@ -99,19 +99,6 @@ enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
 @MainActor enum MadeiraDock {
     static var bundled = true
     static var clientInstalled = false
-}
-@MainActor final class MadeiraDockModel {
-    static let shared = MadeiraDockModel()
-    var preparing = false
-    var error: String?
-    var progress = "Downloading Steam components (1 of 3)…"
-    func prepareClient() {
-        guard !preparing else { return }
-        error = nil; preparing = true
-        StartupFixture.download(.dock) { ok in
-            MadeiraDock.clientInstalled = ok; self.error = ok ? nil : "dock offline"; self.preparing = false
-        }
-    }
 }
 @MainActor enum MadeiraBuiltInJIT {
     static var isAvailable = true

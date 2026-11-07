@@ -18,6 +18,7 @@
 Synthetic data only.
 """
 from pathlib import Path
+import re
 import os, shutil, subprocess, sys, tempfile
 
 root = Path(__file__).resolve().parents[2]
@@ -49,27 +50,27 @@ docs = (root / 'docs/zoomable-grid.md').read_text()
 
 # ------------------------------------------------------------------ sources
 view = between(library, 'struct LibraryView: View {', 'struct ExecutableBrowser: View {')
-require('LibraryGridArm.zoomable(setting: zoomableGrid, layout: layout) { zoomableLibrary } else { library }' in view,
-        'arms: the zoomable page in the card layouts, else the original page')
+require('DeckSteamCatalog(mode: .library, play: play' in view,
+        'routing: the Steam-only DroidDeck catalog owns the library; legacy grid geometry remains testable')
 require('LibraryCells(items: items, layout: layout, width: viewportWidth)' in view and 'struct LibraryCells<' in library
         and 'LazyVGrid(columns:' in library, 'the original LazyVGrid grid is kept')
 require('static let key = "madeiraLibraryNewGrid"' in page
         and 'static var enabled: Bool { UserDefaults.standard.object(forKey: key) as? Bool ?? false }' in page
         and '@AppStorage(LibraryGridArm.key) private var zoomableGrid = false' in view
         and 'layout == "cards" || layout == "compact"' in page, 'arms: the "New library grid" setting (off by default, the same default at both reads) picks the page; list layouts never zoom')
-require('Toggle("New library grid", isOn: $zoomableGrid)' in view and 'Toggle("Zoom haptics", isOn: $zoomHaptics)' in view
-        and 'MADEIRA_LIBRARY_ZOOM' not in page + view + library, 'Settings › Appearance: the two switches, no config flag')
+require('DeckSteamCatalogDisplaySettings()' in view and 'DeckSteamCatalogDisplaySettings()' in (app / 'SettingsPages.swift').read_text()
+        and 'MADEIRA_LIBRARY_ZOOM' not in page + view + library, 'Settings › Appearance: the native Steam catalog display controls')
 for rule in ['LibraryGridSteamItems.items(installed: model.games, owned: owned, search: inputs.search)',
              'SteamGamesRules.groups(items, downloading: Set(account.downloads.keys))',
              'SteamGamesRules.sorted(groups.installed, by: inputs.sort, recorded: Self.recorded())',
-             'let steamFirst = MadeiraDock.enabled && LibraryGridSteamItems.hasInstalled',
+             'let steamFirst = LibraryGridSteamItems.hasInstalled',
              'let items = SteamGamesRules.items(installed: installed, owned: owned, search: search)',
              'LibraryGrouping.groups(games, by: inputs.group, sort: inputs.sort)',
              'guard installed || (enabled && account.signedIn) else { continue }',
              'SteamGamesRules.showsSignIn(library: libraryEnabled, signedIn: account.signedIn)']:
     require(rule in page, f'page model uses the SwiftUI page\'s rule: {rule[:60]}')
 steam_section = (app / 'SteamGames.swift').read_text()
-for rule in ['return SteamGamesRules.showsSection(dock: MadeiraDock.enabled, library: library,',
+for rule in ['return SteamGamesRules.showsSection(dock: true, library: library,',
              'signedIn: library && account.signedIn, count: total)',
              'return !groups.installed.isEmpty || !groups.downloading.isEmpty']:
     require(rule in page and rule in steam_section, f'LibraryGridSteamItems states SteamGamesSection\'s rule: {rule[:50]}')

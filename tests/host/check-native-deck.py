@@ -34,7 +34,7 @@ assert "DroidDeckUI" not in project
 assert "DroidDeckInfo.plist" not in project
 assert "DeckDesign.swift in Sources" in project
 assert "DeckStartup.swift in Sources" in project and "BootAnimation in Resources" in project
-for name in ["ContentView.swift", "Library.swift", "JITSetup.swift", "SteamGames.swift", "SettingsPages.swift", "SteamClient.swift"]:
+for name in ["ContentView.swift", "Library.swift", "JITSetup.swift", "SteamGames.swift", "SettingsPages.swift", "SteamClient.swift", "DeckSteamCatalog.swift"]:
     assert name + " in Sources" in project, name
 ids = re.findall(r"^\s*([A-F0-9]+) /\*.*?\*/ = \{", project, re.M)
 assert not [key for key, count in collections.Counter(ids).items() if count > 1]

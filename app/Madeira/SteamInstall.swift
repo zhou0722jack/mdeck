@@ -18,6 +18,7 @@ import Foundation
 enum SteamInstallPaths {
     /// The library folder, relative to drive_c (the value `DockGame.library` has).
     static let libraryRelative = "Program Files (x86)/Steam/steamapps"
+    static let clientLibraryRelative = "Program Files/Steam Client/steamapps"
 
     static func steamApps(drive: URL) -> URL { drive.appendingPathComponent(libraryRelative, isDirectory: true) }
     static func common(drive: URL) -> URL { steamApps(drive: drive).appendingPathComponent("common", isDirectory: true) }
@@ -26,7 +27,7 @@ enum SteamInstallPaths {
     /// Madeira downloads into, and so can be updated or removed here.
     /// A library on an external drive (drive_c/External/<name>/...) counts too.
     static func isManaged(library: String) -> Bool {
-        if library.caseInsensitiveCompare(libraryRelative) == .orderedSame { return true }
+        if [libraryRelative, clientLibraryRelative].contains(where: { library.caseInsensitiveCompare($0) == .orderedSame }) { return true }
         guard let parts = try? ExternalStoragePath.components(library) else { return false }
         return parts.count >= 3 && parts[0] == "External" && parts.last == "steamapps"
     }

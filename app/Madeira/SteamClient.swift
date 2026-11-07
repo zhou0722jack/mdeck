@@ -35,26 +35,83 @@ enum SteamClient {
         }
     }
 
-    static func entry(install: Bool) -> LibraryEntry {
+    static func entry(install: Bool, appID: Int? = nil) -> LibraryEntry {
         let id = install ? installerID : clientID
         let path = install ? bootstrapPath : clientDirectory + "/" + (executableURL?.lastPathComponent ?? "Steam.exe")
         let saved = LibraryModel.shared.entries.first { $0.id == id }
-        var entry = saved
+        let gameProfile = appID.flatMap { id in LibraryModel.shared.entries.first { $0.steamAppID == id } }
+        var entry = gameProfile ?? saved
             ?? LibraryEntry(title: install ? L("Steam installer") : "Steam", relativePath: path, bits: 32)
         entry.id = id
         entry.relativePath = path
         entry.launchMode = "desktop"
         entry.startServices = true
+        entry.steamClientAppID = appID
+        entry.steamAppID = nil
+        entry.bigPicture = nil
+        entry.workingDirectory = nil
         // The controller supplies NSIS's final /D argument internally.
         if install { entry.arguments = "" }
         else {
-            entry.arguments = compatibilityArguments(saved?.arguments ?? "")
+            entry.arguments = launchArguments(appID: appID)
             if let url = executableURL, let inspected = try? LibraryModel.inspect(url) {
                 entry.bits = inspected.bits
             }
         }
         normalizeLaunch(&entry)
         return entry
+    }
+
+    static let bigPictureKey = "mdeck.steam.bigPicture"
+    static let argumentsKey = "mdeck.steam.arguments"
+
+    static var bigPicture: Bool {
+        UserDefaults.standard.object(forKey: bigPictureKey) as? Bool ?? true
+    }
+
+    static var extraArguments: String {
+        UserDefaults.standard.string(forKey: argumentsKey)
+            ?? LibraryModel.shared.entries.first { $0.id == clientID && $0.steamClientAppID == nil }?.arguments
+            ?? clientArguments
+    }
+
+    static func launchArguments(appID: Int? = nil) -> String {
+        var arguments = compatibilityArguments(extraArguments)
+        // The explicit preference owns the mode; the editable field cannot
+        // silently override it or carry a stale game's launch request.
+        arguments = removingLaunchRequests(arguments)
+        if bigPicture { arguments += " -gamepadui" }
+        if let appID, appID > 0, UInt64(appID) < UInt64(UInt32.max) {
+            arguments += " -applaunch \(appID)"
+            if let game = LibraryModel.shared.entries.first(where: { $0.steamAppID == appID }), !game.arguments.isEmpty {
+                arguments += " " + game.arguments
+            }
+        }
+        return arguments
+    }
+
+    private static func removingLaunchRequests(_ value: String) -> String {
+        // Keep each token's original quotes and escapes. A quoted path with
+        // spaces must survive, while stale launch selectors must not leak
+        // from the previous game into a fresh client launch.
+        var tokens: [String] = [], token = "", quoted = false, slashes = 0
+        for character in value {
+            if character == "\"", slashes % 2 == 0 { quoted.toggle() }
+            if character.isWhitespace && !quoted {
+                if !token.isEmpty { tokens.append(token); token = "" }
+            } else { token.append(character) }
+            slashes = character == "\\" ? slashes + 1 : 0
+        }
+        if !token.isEmpty { tokens.append(token) }
+        var kept: [String] = [], skip = false
+        for token in tokens {
+            if skip { skip = false; continue }
+            let key = token.replacingOccurrences(of: "\"", with: "").lowercased()
+            if key == "-applaunch" { skip = true; continue }
+            if ["-bigpicture", "-gamepadui"].contains(key) || key.hasPrefix("steam://") { continue }
+            kept.append(token)
+        }
+        return kept.joined(separator: " ")
     }
 
     /// One controller owns the setup process and its successor. It preserves
@@ -73,10 +130,9 @@ enum SteamClient {
     /// extra options while always supplying the required compatibility flags.
     static func configureSession(_ entry: LibraryEntry) {
         guard owns(entry) else { return }
-        let existing = getenv("MADEIRA_CHILD_ARGS").map { String(cString: $0) } ?? ""
-        let parts = existing.split(maxSplits: 1, whereSeparator: { $0.isWhitespace })
-        let childArguments = parts.first?.lowercased() == "steam.exe" && parts.count == 2
-            ? compatibilityArguments(String(parts[1])) : clientArguments
+        // Rebuild from persistent global/game preferences each time. Reusing
+        // the previous child rule can leak that game's flags to another game.
+        let childArguments = launchArguments(appID: entry.steamClientAppID)
         setenv("MADEIRA_CHILD_ARGS", "steam.exe " + childArguments, 1)
         LogStore.shared.log("[steam-installer] Steam child/restart compatibility arguments enabled")
         setenv("MADEIRA_STEAM_AUTOINSTALL", entry.id == installerID ? "1" : "0", 1)
@@ -129,6 +185,7 @@ enum SteamClient {
             guard entry.relativePath.caseInsensitiveCompare(clientPath) == .orderedSame, installed else {
                 throw LibraryError.message(L("Install Steam first, then use Start Steam."))
             }
+            try registerLibraries()
             return
         }
         guard entry.relativePath == bootstrapPath,
@@ -152,7 +209,29 @@ enum SteamClient {
             if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
         }
         winios_steam_setup_reset()
+        try registerLibraries()
         LogStore.shared.log("[steam-installer] verified bundled setup; route=session-controller; installer UI covered; bits=32")
+    }
+
+    /// Let Valve's interactive client see games downloaded by mdeck and the
+    /// connected libraries too. Preserve its existing VDF entries.
+    static func registerLibraries() throws {
+        // A running client owns these files. A launch preflight registers again
+        // after the session ends if a native download was finishing as it began.
+        guard wine_process_is_running() == 0, wineserver_is_running() == 0 else { return }
+        let paths = MadeiraDock.steamLibraries(drive: LibraryModel.drive).compactMap { library -> String? in
+            guard library.hasSuffix("/steamapps") else { return nil }
+            return String(library.dropLast("/steamapps".count))
+        }
+        for sub in ["config", "steamapps"] {
+            let file = try destination(clientDirectory + "/" + sub + "/libraryfolders.vdf")
+            let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil
+            let data = try ExternalSteamLibraries.add(paths: paths, to: existing)
+            if data != existing {
+                try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: file, options: .atomic)
+            }
+        }
     }
 
     private static func destination(_ relative: String) throws -> URL {
@@ -162,6 +241,35 @@ enum SteamClient {
             throw LibraryError.message(L("The Steam installer folder must stay inside Madeira's drive_c."))
         }
         return target
+    }
+}
+
+/// Global preferences shared by the home button, setup handoff and game cards.
+struct SteamClientLaunchSettings: View {
+    @AppStorage(SteamClient.bigPictureKey) private var bigPicture = true
+    @State private var arguments = SteamClient.extraArguments
+    @State private var invalidArguments = false
+
+    var body: some View {
+        Section {
+            Toggle("Start Steam in Big Picture mode", isOn: $bigPicture)
+            TextField("Steam launch arguments", text: $arguments, axis: .vertical)
+                .textInputAutocapitalization(.never).autocorrectionDisabled()
+                .onChange(of: arguments) { _, value in
+                    invalidArguments = !LaunchArgumentText.valid(value)
+                    if !invalidArguments { UserDefaults.standard.set(value, forKey: SteamClient.argumentsKey) }
+                }
+            if invalidArguments {
+                Text("Use balanced double quotes, no control characters, and at most 64 launch arguments in 4 KB.")
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            Button("Reset Steam launch arguments") {
+                arguments = SteamClient.clientArguments
+                UserDefaults.standard.set(arguments, forKey: SteamClient.argumentsKey)
+            }
+        } header: { Text("Steam startup") } footer: {
+            Text("These global options apply to Start Steam and games launched from the library. Required compatibility options are always included. Changes apply to the next session.")
+        }
     }
 }
 
