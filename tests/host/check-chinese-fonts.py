@@ -3,7 +3,6 @@
 from pathlib import Path
 import hashlib
 import json
-import os
 import subprocess
 import tarfile
 import tempfile
@@ -101,8 +100,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-fonts-') as directory:
     source.write_text(harness)
     binary = tmp / 'check'
     subprocess.run(['clang', '-fobjc-arc', '-Wall', '-Wextra', '-Werror', '-I', str(APP), str(source),
-                    '-framework', 'Foundation', '-framework', 'CoreText', '-o', str(binary)], check=True,
-                   env=dict(os.environ, DEVELOPER_DIR='/Applications/Xcode-beta.app/Contents/Developer'))
+                    '-framework', 'Foundation', '-framework', 'CoreText', '-o', str(binary)], check=True)
     subprocess.run([str(binary), str(prefix), str(APP)], check=True)
 print('PASS: pinned font hash, bundled licence, family and Simplified Chinese glyph coverage')
 print('PASS: existing-prefix install, custom aliases/link order, unknown encodings, backups and idempotence')

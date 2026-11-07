@@ -2,7 +2,6 @@
 """Exercise Wine's real parent traversal and mouse activation on a detached desktop."""
 from pathlib import Path
 import importlib.util
-import os
 import subprocess
 import tempfile
 
@@ -129,8 +128,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-button-') as tmp:
         path = Path(tmp) / f'{label}.c'
         path.write_text(harness.replace('/* PRODUCTION */', functions).replace('/* ACTIVATION */', activation))
         binary = path.with_suffix('')
-        subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', str(path), '-o', str(binary)], check=True,
-                       env=dict(os.environ, DEVELOPER_DIR='/Applications/Xcode-beta.app/Contents/Developer'))
+        subprocess.run(['clang', '-std=c11', '-Wall', '-Wextra', str(path), '-o', str(binary)], check=True)
         result = subprocess.run([str(binary)])
         assert result.returncode == (0 if label == 'fixed' else 1), label
 print('PASS: detached desktop, nested button activation, parent/root-owner, invalid handles and balanced locks')
