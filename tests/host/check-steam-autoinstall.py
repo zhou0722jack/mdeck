@@ -16,6 +16,10 @@ rules = []
 for signature in ['static int ios_image_name_is(', 'static const char *child_extra_args(']:
     start=process.index(signature); end=process.index('\n}',start)+2
     rules.append(process[start:end])
+classes = (ROOT / 'build/win32u-unix/class_ios.c').read_text()
+start = classes.index('INT WINAPI NtUserGetClassName(')
+end = classes.index('\n}', start) + 2
+class_reader = classes[start:end]
 
 program = r'''
 #include <stdint.h>
@@ -26,6 +30,8 @@ program = r'''
 typedef uint16_t WCHAR;
 typedef uintptr_t HWND;
 typedef unsigned ULONG,DWORD;
+typedef unsigned UINT;
+typedef int INT,BOOL,NTSTATUS;
 typedef struct { WCHAR *Buffer; unsigned short Length,MaximumLength; } UNICODE_STRING;
 typedef struct { UNICODE_STRING ImagePathName; } RTL_USER_PROCESS_PARAMETERS;
 struct { struct { RTL_USER_PROCESS_PARAMETERS *ProcessParameters; } *Peb; } teb;
@@ -56,10 +62,24 @@ static unsigned GetCurrentThreadId(void) {return 24;}
 static unsigned get_window_thread(HWND h,void *unused) {(void)h;(void)unused;return wrong_thread?99:24;}
 static int is_window_visible(HWND h) {(void)h;return 1;}
 static int NtUserIsWindowEnabled(HWND h) {return h==2?dialog_enabled:ready;}
-static int NtUserGetClassName(HWND h,int unused,UNICODE_STRING *v) {
-    (void)unused;const char *c=h==3?"Button":h==5?"Edit":"#32770";
-    v->Length=copy_text(v->Buffer,v->MaximumLength/2,c)*2;return v->Length/2;
+struct object_lock { int pending; };
+#define OBJECT_LOCK_INIT {0}
+#define MAX_ATOM_LEN 255
+#define STATUS_PENDING 0x103
+#define ERROR_INSUFFICIENT_BUFFER 122
+#define WINAPI
+#define min(a,b) ((a)<(b)?(a):(b))
+#define TRACE(...) ((void)real)
+typedef struct { unsigned name_len,name_offset; WCHAR name[32]; } class_shm_t;
+static void RtlSetLastWin32Error(unsigned e) {(void)e;}
+static NTSTATUS get_shared_window_class(HWND h,struct object_lock *lock,const class_shm_t **out) {
+    static class_shm_t shared;
+    if(lock->pending) return 0;
+    const char *c=h==3?"Button":h==5?"Edit":"#32770";
+    shared.name_len=copy_text(shared.name,32,c)*2;shared.name_offset=0;*out=&shared;
+    lock->pending=1;return STATUS_PENDING;
 }
+/* REAL_CLASS_READER */
 static int NtUserBuildHwndList(int a,HWND parent,int c,int d,unsigned thread,unsigned cap,HWND *out,ULONG *n) {
     (void)a;(void)c;(void)d;(void)thread;assert(cap>=5);
     if(!parent){out[0]=2;out[1]=1;*n=2;}
@@ -80,6 +100,10 @@ static uint64_t ios_tiny_now_ns(void) {return tick_ms*1000000;}
 /* CHILD_RULES */
 static void poll_for(unsigned count) {for(unsigned i=0;i<count;i++){tick_ms+=20;ios_steam_installer_poll();}}
 int main(void) {
+    WCHAR cls[32];UNICODE_STRING name={.Buffer=cls,.Length=0,.MaximumLength=sizeof(cls)};
+    assert(NtUserGetClassName(2,0,&name)==6 && name.Length==0);
+    assert(!steam_setup_ascii_equal(cls,name.Length/2,"#32770")); /* Build 16's old test rejects a real dialog */
+    assert(steam_setup_class(2,"#32770") && steam_setup_class(3,"Button"));
     struct steam_setup_state state={0};
     const uint16_t zh_next[]={0x4e0b,0x4e00,0x6b65,'(','&','N',')','>'};
     const uint16_t zh_install[]={0x5b89,0x88c5,'(','&','I',')'};
@@ -123,7 +147,7 @@ int main(void) {
     assert(!child_extra_args("steam.exe -cef-disable-gpu",wide("C:\\other.exe"),12));
     puts("PASS: existing child argument rule selects steam.exe for installer/updater restarts, not unrelated executables");
 }
-'''.replace('/* CHILD_RULES */','\n'.join(rules))
+'''.replace('/* CHILD_RULES */','\n'.join(rules)).replace('/* REAL_CLASS_READER */',class_reader)
 with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
     file=Path(tmp)/'check.c';file.write_text(program)
     binary=Path(tmp)/'check'

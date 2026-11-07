@@ -23,15 +23,18 @@ static int steam_setup_class( HWND hwnd, const char *name )
 {
     WCHAR text[32];
     UNICODE_STRING value = { .Buffer = text, .MaximumLength = sizeof(text) };
-    return NtUserGetClassName( hwnd, FALSE, &value ) > 0 &&
-        steam_setup_ascii_equal( text, value.Length / sizeof(WCHAR), name );
+    /* NtUserGetClassName returns a WCHAR count; it does not set Length. */
+    int length = NtUserGetClassName( hwnd, FALSE, &value );
+    return length > 0 && steam_setup_ascii_equal( text, length, name );
 }
 
 static void ios_steam_installer_poll(void)
 {
     static __thread struct steam_setup_state state;
-    static __thread unsigned calls, failures, manual_note;
+    static __thread unsigned calls, failures, manual_note, announced;
     static __thread uint64_t next_poll;
+    static __thread HWND noted_dialog, noted_page, noted_button;
+    static __thread int noted_role = -1, noted_ready = -1, noted_directory = -1;
     HWND windows[32], children[128];
     ULONG count, i;
     uint64_t now;
@@ -46,6 +49,10 @@ static void ios_steam_installer_poll(void)
     if (!params || !params->ImagePathName.Buffer ||
         !steam_setup_ascii_equal( params->ImagePathName.Buffer, params->ImagePathName.Length / sizeof(WCHAR),
                                  "c:\\madeira\\installers\\steamsetup.exe" )) return;
+    if (!announced) {
+        announced = 1;
+        dprintf(2, "[steam-autoinstall] enabled on installer GUI thread %04x\n", (unsigned)GetCurrentThreadId());
+    }
     count = ARRAY_SIZE(windows);
     if (NtUserBuildHwndList( 0, 0, FALSE, TRUE, GetCurrentThreadId(), count, windows, &count )) return;
     for (i = 0; i + 1 < count && i < ARRAY_SIZE(windows); i++) {
@@ -75,6 +82,13 @@ static void ios_steam_installer_poll(void)
         ready = button && page && pages == 1 && NtUserIsWindowEnabled( button );
         label_length = button ? NtUserInternalGetWindowText( button, label, ARRAY_SIZE(label) ) : 0;
         role = steam_setup_role( (const uint16_t *)label, label_length > 0 ? (size_t)label_length : 0 );
+        if (noted_dialog != dialog || noted_page != page || noted_button != button || noted_role != (int)role ||
+            noted_ready != ready || noted_directory != directory_ok) {
+            dprintf(2, "[steam-autoinstall] observed dialog=%p page=%p pages=%u button=%p role=%d ready=%d directory=%d\n",
+                    (void *)dialog, (void *)page, pages, (void *)button, (int)role, ready, directory_ok);
+            noted_dialog = dialog; noted_page = page; noted_button = button; noted_role = role;
+            noted_ready = ready; noted_directory = directory_ok;
+        }
         action = steam_setup_observe( &state, (uintptr_t)page, role, ready, directory_ok, now );
         if (!action) {
             if (ready && !manual_note && (role == STEAM_SETUP_NONE || (role == STEAM_SETUP_INSTALL && !directory_ok))) {

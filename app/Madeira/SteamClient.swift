@@ -65,6 +65,8 @@ enum SteamClient {
         if getenv("MADEIRA_STEAM_AUTOINSTALL") == nil {
             setenv("MADEIRA_STEAM_AUTOINSTALL", entry.id == installerID ? "1" : "0", 1)
         }
+        let automation = getenv("MADEIRA_STEAM_AUTOINSTALL").map { String(cString: $0) } ?? "unset"
+        LogStore.shared.log("[steam-autoinstall] configured=" + automation)
     }
 
     /// Called after the ordinary session/JIT checks, before executable validation.
