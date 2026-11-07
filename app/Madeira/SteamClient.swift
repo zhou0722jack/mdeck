@@ -53,6 +53,20 @@ enum SteamClient {
         entry.startServices = false
     }
 
+    /// Native child spawning already supports an image-specific argument rule.
+    /// Installers and Steam's updater otherwise launch steam.exe without the
+    /// compatibility flags used by the home button. Respect explicit config.
+    static func configureSession(_ entry: LibraryEntry) {
+        guard owns(entry) else { return }
+        if getenv("MADEIRA_CHILD_ARGS") == nil {
+            setenv("MADEIRA_CHILD_ARGS", "steam.exe " + clientArguments, 1)
+            LogStore.shared.log("[steam-installer] Steam child/restart compatibility arguments enabled")
+        }
+        if getenv("MADEIRA_STEAM_AUTOINSTALL") == nil {
+            setenv("MADEIRA_STEAM_AUTOINSTALL", entry.id == installerID ? "1" : "0", 1)
+        }
+    }
+
     /// Called after the ordinary session/JIT checks, before executable validation.
     static func prepare(_ entry: LibraryEntry) throws {
         guard owns(entry) else { return }
@@ -106,7 +120,7 @@ struct SteamClientView: View {
                         Label("Run Steam installer", systemImage: "shippingbox")
                     }
                 } footer: {
-                    Text("The official Windows installer is included. It needs an internet connection to download the Steam client. Complete installation in the Wine desktop, keeping the suggested folder, then return here to start Steam.")
+                    Text("The official installer is included. Setup automatically selects Next twice, Install, then Finish when the expected pages appear. Keep the suggested folder. Unknown pages remain available for manual input.")
                 }
                 Section {
                     Text(SteamClient.windowsDirectory).font(.footnote.monospaced()).textSelection(.enabled)

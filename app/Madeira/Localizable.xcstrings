@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The official installer is included. Setup automatically selects Next twice, Install, then Finish when the expected pages appear. Keep the suggested folder. Unknown pages remain available for manual input.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已内置官方安装程序。识别到对应页面后，会自动选择两次“下一步”，然后点击“安装”和“完成”。请保留建议的安装目录；无法识别的页面仍可手动操作。"
+          }
+        }
+      }
+    },
     "JIT activity": {
       "extractionState": "manual",
       "localizations": {

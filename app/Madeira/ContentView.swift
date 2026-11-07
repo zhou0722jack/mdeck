@@ -2845,6 +2845,7 @@ struct ContentView: View {
                 // game's LibraryPrefs switches before, on the main thread (Game details
                 // writes those). Either one turns a switch on.
                 Self.reassertBCDSwitches(profile)
+                SteamClient.configureSession(profile)
                 logStore.log("[launch-route] library profile applied")
                 // madeira-bcd: a Dock session of one-time installs runs without the game's
                 // address-space holds, which leave its 32-bit setups no room.

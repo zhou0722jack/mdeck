@@ -989,6 +989,8 @@ static void ios_tiny_window_poll(void)
     }
 }
 
+#include "steam_installer_ios.h"
+
 /* pProcessEvents: runs on every message poll of a wine thread (message_ios.c
  * process_driver_events), so a window's own thread gets here right after it
  * was shown. */
@@ -997,6 +999,7 @@ static BOOL winios_drv_process_events( DWORD mask )
     if (ios_show_foreground) ios_apply_fullscreen_foreground();
     ios_foreground_if_none( "a message poll" );
     ios_tiny_window_poll();
+    ios_steam_installer_poll();
     return winios_pProcessEvents ? winios_pProcessEvents( mask ) : FALSE;
 }
 
