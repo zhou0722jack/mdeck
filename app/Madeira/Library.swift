@@ -1761,6 +1761,11 @@ final class LibraryModel: ObservableObject {
             let steamLoading = DeckSteamLaunchPreparation.shared
             guard let entry = activeEntry, SteamClient.owns(entry), steamLoading.presented else { return false }
             steamLoading.observe(DeckSteamNativeFrames.snapshot())
+            if steamLoading.phase == .revealing && launching {
+                // Expose the actual Steam surface while the topmost loading
+                // layer is still present and fading, never after removing it.
+                showGameView(reason: "steam-target-first-frame")
+            }
             if !steamLoading.presented {
                 DeckSteamNativeFrames.end()
                 showGameView(reason: "steam-target-first-frame")
@@ -3354,6 +3359,7 @@ struct LibraryView: View {
     @Environment(\.deckPalette) private var palette
     @ObservedObject private var appearance = DeckAppearance.shared
     @State private var deckDestination: DeckDestination = .steam
+    @State private var deckHomeCovers: [Image] = []
     @State private var deckSettingsPage: DeckSettingsRoute?
     @State private var deckWorkshop = false
     @State private var deckSettingFocus: SettingsPages.Page?
@@ -4046,33 +4052,27 @@ private extension LibraryView {
 
     var deckSteamHome: some View {
         GeometryReader { geometry in
+            let signal = appearance.theme == "graphite" ? Color(red: 61 / 255, green: 220 / 255, blue: 132 / 255) : palette.accent
             ZStack(alignment: .bottomLeading) {
                 palette.background
-                HStack(spacing: 14) {
-                    ForEach(Array(model.entries.filter { $0.desktop != true }.prefix(6))) { entry in
-                        LibraryArtwork(entry: entry)
-                            .frame(width: max(130, geometry.size.width / 5), height: geometry.size.height * 0.85)
-                            .clipShape(RoundedRectangle(cornerRadius: 14))
-                    }
-                }
-                .rotationEffect(.degrees(12)).offset(x: geometry.size.width * 0.35, y: -25)
-                .opacity(0.62).allowsHitTesting(false)
-                LinearGradient(colors: [palette.background, palette.background.opacity(0.86), .clear], startPoint: .leading, endPoint: .trailing)
-                LinearGradient(colors: [.clear, palette.background], startPoint: .top, endPoint: .bottom)
+                DeckSteamHomeBackground(covers: deckHomeCovers, enabled: appearance.animations,
+                                        ink: palette.text, signal: signal, background: palette.background)
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(spacing: 12) {
-                        DeckMark().frame(width: 48, height: 48)
+                        DeckSteamLogo(progress: 0, ink: palette.text, signal: signal).frame(width: 48, height: 48)
                         Text("mdeck").font(.system(size: 40, weight: .bold, design: .rounded))
-                    }
+                    }.modifier(DeckHomeRise(index: 0, enabled: appearance.animations))
                     Spacer(minLength: 40)
-                    deckSteamActions
-                    AppEntryJITStatus()
+                    deckSteamActions.modifier(DeckHomeRise(index: 1, enabled: appearance.animations))
+                    AppEntryJITStatus().modifier(DeckHomeRise(index: 2, enabled: appearance.animations))
                     if !SteamClient.installed {
                         Text("Steam will open its installer on the first launch.")
                             .font(.footnote).foregroundStyle(palette.muted)
+                            .modifier(DeckHomeRise(index: 3, enabled: appearance.animations))
                     }
                 }.padding(28)
             }.clipped()
+                .task { deckHomeCovers = DeckSteamLocalCovers.images() }
         }
     }
 

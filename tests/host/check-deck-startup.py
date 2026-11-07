@@ -127,6 +127,7 @@ import Foundation
         let began = Date()
         precondition(launch.sessionStarted(UUID(), at: began))
         precondition(launch.phase == .waitingForFrame && launch.presented && !launch.permitsLaunch(token))
+        launch.waitingStageShown(at: began)
         for invalid in [
             frame("C:\\windows\\explorer.exe"), frame("C:\\windows\\system32\\conhost.exe"),
             frame("C:\\Program Files (x86)\\Steam\\steam.exe"), frame("C:\\other\\steam.exe"),
@@ -139,8 +140,16 @@ import Foundation
         launch.observe([], at: began.addingTimeInterval(121))
         precondition(launch.presented && launch.phase == .waitingForFrame && launch.slow)
         launch.observe([frame()], at: began.addingTimeInterval(130))
+        precondition(launch.presented && launch.phase == .waitingForFrame)
+        launch.observe([frame()], at: began.addingTimeInterval(131))
+        precondition(launch.presented && launch.phase == .revealing)
+        launch.observe([], at: began.addingTimeInterval(200))
+        precondition(launch.presented && launch.phase == .revealing)
+        launch.completeReveal(UUID())
+        precondition(launch.presented)
+        launch.completeReveal(launch.revealID!)
         precondition(!launch.presented && launch.phase == .idle)
-        print("PASS: one continuous layer survives download/start/long wait and closes only on the target's visible image")
+        print("PASS: the layer survives long waits, reveals the actual target, and closes only after its fade completes")
         print("PASS: desktop, console, Dock's other Steam, unknown/hidden/undrawn/tiny and game windows cannot close it")
 
         precondition(DeckSteamFrameRules.accepts(frame("\\??\\C:\\PROGRAM FILES\\STEAM CLIENT\\STEAM.EXE"),
@@ -228,6 +237,30 @@ import Foundation
         await wait(preparation)
         precondition(StartupFixture.calls == [.gecko])
         print("PASS: cached components still use the animation, explicit close completes safely, and missing files recheck")
+
+        let fast = Date()
+        precondition(launch.sessionStarted(UUID(), at: fast))
+        launch.observe([frame()], at: fast.addingTimeInterval(10))
+        precondition(launch.phase == .waitingForFrame)
+        // JIT suspended rendering for ten seconds; count visible waiting time
+        // from the view's arrival, not from sessionStarted.
+        launch.waitingStageShown(at: fast.addingTimeInterval(10))
+        launch.observe([frame()], at: fast.addingTimeInterval(10.1))
+        precondition(launch.phase == .waitingForFrame)
+        launch.waitingStageShown(at: fast.addingTimeInterval(10.5))
+        launch.observe([frame(drawn: false)], at: fast.addingTimeInterval(11))
+        precondition(launch.phase == .waitingForFrame)
+        launch.observe([frame()], at: fast.addingTimeInterval(11))
+        precondition(launch.phase == .revealing && launch.presented)
+        let staleReveal = launch.revealID!
+        launch.sessionEnded("Steam exited during fade")
+        launch.completeReveal(staleReveal)
+        precondition(launch.presented && launch.phase == .failed)
+        launch.returnToLibrary()
+        launch.request(target: target, installer: false) { _ in }
+        launch.completeReveal(staleReveal)
+        precondition(launch.presented && launch.phase == .components)
+        print("PASS: fast frames cannot skip the visible waiting stage; interrupted and stale fades cannot dismiss another state")
     }
 }
 '''

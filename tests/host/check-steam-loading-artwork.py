@@ -16,7 +16,13 @@ APP = ROOT / 'app/Madeira'
 source = APP / 'DeckSteamLoading.swift'
 manifest = json.loads((ROOT / 'docs/droiddeck-steam-loading.json').read_text())
 assert manifest['commit'] == '18c7d56409de4cf3b63b1b09e60e0fe97a633a7d'
-assert len(manifest['sources']) == 3 and manifest['logoLoopSeconds'] == 1.9
+assert len(manifest['sources']) == 6 and manifest['logoLoopSeconds'] == 1.9
+art = source.read_text()
+assert '@Environment(\\.scenePhase)' not in art
+for token in ['UIApplication.shared.applicationState', 'UIApplication.didBecomeActiveNotification',
+              'UIApplication.willResignActiveNotification', 'paused: !activity.active', 'DeckSteamHomeBackground',
+              'DeckSteamHomeMark', 'DeckSteamHomeFan', 'DeckHomeRise']:
+    assert token in art, token
 project = (ROOT / 'app/Madeira.xcodeproj/project.pbxproj').read_text()
 assert project.count('/* DeckSteamLoading.swift in Sources */') == 2
 native = (APP / 'Winios/Winios.m').read_text()
@@ -30,6 +36,11 @@ assert 'metal' not in predicate and 'g_surface_present_count' not in predicate
 library = (APP / 'Library.swift').read_text()
 assert 'drawn: winios_window_has_visible_frame(window.hwnd) != 0' in library
 assert 'steamLoading.observe(DeckSteamNativeFrames.snapshot())' in library
+reveal = library.index('if steamLoading.phase == .revealing && launching')
+assert library.index('showGameView(reason: "steam-target-first-frame")', reveal) < library.index('if !steamLoading.presented', reveal)
+startup = (APP / 'DeckStartup.swift').read_text()
+assert '.opacity(layerOpacity)' in startup and 'completionCriteria: .removed' in startup
+assert 'launch.completeReveal(id)' in startup and '.task(id: launch.phase)' in startup
 content = (APP / 'ContentView.swift').read_text()
 assert 'if steamLoading.presented && !steamJIT.showSetup' in content
 assert 'return JITCoordinator.shared.showSetup ? nil : super.hitTest(point, with: event)' in content
@@ -38,7 +49,7 @@ assert 'if let steamRequest, !steamPreparation.permitsLaunch(steamRequest)' in c
 main = r'''
 import SwiftUI
 import AppKit
-enum DeckSteamLaunchPreparation { enum Phase { case idle, components, starting, waitingForFrame, failed } }
+enum DeckSteamLaunchPreparation { enum Phase { case idle, components, starting, waitingForFrame, revealing, failed } }
 enum ReviewStrings {
     static let values: [String:String] = {
         guard CommandLine.arguments.count > 2,
@@ -55,6 +66,13 @@ enum ReviewStrings {
 func L(_ key: String) -> String { ReviewStrings.values[key] ?? key }
 @main struct Check {
     @MainActor static func main() throws {
+        let activity = DeckMotionActivity.shared
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        precondition(activity.active)
+        NotificationCenter.default.post(name: NSApplication.willResignActiveNotification, object: nil)
+        precondition(!activity.active)
+        NotificationCenter.default.post(name: NSApplication.didBecomeActiveNotification, object: nil)
+        precondition(activity.active)
         var rows: [[Double]] = []
         for i in 0...100 {
             let p = Double(i) / 100, m = DeckSteamLogoGeometry.motion(p)
@@ -65,7 +83,18 @@ func L(_ key: String) -> String { ReviewStrings.values[key] ?? key }
             }
             rows.append([p,m.bend,m.turn,m.ballScale])
         }
-        print(String(data: try JSONSerialization.data(withJSONObject: rows), encoding: .utf8)!)
+        var home: [[Double]] = []
+        for i in 0...360 {
+            let t = Double(i) / 100, m = DeckHomeMotion.mark(intro: t, ball: t)
+            home.append([t, m.fill, m.trace, m.shown, m.pop, m.rise, m.turn, m.squashX, m.squashY, m.ripple])
+        }
+        for i in 0..<3 {
+            let duration = [9.0,11,13][i]
+            precondition(abs(DeckHomeMotion.fan(0,index:i)) < 0.001)
+            precondition(abs(DeckHomeMotion.fan(duration,index:i) - 1) < 0.001)
+            precondition(abs(DeckHomeMotion.fan(duration*2,index:i)) < 0.001)
+        }
+        print(String(data: try JSONSerialization.data(withJSONObject: ["logo":rows,"home":home]), encoding: .utf8)!)
         if CommandLine.arguments.count > 1 {
             let dir = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
             for (name, phase) in [("components",DeckSteamLaunchPreparation.Phase.components),
@@ -90,6 +119,7 @@ func L(_ key: String) -> String { ReviewStrings.values[key] ?? key }
                 }
                 try data.write(to: dir.appendingPathComponent(name + ".png"))
             }
+            var logoFrames = Set<Data>()
             for (index,p) in [0.0,0.18,0.5,0.82].enumerated() {
                 let renderer = ImageRenderer(content: DeckSteamLogo(progress:p).padding(40)
                     .frame(width:320,height:320).background(.black))
@@ -98,7 +128,23 @@ func L(_ key: String) -> String { ReviewStrings.values[key] ?? key }
                     preconditionFailure("logo snapshot failed")
                 }
                 try data.write(to:dir.appendingPathComponent("logo-\(index).png"))
+                logoFrames.insert(data)
             }
+            precondition(logoFrames.count == 4, "logo must change across native rendered frames")
+            var homeFrames = Set<Data>()
+            for (index,t) in [0.2,0.8,1.65,2.35,3.6].enumerated() {
+                let view = DeckSteamHomeMark(elapsed:t,ball:t,still:false,ink:.white,
+                    signal:Color(red:61/255,green:220/255,blue:132/255)).frame(width:960,height:640)
+                    .background(Color(red:10/255,green:11/255,blue:14/255))
+                let renderer = ImageRenderer(content:view)
+                guard let image=renderer.cgImage,
+                      let data=NSBitmapImageRep(cgImage:image).representation(using:.png,properties:[:]) else {
+                    preconditionFailure("home motion snapshot failed")
+                }
+                homeFrames.insert(data)
+                try data.write(to:dir.appendingPathComponent("home-\(index).png"))
+            }
+            precondition(homeFrames.count == 5, "trace, coin flip and impact must render distinct images")
         }
     }
 }
@@ -142,9 +188,24 @@ with tempfile.TemporaryDirectory(prefix='mdeck-loading-art-') as directory:
         command.append(str(APP / 'Localizable.xcstrings'))
     result = subprocess.run(command,check=True,capture_output=True,text=True)
     rows = json.loads(result.stdout)
-    for p,bend,turn,scale in rows:
+    for p,bend,turn,scale in rows['logo']:
         expected = upstream_motion(p)
         assert all(math.isclose(a,b,abs_tol=0.0001) for a,b in zip((bend,turn,scale),expected)),(p,expected)
+    def bezier(p,x1,y1,x2,y2):
+        p=min(1,max(0,p)); lo,hi=0.,1.
+        for _ in range(60):
+            t=(lo+hi)/2
+            if 3*(1-t)**2*t*x1+3*(1-t)*t*t*x2+t**3 < p: lo=t
+            else: hi=t
+        return 3*(1-t)**2*t*y1+3*(1-t)*t*t*y2+t**3
+    out=lambda p:bezier(p,0,0,.58,1)
+    for t,fill,trace,shown,pop,rise,turn,sx,sy,ripple in rows['home']:
+        assert math.isclose(fill,out((t-.45)/.45),abs_tol=1e-5)
+        assert math.isclose(trace,bezier(t/.775,.45,0,.25,1),abs_tol=1e-5)
+        assert math.isclose(shown,out((t-.65)/.3),abs_tol=1e-5)
+        assert math.isclose(turn,720*bezier((t-1.29)/.76,.25,.7,.35,1),abs_tol=1e-4)
+        assert math.isclose(ripple,bezier((t-2.2)/1.25,.2,.6,.35,1),abs_tol=1e-5)
+        assert all(math.isfinite(v) for v in [pop,rise,sx,sy])
     # Type-check the actual UIKit predicate, without building the app or Wine.
     objc = tmp / 'Frame.m'
     objc.write_text('#import <UIKit/UIKit.h>\n#import <QuartzCore/QuartzCore.h>\n'
@@ -152,6 +213,8 @@ with tempfile.TemporaryDirectory(prefix='mdeck-loading-art-') as directory:
     subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios18.0','-fobjc-arc',
                     '-fsyntax-only','-Wall','-Wextra','-Werror',str(objc)],check=True)
 print('PASS: 101 animation samples match upstream bend/rotation/ball curves and finite original logo paths')
+print('PASS: actual application lifecycle notifications resume/pause the HUD clock independently of scenePhase')
+print('PASS: 361 home animation samples match upstream trace/fill/coin/ripple curves; all three fan periods reverse correctly')
 print('PASS: source attribution, Xcode source entry, target-window frame predicate and HUD/JIT interaction wiring')
 print('PASS: actual UIKit frame predicate typechecked; no global/desktop/allocated-swapchain frame shortcut')
 if args.render:

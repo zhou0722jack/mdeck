@@ -212,6 +212,7 @@ struct DeckButtonStyle: ButtonStyle {
     @Environment(\.deckPalette) private var palette
     @Environment(\.isEnabled) private var enabled
     @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var hovered = false
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -226,9 +227,13 @@ struct DeckButtonStyle: ButtonStyle {
                 }
             }
             .overlay(Capsule().stroke(primary ? Color.clear : palette.line, lineWidth: 1))
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .scaleEffect(reduced || !DeckAppearance.shared.animations ? 1 : configuration.isPressed ? 0.955 : hovered ? 1.02 : 1)
+            .shadow(color: primary ? palette.accent.opacity(hovered ? 0.26 : 0.12) : .clear,
+                    radius: hovered ? 14 : 6, y: hovered ? 5 : 2)
             .opacity(enabled ? 1 : 0.42)
-            .animation(reduced || !DeckAppearance.shared.animations ? nil : .easeOut(duration: 0.15), value: configuration.isPressed)
+            .onHover { hovered = $0 }
+            .animation(reduced || !DeckAppearance.shared.animations ? nil : .spring(response: 0.32, dampingFraction: 0.5), value: configuration.isPressed)
+            .animation(reduced || !DeckAppearance.shared.animations ? nil : .easeOut(duration: 0.3), value: hovered)
     }
 }
 

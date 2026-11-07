@@ -1,0 +1,1376 @@
+{
+  "repository": "https://github.com/Droid-Deck/DroidDeck",
+  "commit": "18c7d56409de4cf3b63b1b09e60e0fe97a633a7d",
+  "scannedUiKotlinFiles": 202,
+  "filesWithAnimationOrFrameScheduling": 43,
+  "scope": "Source inventory, including frame scheduling used for focus/layout. Not a claim that every candidate is visual animation or has been ported.",
+  "files": [
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/AchievementNotificationOverlay.kt",
+      "sha256": "545f497889def12c40e72e6a40fa0f9ddbc681a7257b2af30bc79c1f2946fd4e",
+      "primitives": [
+        "AnimatedVisibility"
+      ],
+      "timingReferences": [
+        {
+          "line": 58,
+          "source": "visible, enter = fadeIn(Motion.tw(220)) + slideInVertically(Motion.tw(300)) { it / 2 },"
+        },
+        {
+          "line": 59,
+          "source": "exit = fadeOut(Motion.tw(180)) + slideOutVertically(Motion.tw(220)) { it / 3 },"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/AddAppDialog.kt",
+      "sha256": "5748bcc4faf93498668d1c0a291d09ff10b518b3aaa5cc04ef69bee490c1ff4f",
+      "primitives": [
+        "AnimatedContent",
+        "AnimatedVisibility",
+        "animateFloatAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 182,
+          "source": "(fadeIn(Motion.tw(260, 60)) + slideInHorizontally(Motion.tw(320, 60)) { dir * it / 12 })"
+        },
+        {
+          "line": 183,
+          "source": ".togetherWith(fadeOut(Motion.tw(140)) + slideOutHorizontally(Motion.tw(140)) { -dir * it / 16 })"
+        },
+        {
+          "line": 325,
+          "source": "enter = fadeIn(Motion.tw(180)) + scaleIn(Motion.sp(0.7f), initialScale = 0.94f),"
+        },
+        {
+          "line": 326,
+          "source": "exit = fadeOut(Motion.tw(140)) + scaleOut(Motion.tw(140), targetScale = 0.96f),"
+        },
+        {
+          "line": 463,
+          "source": "AnimatedContent(icon, transitionSpec = { (fadeIn(Motion.tw(260)) + scaleIn(Motion.sp(0.6f), 0.85f)) togetherWith fadeOut(Motion.tw(160)) }, label = \"appIcon\") { model ->"
+        },
+        {
+          "line": 482,
+          "source": "AnimatedVisibility(clear != null, enter = fadeIn(Motion.tw(180)) + expandHorizontally(Motion.tw(220)), exit = fadeOut(Motion.tw(120)) + shrinkHorizontally(Motion.tw(180))) {"
+        },
+        {
+          "line": 511,
+          "source": "val scale by animateFloatAsState(if (hot || selected) 1.06f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"suggestScale\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/AndroidAppsPage.kt",
+      "sha256": "7058c1bc73374575c01c01224acc2fb4674b4cb97612a5889fc3683825f75574",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateFloatAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 366,
+          "source": "folder != null, enter = fadeIn(Motion.tw(180)), exit = fadeOut(Motion.tw(160)),"
+        },
+        {
+          "line": 379,
+          "source": "picking, enter = fadeIn(Motion.tw(180)), exit = fadeOut(Motion.tw(160)),"
+        },
+        {
+          "line": 538,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.95f else if (hot) 1.04f else 1f, Motion.sp(0.55f, Spring.StiffnessMedium), label = \"appScale\")"
+        },
+        {
+          "line": 766,
+          "source": "AnimatedVisibility(shown, enter = scaleIn(Motion.sp(0.75f), initialScale = 0.92f) + fadeIn(Motion.tw(160)), exit = scaleOut(Motion.tw(140)) + fadeOut(Motion.tw(140))) {"
+        },
+        {
+          "line": 964,
+          "source": "AnimatedVisibility(shown, enter = scaleIn(Motion.sp(0.75f), initialScale = 0.92f) + fadeIn(Motion.tw(160))) {"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/CardDetailHost.kt",
+      "sha256": "e4a297140e65bd921c6997c3c13d9fdefdacaee3b8425543eedb4428e02085b7",
+      "primitives": [
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 102,
+          "source": "val gridScale by animateFloatAsState(if (covering) 0.95f else 1f, if (covering) Motion.tw(480) else Motion.tw(460, 40), label = \"gridSink\")"
+        },
+        {
+          "line": 103,
+          "source": "val gridAlpha by animateFloatAsState(if (covering) 0f else 1f, if (covering) Motion.tw(320, 80) else Motion.tw(300, 100), label = \"gridFade\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/ColorPickerDialog.kt",
+      "sha256": "c88cb80d62f6b49eb40fadcda38dbfd395f82062eab313718e0efffadbd7f6cb",
+      "primitives": [
+        "animateScrollTo"
+      ],
+      "timingReferences": []
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/ComponentsPage.kt",
+      "sha256": "9cf92c4f0a22736e4e57e14a7fcd1b809ec827b4f17f3d1efa5ae315c0f2e4ee",
+      "primitives": [
+        "AnimatedContent"
+      ],
+      "timingReferences": [
+        {
+          "line": 672,
+          "source": "AnimatedContent(l, transitionSpec = { fadeIn(Motion.tw(240)) togetherWith fadeOut(Motion.tw(160)) }, label = \"inUse\") { k -> bar(k) }"
+        },
+        {
+          "line": 687,
+          "source": "(slideInVertically(Motion.tw(240)) { shift * d } + fadeIn(Motion.tw(240)))"
+        },
+        {
+          "line": 688,
+          "source": ".togetherWith(slideOutVertically(Motion.tw(240)) { -shift * d } + fadeOut(Motion.tw(240)))"
+        },
+        {
+          "line": 1071,
+          "source": "transitionSpec = { (slideInVertically(Motion.tw(260)) { it / 2 } + fadeIn(Motion.tw(260))) togetherWith (slideOutVertically(Motion.tw(160)) { -it / 2 } + fadeOut(Motion.tw(160))) },"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/DesktopPage.kt",
+      "sha256": "e764c02b9bdd66d2b639a326ca7ac6716582928f661068d5bae1b21c83549192",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 200,
+          "source": "AnimatedVisibility(state, enter = expandHorizontally(Motion.sp(0.75f)) + fadeIn(Motion.tw(300, 80))) {"
+        },
+        {
+          "line": 263,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.95f else if (hot) 1.04f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"heroIcon\")"
+        },
+        {
+          "line": 300,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.96f else if (hot) 1.03f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"deskCard\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/DropSheet.kt",
+      "sha256": "8fd4eae65b2680a59467a0f60b3fec19707aaa5ffb1ada4f581c011ba91b5bee",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedContent",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 171,
+          "source": "launch { lift.animateTo(to, Motion.sp(if (opens) 0.7f else 1f, 380f)) }"
+        },
+        {
+          "line": 172,
+          "source": "launch { ride.animateTo(to, Motion.sp(if (opens) 0.7f else 0.55f, if (opens) 380f else 300f)) }"
+        },
+        {
+          "line": 173,
+          "source": "launch { sink.animateTo(to, Motion.tw(220)) }"
+        },
+        {
+          "line": 174,
+          "source": "pieces.forEachIndexed { i, piece -> launch { if (opens) delay(Motion.ms(i * 35).toLong()); piece.animateTo(to, Motion.tw(if (opens) 200 else 90)) } }"
+        },
+        {
+          "line": 236,
+          "source": "launch { state.pull.animateTo(24f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 237,
+          "source": "launch { state.sink.animateTo(1f, Motion.tw(260)) }"
+        },
+        {
+          "line": 240,
+          "source": "launch { state.lipGone.animateTo(1f, Motion.tw(140)) }"
+        },
+        {
+          "line": 241,
+          "source": "launch { state.pull.animateTo(0f, Motion.sp(1f, 500f)) }"
+        },
+        {
+          "line": 242,
+          "source": "launch { state.lift.animateTo(1f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 243,
+          "source": "launch { state.ride.animateTo(1f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 244,
+          "source": "launch { state.hot.snapTo(1f); delay(Motion.ms(100).toLong()); state.hot.animateTo(0f, Motion.tw(200)) }"
+        },
+        {
+          "line": 246,
+          "source": "state.pieces.forEachIndexed { i, p -> launch { delay(Motion.ms(120 + 260 + i * 55).toLong()); p.animateTo(1f, Motion.tw(220)) } }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/EmptyLibrary.kt",
+      "sha256": "23e6c81f95b7b4e5339d9b591e263a69036bff61a5b8cce49245e9eba2cb5a57",
+      "primitives": [
+        "withFrameMillis"
+      ],
+      "timingReferences": [
+        {
+          "line": 58,
+          "source": "private const val TRACE_MS = 1250f"
+        },
+        {
+          "line": 61,
+          "source": "private const val IMPACT = 2200f"
+        },
+        {
+          "line": 62,
+          "source": "private const val RIPPLE_MS = 1250f"
+        },
+        {
+          "line": 63,
+          "source": "private const val HIT_MS = 900f"
+        },
+        {
+          "line": 64,
+          "source": "private const val END = 3600f"
+        },
+        {
+          "line": 65,
+          "source": "private const val POKE = 880f"
+        },
+        {
+          "line": 66,
+          "source": "private const val DRIFT_MS = 75_000f"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FocusGlide.kt",
+      "sha256": "3f99d37717bb6dceb6cd8006721dc5cf6f1322c99106ea1c4311c00e52aa03d9",
+      "primitives": [
+        ".animateTo(",
+        "animateColorAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 152,
+          "source": "private const val SETTLE_MS = 450L"
+        },
+        {
+          "line": 153,
+          "source": "private const val STILL_MS = 120L"
+        },
+        {
+          "line": 154,
+          "source": "private const val TRACK_MAX_MS = 2_000L"
+        },
+        {
+          "line": 158,
+          "source": "private const val REPEAT_MS = 180L"
+        },
+        {
+          "line": 205,
+          "source": "val color by animateColorAsState(cur?.color ?: lastColor, Motion.tw(160), label = \"glideColor\")"
+        },
+        {
+          "line": 221,
+          "source": "jobs[6] = scope.launch { solid.animateTo(0f, Motion.tw(120)) }"
+        },
+        {
+          "line": 268,
+          "source": "launch { solid.animateTo(1f, Motion.tw(80)) }"
+        },
+        {
+          "line": 269,
+          "source": "launch { corner.animateTo(r, Motion.tw(90)) }"
+        },
+        {
+          "line": 270,
+          "source": "dot(here).forEachIndexed { i, v -> launch { edges[i].animateTo(v, Motion.tw(90)) } }"
+        },
+        {
+          "line": 275,
+          "source": "val flight = launch { p.animateTo(1f, Motion.tw(travel, easing = FastOutSlowInEasing)) }"
+        },
+        {
+          "line": 283,
+          "source": "launch { solid.animateTo(0f, Motion.tw(150)) }"
+        },
+        {
+          "line": 284,
+          "source": "launch { corner.animateTo(endCorner, Motion.sp(0.8f, 600f)) }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndArt.kt",
+      "sha256": "4f3a1bad2d33f0a0d9f982f95d22556a18d237aec09656c64d414e08d54c81c7",
+      "primitives": [
+        ".animateTo(",
+        "animateColorAsState",
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 82,
+          "source": "LaunchedEffect(Unit) { t.animateTo(1f, Motion.sp(0.6f, Spring.StiffnessLow)) }"
+        },
+        {
+          "line": 123,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.97f else if (hot) 1.04f else 1f, Motion.sp(0.55f, Spring.StiffnessMedium), label = \"tileScale\")"
+        },
+        {
+          "line": 124,
+          "source": "val lift by animateFloatAsState(if (hot) -5f else 0f, Motion.sp(0.6f), label = \"tileLift\")"
+        },
+        {
+          "line": 125,
+          "source": "val elev by animateFloatAsState(if (hot) 18f else 2f, Motion.tw(300), label = \"tileElev\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndContent.kt",
+      "sha256": "f8167690f4ea6527ea761f523474eb44434bf7e0806be4254ac3af19965e41ff",
+      "primitives": [
+        "AnimatedContent",
+        "animateFloat",
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 153,
+          "source": "swipe != 0 -> (fadeIn(Motion.tw(260, 40)) + slideInHorizontally(Motion.tw(360)) { it * swipe / 8 })"
+        },
+        {
+          "line": 154,
+          "source": ".togetherWith(fadeOut(Motion.tw(160)) + slideOutHorizontally(Motion.tw(220)) { -it * swipe / 8 })"
+        },
+        {
+          "line": 156,
+          "source": "targetState in origins -> (fadeIn(Motion.tw(120)))"
+        },
+        {
+          "line": 157,
+          "source": ".togetherWith(fadeOut(Motion.tw(320, 80)) + scaleOut(Motion.tw(480), targetScale = 0.95f))"
+        },
+        {
+          "line": 160,
+          "source": "(fadeIn(Motion.tw(300, 100)) + scaleIn(Motion.tw(460, 40), initialScale = 0.95f))"
+        },
+        {
+          "line": 163,
+          "source": "initialState in origins -> (fadeIn(Motion.tw(300, 80)) + slideInVertically(Motion.tw(420, 80)) { it / 24 })"
+        },
+        {
+          "line": 164,
+          "source": ".togetherWith(fadeOut(Motion.tw(170)) + scaleOut(Motion.tw(170), targetScale = 0.95f))"
+        },
+        {
+          "line": 166,
+          "source": "else -> (fadeIn(Motion.tw(300, 80)) + slideInVertically(Motion.tw(420, 80)) { it / 24 })"
+        },
+        {
+          "line": 167,
+          "source": ".togetherWith(fadeOut(Motion.tw(170)) + slideOutVertically(Motion.tw(170)) { -it / 40 })"
+        },
+        {
+          "line": 176,
+          "source": "if (Hops.sinking == key) 1f else 0f, Motion.tw(260), label = \"hopSink\","
+        },
+        {
+          "line": 194,
+          "source": "transitionSpec = { if (targetState == EnterExitState.PostExit && drains) Motion.tw(PAGE_RETURN_MS) else snap() },"
+        },
+        {
+          "line": 212,
+          "source": "Crossfade(targetState = art, animationSpec = Motion.tw(700), label = \"backdrop\") { a ->"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndRail.kt",
+      "sha256": "6846cfc13c11c468a3082df2c7473148cfce022f4cf8405267b61585a080f037",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateColorAsState",
+        "animateFloat",
+        "animateFloatAsState",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 188,
+          "source": "enter = expandVertically(Motion.sp(0.75f)) + fadeIn(Motion.tw(300)),"
+        },
+        {
+          "line": 189,
+          "source": "exit = shrinkVertically(Motion.tw(220)) + fadeOut(Motion.tw(180)),"
+        },
+        {
+          "line": 250,
+          "source": "Motion.tw(220), label = \"railFg\","
+        },
+        {
+          "line": 254,
+          "source": "Motion.tw(220), label = \"railFill\","
+        },
+        {
+          "line": 256,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.95f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"railScale\")"
+        },
+        {
+          "line": 303,
+          "source": "val ringScale by pulse.animateFloat(0.4f, 1.6f, infiniteRepeatable(tween(1600, easing = Motion.Ease), RepeatMode.Restart), label = \"ring\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndScreen.kt",
+      "sha256": "9dd6bea4585504b2c51510381476a18ec1337e5fd0ecff58e97749ed891f559c",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedVisibility",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 314,
+          "source": "fun <T> tw(base: Int, delay: Int = 0, easing: Easing = Ease): FiniteAnimationSpec<T> = if (scale == 0f) snap() else tween(base, delay, easing)"
+        },
+        {
+          "line": 332,
+          "source": "enter = fadeIn(Motion.tw(450, i * 60)) + slideInVertically(Motion.tw(450, i * 60)) { it / 3 },"
+        },
+        {
+          "line": 333,
+          "source": "exit = fadeOut(Motion.tw(120)),"
+        },
+        {
+          "line": 341,
+          "source": "LaunchedEffect(trigger) { if (trigger) { x.snapTo(-1f); x.animateTo(1f, Motion.tw(800)) } }"
+        },
+        {
+          "line": 411,
+          "source": "private const val PAGE_EXIT_MS = 200"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndSetup.kt",
+      "sha256": "fb5eafbee91bf8f96398aa19efb0c8b59191fb430d0d2320d20f6cd50d28062b",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateColorAsState",
+        "animateFloatAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 356,
+          "source": "AnimatedVisibility(showLimitDetails, enter = expandVertically(Motion.sp(1f)) + fadeIn(Motion.sp(1f)), exit = shrinkVertically(Motion.sp(1f)) + fadeOut(Motion.sp(1f))) {"
+        },
+        {
+          "line": 703,
+          "source": "AnimatedVisibility(open, enter = expandVertically(Motion.sp(1f)) + fadeIn(Motion.sp(1f)), exit = shrinkVertically(Motion.sp(1f)) + fadeOut(Motion.sp(1f))) {"
+        },
+        {
+          "line": 982,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.97f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"cardScale\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndWidgets.kt",
+      "sha256": "76290a1f9bcbdf542f9f512550180ec171645b755d1906b2d56f48569a6979b2",
+      "primitives": [
+        ".animateTo(",
+        "animateColorAsState",
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 84,
+          "source": "LaunchedEffect(Unit) { rule.animateTo(1f, Motion.tw(600, 120)) }"
+        },
+        {
+          "line": 200,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.955f else if (hot) 1.02f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"btnScale\")"
+        },
+        {
+          "line": 201,
+          "source": "val lift by animateFloatAsState(if (hot) 14f else 6f, Motion.tw(300), label = \"btnLift\")"
+        },
+        {
+          "line": 273,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.955f else if (hot) 1.02f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"secScale\")"
+        },
+        {
+          "line": 275,
+          "source": "val fill by animateColorAsState(if (hot) pal.signal.copy(alpha = 0.14f) else Color.White.copy(alpha = if (pill) 0.09f else 0.03f), Motion.tw(250), label = \"secFill\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/GameDetail.kt",
+      "sha256": "d14a0e2f2bf736ea127beb5b95e01474050c60198c173fdef8c8b5ab46910c3f",
+      "primitives": [
+        "animateScrollBy",
+        "withFrameNanos"
+      ],
+      "timingReferences": []
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/GameEnvironmentEditor.kt",
+      "sha256": "8cc83214c1adb3819c20ccaf796f800b350038429660b2613e309103ba51ef64",
+      "primitives": [
+        "withFrameNanos"
+      ],
+      "timingReferences": []
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/GpuDriversPanel.kt",
+      "sha256": "3e96f7daf78a4116e01c3adfbe261c336602fd87af167c9c80ae53fa8f944e60",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateScrollTo"
+      ],
+      "timingReferences": [
+        {
+          "line": 216,
+          "source": "private const val STALE_MS = 6 * 3_600_000L"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/LaunchFlood.kt",
+      "sha256": "621ccde16894ed35c2230662a53566038b55671ae78b0241ff43c12751a1527d",
+      "primitives": [
+        ".animateTo("
+      ],
+      "timingReferences": [
+        {
+          "line": 194,
+          "source": "fade.animateTo(0f, Motion.tw(240, easing = FastOutSlowInEasing))"
+        },
+        {
+          "line": 229,
+          "source": "gather.animateTo(1f, Motion.tw(640, easing = Gather))"
+        },
+        {
+          "line": 256,
+          "source": "grow.animateTo(1f, Motion.tw(520, easing = Spread))"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/LibraryPage.kt",
+      "sha256": "d0e250924d933aad9d589e3d07b3feb61a5e2aad28655a623a674538b8db1521",
+      "primitives": [
+        "animateFloatAsState",
+        "animateScrollBy",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 516,
+          "source": "if (direction > 0 && delta > 0f || direction < 0 && delta < 0f) animateScrollBy(delta, tween(durationMillis = 160, easing = FastOutSlowInEasing))"
+        },
+        {
+          "line": 614,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.985f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"tileScale\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/LiftSheet.kt",
+      "sha256": "84a505d67496f5fcb4e45c8eb8faffb5d17bb191a62ed907f26805e31819544a",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedContent",
+        "animateFloat",
+        "rememberInfiniteTransition",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 270,
+          "source": "launch { pull.animateTo(24f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 271,
+          "source": "launch { sink.animateTo(1f, Motion.tw(260)) }"
+        },
+        {
+          "line": 274,
+          "source": "launch { lipGone.animateTo(1f, Motion.tw(140)) }"
+        },
+        {
+          "line": 275,
+          "source": "launch { pull.animateTo(0f, Motion.sp(1f, 500f)) }"
+        },
+        {
+          "line": 276,
+          "source": "launch { lift.animateTo(1f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 277,
+          "source": "launch { ride.animateTo(1f, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 278,
+          "source": "launch { hot.snapTo(1f); delay(Motion.ms(100).toLong()); hot.animateTo(0f, Motion.tw(200)) }"
+        },
+        {
+          "line": 280,
+          "source": "pieces.forEachIndexed { i, p -> launch { delay(Motion.ms(120 + 260 + i * 55).toLong()); p.animateTo(1f, Motion.tw(220)) } }"
+        },
+        {
+          "line": 292,
+          "source": "pieces.forEach { launch { it.animateTo(0f, Motion.tw(90)) } }"
+        },
+        {
+          "line": 293,
+          "source": "launch { delay(Motion.ms(60).toLong()); fold.animateTo(1f, Motion.sp(1f, 420f)) }"
+        },
+        {
+          "line": 294,
+          "source": "launch { delay(Motion.ms(160).toLong()); foldTop.animateTo(1f, Motion.sp(1f, 380f)) }"
+        },
+        {
+          "line": 302,
+          "source": "pieces.forEach { launch { it.animateTo(0f, Motion.tw(90)) } }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/PageFlood.kt",
+      "sha256": "8ad5c571cbe6b2379a8e92f6518074779d70c777ff3d8ed134c3edbf062405e4",
+      "primitives": [
+        ".animateTo("
+      ],
+      "timingReferences": [
+        {
+          "line": 77,
+          "source": "internal const val PAGE_RETURN_MS = 900"
+        },
+        {
+          "line": 113,
+          "source": "val runs = edges.map { launch { it.animateTo(1f, Motion.sp(0.85f, 320f)) } }"
+        },
+        {
+          "line": 115,
+          "source": "launch { shown.animateTo(1f, Motion.tw(240)) }"
+        },
+        {
+          "line": 116,
+          "source": "launch { delay(Motion.ms(140).toLong()); tile.animateTo(0f, Motion.tw(220)) }"
+        },
+        {
+          "line": 119,
+          "source": "launch { shown.animateTo(0f, Motion.tw(160)) }"
+        },
+        {
+          "line": 120,
+          "source": "tile.animateTo(1f, Motion.tw(120))"
+        },
+        {
+          "line": 121,
+          "source": "edges.map { launch { it.animateTo(0f, Motion.sp(0.9f, 320f)) } }.forEach { it.join() }"
+        },
+        {
+          "line": 122,
+          "source": "tile.animateTo(0f, Motion.tw(120))"
+        },
+        {
+          "line": 137,
+          "source": "edge.animateTo(1f, Motion.sp(0.5f, lerp(150f, 260f, lead)))"
+        },
+        {
+          "line": 141,
+          "source": "launch { tile.animateTo(0f, Motion.tw(360, 60)) }"
+        },
+        {
+          "line": 142,
+          "source": "shown.animateTo(1f, Motion.tw(320))"
+        },
+        {
+          "line": 145,
+          "source": "launch { shown.animateTo(0f, Motion.tw(140)) }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/PcKeyboard.kt",
+      "sha256": "889c2c55c48fa1ca401ad9441605c5e9ede2506dd140d6457e6f784637bdfe11",
+      "primitives": [
+        "animateColorAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 169,
+          "source": "}, Motion.tw(160), label = \"keyFill\","
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SessionLoading.kt",
+      "sha256": "1278f36d34aba04646169e2241c48e4a02ad416fa38c82d16652c3fe6f982a28",
+      "primitives": [
+        "animateFloat",
+        "rememberInfiniteTransition",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 256,
+          "source": ".animateFloat(-0.4f, 1f, infiniteRepeatable(tween(1300, easing = FastOutSlowInEasing)), label = \"run\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SessionOverlay.kt",
+      "sha256": "1a2453e1ca87ca27ff2948faf92684daf15f6b10458150618dad76241d0c2421",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedVisibility",
+        "animateColorAsState",
+        "animateFloatAsState",
+        "animateScrollTo",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 383,
+          "source": "val veil by animateFloatAsState(if (open) 1f else 0f, Motion.tw(260), label = \"veil\")"
+        },
+        {
+          "line": 468,
+          "source": "enter = if (docked) fadeIn(Motion.tw(160)) else slideInHorizontally(Motion.sp(0.8f, Spring.StiffnessLow)) { it } + fadeIn(Motion.tw(220)),"
+        },
+        {
+          "line": 469,
+          "source": "exit = if (docked) fadeOut(Motion.tw(140)) else slideOutHorizontally(Motion.tw(240)) { it } + fadeOut(Motion.tw(200)),"
+        },
+        {
+          "line": 927,
+          "source": "val fill by animateColorAsState(if (hot) colors.error.copy(alpha = 0.18f) else Color.Transparent, Motion.tw(220), label = \"dangerFill\")"
+        },
+        {
+          "line": 1005,
+          "source": "val tint by animateColorAsState(if (selected) colors.onBackground else colors.onSurfaceVariant, Motion.tw(340, easing = FastOutSlowInEasing), label = \"tabTint\")"
+        },
+        {
+          "line": 1065,
+          "source": "val rotation by animateFloatAsState(if (advancedExpanded) 180f else 0f, Motion.tw(180), label = \"advancedArrow\")"
+        },
+        {
+          "line": 1761,
+          "source": "launch { dim.animateTo(1f, Motion.tw(260)) }"
+        },
+        {
+          "line": 1762,
+          "source": "launch { tint.animateTo(1f, Motion.tw(200)) }"
+        },
+        {
+          "line": 1763,
+          "source": "launch { bottom.animateTo(boxBottom, Motion.sp(0.7f, 380f)) }"
+        },
+        {
+          "line": 1764,
+          "source": "launch { delay(Motion.ms(110).toLong()); left.animateTo(boxLeft, Motion.sp(0.55f, 300f)) }"
+        },
+        {
+          "line": 1766,
+          "source": "launch { delay(Motion.ms(260 + i * 55).toLong()); a.animateTo(1f, Motion.tw(220)) }"
+        },
+        {
+          "line": 1776,
+          "source": "items.forEach { launch { it.animateTo(0f, Motion.tw(90)) } }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SessionPausedOverlay.kt",
+      "sha256": "3f6845560c7b40a6ca423becf19be3c5102377940eaa50a513e513f661d4c5f0",
+      "primitives": [
+        ".animateTo(",
+        "animateFloat",
+        "animateFloatAsState",
+        "animateIn",
+        "rememberInfiniteTransition",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 78,
+          "source": "private const val FRAME_WAIT_MS = 600L"
+        },
+        {
+          "line": 116,
+          "source": "launch { press.animateTo(1f, Motion.sp(0.5f, Spring.StiffnessMedium)) }"
+        },
+        {
+          "line": 117,
+          "source": "launch { ring.animateTo(0f, Motion.tw(200)) }"
+        },
+        {
+          "line": 118,
+          "source": "launch { lift.animateTo(1f, Motion.tw(520)) }"
+        },
+        {
+          "line": 119,
+          "source": "orb.animateTo(1f, Motion.tw(380, delay = if (orb.value < 0.5f) 260 else 0, easing = PopEasing))"
+        },
+        {
+          "line": 134,
+          "source": "launch { press.animateTo(1f, Motion.sp(0.5f, Spring.StiffnessMedium)) }"
+        },
+        {
+          "line": 135,
+          "source": "launch { ring.animateTo(0f, Motion.tw(200)) }"
+        },
+        {
+          "line": 136,
+          "source": "orb.animateTo(1f, Motion.tw(200))"
+        },
+        {
+          "line": 140,
+          "source": "launch { orb.animateTo(1f, Motion.tw(200)) }"
+        },
+        {
+          "line": 141,
+          "source": "launch { press.animateTo(0.92f, Motion.tw(140)) }"
+        },
+        {
+          "line": 142,
+          "source": "ring.animateTo(0.25f, Motion.tw(140))"
+        },
+        {
+          "line": 143,
+          "source": "ring.animateTo(0.8f, Motion.tw(650, easing = CubicBezierEasing(0.1f, 0.6f, 0.3f, 1f)))"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SettingsWidgets.kt",
+      "sha256": "1ab3cde366bf0892df23869237fe7719aedb4a3916586b3a956c2ecae97700f8",
+      "primitives": [
+        "AnimatedContent",
+        "AnimatedVisibility",
+        "animateColorAsState",
+        "animateDpAsState",
+        "animateFloatAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 309,
+          "source": "enter = fadeIn(Motion.tw(180)) + scaleIn(Motion.sp(0.7f), initialScale = 0.94f, transformOrigin = TransformOrigin(if (compact) 0f else 1f, 0f)),"
+        },
+        {
+          "line": 310,
+          "source": "exit = fadeOut(Motion.tw(140)) + scaleOut(Motion.tw(140), targetScale = 0.96f, transformOrigin = TransformOrigin(if (compact) 0f else 1f, 0f)),"
+        },
+        {
+          "line": 377,
+          "source": "val shift by animateFloatAsState(if (hot) 2f else 0f, Motion.sp(0.5f), label = \"miShift\")"
+        },
+        {
+          "line": 415,
+          "source": "val rot by animateFloatAsState(if (open) 180f else 0f, Motion.sp(0.6f), label = \"chipCaret\")"
+        },
+        {
+          "line": 431,
+          "source": "transitionSpec = { (fadeIn(Motion.tw(260)) + slideInVertically(Motion.tw(260)) { it / 2 }) togetherWith (fadeOut(Motion.tw(160)) + slideOutVertically(Motion.tw(160)) { -it / 2 }) },"
+        },
+        {
+          "line": 465,
+          "source": "val bg by animateColorAsState(if (highlighted) pal.signal.copy(alpha = 0.10f) else Color.Transparent, Motion.tw(200), label = \"rowBg\")"
+        },
+        {
+          "line": 552,
+          "source": "val track by animateColorAsState(if (checked) pal.signal else colors.surfaceVariant, Motion.tw(180), label = \"switchTrack\")"
+        },
+        {
+          "line": 553,
+          "source": "val knob by animateFloatAsState(if (checked) 1f else 0f, Motion.sp(0.7f), label = \"switchKnob\")"
+        },
+        {
+          "line": 723,
+          "source": "val dim by animateFloatAsState(if (host.open != null) 0.6f else 1f, Motion.tw(220), label = \"pageDim\")"
+        },
+        {
+          "line": 824,
+          "source": "val slide by animateDpAsState(segment * index.coerceAtLeast(0), Motion.sp(0.75f), label = \"tabPill\")"
+        },
+        {
+          "line": 825,
+          "source": "val shown by animateFloatAsState(if (index >= 0) 1f else 0f, Motion.tw(180), label = \"tabPillShown\")"
+        },
+        {
+          "line": 848,
+          "source": "Motion.tw(220), label = \"tabInk\","
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SharedMotion.kt",
+      "sha256": "fa7c9a3deff81b6cb7dd1f8c1c9f9609029ba7f9d8b937e91d6587d9ed2a7795",
+      "primitives": [
+        ".animateTo(",
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 62,
+          "source": "LaunchedEffect(visible) { shown.animateTo(if (visible) 1f else 0f, Motion.tw(if (visible) 160 else 120)) }"
+        },
+        {
+          "line": 86,
+          "source": "launch { pinch.animateTo(0f, Motion.sp(0.6f, 500f)) }"
+        },
+        {
+          "line": 87,
+          "source": "launch { shown.animateTo(1f, Motion.tw(120)) }"
+        },
+        {
+          "line": 92,
+          "source": "launch { lead.animateTo(leadTo, Motion.sp(0.62f, 700f)) }"
+        },
+        {
+          "line": 93,
+          "source": "launch { delay(Motion.ms(40).toLong()); trail.animateTo(trailTo, Motion.sp(0.78f, 360f)) }"
+        },
+        {
+          "line": 120,
+          "source": "val shown = androidx.compose.animation.core.animateFloatAsState(if (on) 1f else 0f, Motion.tw(if (on) 140 else 100), label = \"shownBar\").value"
+        },
+        {
+          "line": 179,
+          "source": "t.animateTo(1f, Motion.tw(150, easing = FastOutSlowInEasing))"
+        },
+        {
+          "line": 182,
+          "source": "t.animateTo(2f, Motion.tw(300, easing = FastOutSlowInEasing))"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SteamHome.kt",
+      "sha256": "8419aaa36fc2a5669119ab309d4dee6f11d3783b3c777e7fbe8b0bb57d4658e2",
+      "primitives": [
+        "animateFloat",
+        "rememberInfiniteTransition",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 330,
+          "source": "transition.animateFloat(0f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = \"float\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SteamIntegrationGroup.kt",
+      "sha256": "04ac3ee52ad9074989ce47ed1cee0719777b47199390bd97e3ab6f1735219d04",
+      "primitives": [
+        "animateColorAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 105,
+          "source": "val bg by animateColorAsState(if (flash) pal.signal.copy(alpha = 0.12f) else Color.Transparent, Motion.tw(400), label = \"integrationFlash\")"
+        },
+        {
+          "line": 153,
+          "source": "val tint by animateColorAsState(if (on) pal.good else colors.onSurfaceVariant, Motion.tw(250), label = \"badgeTint\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StepOut.kt",
+      "sha256": "38e726c5db6e9ddac7ef5f5a6d1fa0ccc381316da7594c394113ed509cbf183c",
+      "primitives": [
+        ".animateTo(",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 214,
+          "source": "launch { dim.animateTo(1f, Motion.tw(260)) }"
+        },
+        {
+          "line": 215,
+          "source": "launch { tint.animateTo(1f, Motion.tw(200)) }"
+        },
+        {
+          "line": 217,
+          "source": "val down = launch { bottom.animateTo(boxBottom, Motion.sp(0.8f, 380f)) }"
+        },
+        {
+          "line": 218,
+          "source": "val across = launch { edge.animateTo(out, Motion.sp(0.8f, 380f)) }"
+        },
+        {
+          "line": 221,
+          "source": "launch { delay(Motion.ms(260 + i * 55).toLong()); a.animateTo(1f, Motion.tw(220)) }"
+        },
+        {
+          "line": 228,
+          "source": "pieces.forEach { launch { it.animateTo(0f, Motion.tw(90)) } }"
+        },
+        {
+          "line": 229,
+          "source": "launch { delay(Motion.ms(60).toLong()); dim.animateTo(0f, Motion.tw(300)) }"
+        },
+        {
+          "line": 231,
+          "source": "launch { delay(Motion.ms(60).toLong()); edge.animateTo(rest, Motion.tw(240)) }"
+        },
+        {
+          "line": 232,
+          "source": "launch { delay(Motion.ms(60).toLong()); bottom.animateTo(pill.bottom, Motion.tw(240)) }"
+        },
+        {
+          "line": 233,
+          "source": "launch { delay(Motion.ms(200).toLong()); tint.animateTo(0f, Motion.tw(200)) }"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoragePage.kt",
+      "sha256": "6ed1bf9e17409640fd4f89b86caf5846bf311045c04956430468ee62ec9308b4",
+      "primitives": [
+        "animateFloatAsState"
+      ],
+      "timingReferences": [
+        {
+          "line": 421,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.97f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"bucketScale\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoreAchievementsUi.kt",
+      "sha256": "eea3fa96bcdb594c2f6c0519c86c4b15b0b22572bbf55cf0425de5cf0d26d237",
+      "primitives": [
+        "AnimatedVisibility",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 311,
+          "source": "AnimatedVisibility(slide, enter = slideInHorizontally(Motion.sp(0.8f)) { it } + fadeIn(Motion.tw(160)), label = \"achievementsPanel\") {"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoreGameFacts.kt",
+      "sha256": "5d8b52cf02c3ae88436c53f65bffa59f26085f923e0ab05a9c2410b8bb32cbb7",
+      "primitives": [
+        "AnimatedVisibility",
+        "animateFloat",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 302,
+          "source": "0.35f, 0.8f, infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = \"pulse\","
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StorePage.kt",
+      "sha256": "7545fbfa377b376f2aa12e647743b36585d302f538273b2629492aa34258c878",
+      "primitives": [
+        "AnimatedContent",
+        "animateFloat",
+        "animateFloatAsState",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 141,
+          "source": "EnterTransition.None.togetherWith(fadeOut(Motion.tw(320)) + scaleOut(Motion.tw(320), targetScale = 0.95f))"
+        },
+        {
+          "line": 163,
+          "source": "androidx.compose.animation.Crossfade(icons, animationSpec = Motion.tw(600), label = \"flathubWall\") { tiles ->"
+        },
+        {
+          "line": 212,
+          "source": "val grow by animateFloatAsState(if (busy) 1f else 0f, Motion.sp(0.7f, 380f), label = \"setupGrow\")"
+        },
+        {
+          "line": 213,
+          "source": "val fill by animateFloatAsState((StoreState.percent.coerceAtLeast(0) / 100f), Motion.tw(300), label = \"setupFill\")"
+        },
+        {
+          "line": 227,
+          "source": "val sweep by shimmer.animateFloat(-0.3f, 1.3f, infiniteRepeatable(tween(1400, easing = LinearEasing), RepeatMode.Restart), label = \"sweep\")"
+        },
+        {
+          "line": 307,
+          "source": "val sink by animateFloatAsState(if (covering) 0.95f else 1f, if (covering) Motion.tw(480) else Motion.tw(460, 40), label = \"flathubSink\")"
+        },
+        {
+          "line": 308,
+          "source": "val fade by animateFloatAsState(if (covering) 0f else 1f, if (covering) Motion.tw(320, 80) else Motion.tw(300, 100), label = \"flathubFade\")"
+        },
+        {
+          "line": 527,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.96f else if (hot) 1.03f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"cardScale\")"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoresDownloads.kt",
+      "sha256": "164c848615cb00205f58673caa8d1438e11c5eb1b65432ba3a551539fc2dc7d2",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedVisibility",
+        "animateFloat",
+        "animateFloatAsState",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 125,
+          "source": "AnimatedVisibility(entries.isEmpty() && interrupted.isEmpty(), enter = fadeIn(Motion.tw(300, 300)), exit = fadeOut(Motion.tw(120))) {"
+        },
+        {
+          "line": 134,
+          "source": "expandHorizontally(Motion.tw(360, wait), expandFrom = Alignment.End) + expandVertically(Motion.tw(320, wait), expandFrom = Alignment.Top) +"
+        },
+        {
+          "line": 135,
+          "source": "fadeIn(Motion.tw(300, wait + 60))"
+        },
+        {
+          "line": 139,
+          "source": "fadeOut(Motion.tw(220, GATHER_HOLD_MS)) + shrinkVertically(Motion.tw(300, GATHER_HOLD_MS))"
+        },
+        {
+          "line": 140,
+          "source": "else shrinkHorizontally(Motion.tw(260), shrinkTowards = Alignment.End) + shrinkVertically(Motion.tw(300, 120)) + fadeOut(Motion.tw(200, 80))"
+        },
+        {
+          "line": 145,
+          "source": "enter = { i, _ -> fadeIn(Motion.tw(300, 60 * i.coerceAtMost(5))) + expandVertically(Motion.tw(260)) },"
+        },
+        {
+          "line": 146,
+          "source": "exit = { _, _, _ -> fadeOut(Motion.tw(160)) + shrinkVertically(Motion.tw(220, 60)) },"
+        },
+        {
+          "line": 150,
+          "source": "enter = expandVertically(Motion.tw(260)) + fadeIn(Motion.tw(220)),"
+        },
+        {
+          "line": 151,
+          "source": "exit = fadeOut(Motion.tw(200, 60 * finished.size.coerceAtMost(8) + 160)) + shrinkVertically(Motion.tw(220, 60 * finished.size.coerceAtMost(8) + 200)),"
+        },
+        {
+          "line": 170,
+          "source": "enter = { i, later -> if (later) expandVertically(Motion.tw(300, GATHER_HOLD_MS)) + fadeIn(Motion.tw(220, GATHER_HOLD_MS + 50)) else fadeIn(Motion.tw(300, 60 * i.coerceAtMost(5))) },"
+        },
+        {
+          "line": 173,
+          "source": "scaleOut(Motion.tw(220, wait), targetScale = 0.2f, transformOrigin = TransformOrigin(1f, 0f)) +"
+        },
+        {
+          "line": 174,
+          "source": "fadeOut(Motion.tw(200, wait + 40)) + shrinkVertically(Motion.tw(240, wait + 80))"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoresMotion.kt",
+      "sha256": "588586ef659f30d988d8865cd497ffda7a34aa75da0cf27aa1afbdc669dd0edc",
+      "primitives": [
+        ".animateTo(",
+        "AnimatedVisibility"
+      ],
+      "timingReferences": [
+        {
+          "line": 159,
+          "source": "launch { scale.snapTo(1.3f); scale.animateTo(1f, Motion.sp(0.45f, 500f)) }"
+        },
+        {
+          "line": 160,
+          "source": "launch { ring.snapTo(0f); ring.animateTo(1f, Motion.tw(400)) }"
+        },
+        {
+          "line": 185,
+          "source": "edge.animateTo(1f, if (Motion.scale == 0f) Motion.sp() else spring(dampingRatio = 0.48f, stiffness = lerp(110f, 190f, lead))) {"
+        },
+        {
+          "line": 215,
+          "source": "edge.animateTo(0f, if (Motion.scale == 0f) Motion.sp() else spring(dampingRatio = 1f, stiffness = lerp(170f, 260f, lead)))"
+        },
+        {
+          "line": 219,
+          "source": "alpha.animateTo(0f, Motion.tw(160))"
+        },
+        {
+          "line": 251,
+          "source": "ring.animateTo(1f, Motion.tw(600))"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/StoresPage.kt",
+      "sha256": "451e62f078faddfd31409a953f5b17b3c9a71bdab782cc4cba2db98cdfdc751b",
+      "primitives": [
+        "AnimatedContent",
+        "animateColorAsState",
+        "animateFloatAsState",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 364,
+          "source": "((fadeIn(Motion.tw(300, 80)) + slideInVertically(Motion.tw(420, 80)) { it / 24 })"
+        },
+        {
+          "line": 365,
+          "source": ".togetherWith(fadeOut(Motion.tw(170)) + scaleOut(Motion.tw(170), targetScale = 0.97f))).using(SizeTransform(clip = false))"
+        },
+        {
+          "line": 534,
+          "source": "val lift by animateFloatAsState(if (held) 1f else 0f, Motion.sp(0.7f, Spring.StiffnessMediumLow), label = \"chipLift\")"
+        },
+        {
+          "line": 542,
+          "source": "Motion.sp(0.6f, Spring.StiffnessMediumLow), label = \"chipShift\","
+        },
+        {
+          "line": 607,
+          "source": "Store.byId(highlighted)?.let { sourceColours(it.id).dot } ?: pal.signal, Motion.tw(160), label = \"chipTint\","
+        },
+        {
+          "line": 680,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.95f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"chipScale\")"
+        },
+        {
+          "line": 760,
+          "source": "androidx.compose.animation.Crossfade(art, animationSpec = Motion.tw(600), label = \"signInWall\", modifier = Modifier.matchParentSize()) { tiles ->"
+        },
+        {
+          "line": 1074,
+          "source": "val open by animateFloatAsState(if (searching) 1f else 0f, Motion.sp(0.75f, 420f), label = \"searchOpen\")"
+        },
+        {
+          "line": 1289,
+          "source": "val scale by animateFloatAsState(if (pressed) 0.985f else 1f, Motion.sp(0.5f, Spring.StiffnessMedium), label = \"cardScale\")"
+        },
+        {
+          "line": 1391,
+          "source": "fraction.coerceIn(0f, 1f), androidx.compose.animation.core.tween(250, easing = androidx.compose.animation.core.LinearEasing), label = \"bar\","
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/Theme.kt",
+      "sha256": "bc3d656e71e81982b22bf3cbcc61e3b8b07b2b1265bf5e4e19015515ee19dc3c",
+      "primitives": [
+        "animateFloat",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 193,
+          "source": "start, start + 360f, infiniteRepeatable(tween(Themes.rgbCycleMillis(speed).coerceAtLeast(1), easing = LinearEasing), RepeatMode.Restart), label = \"hue\","
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/Throbber.kt",
+      "sha256": "07fde46bf4d2226d7c9ee3fed17b5f10aadf3c28f3dc169fe48838a39b889441",
+      "primitives": [
+        "animateFloat",
+        "rememberInfiniteTransition"
+      ],
+      "timingReferences": [
+        {
+          "line": 28,
+          "source": ".animateFloat(0f, 1f, infiniteRepeatable(tween(LOOP_MS, easing = LinearEasing)), label = \"loop\")"
+        },
+        {
+          "line": 67,
+          "source": "private const val LOOP_MS = 1900"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/UpdatesPage.kt",
+      "sha256": "0882b747e23975e9f75bcaff1bc1ce6d2a82b299bb1f42e9ba5ca66c4d662e46",
+      "primitives": [
+        "AnimatedVisibility"
+      ],
+      "timingReferences": [
+        {
+          "line": 283,
+          "source": "AnimatedVisibility(u.follow.channel == Channel.TEST && tests.isNotEmpty(), enter = expandVertically(Motion.sp(1f)) + fadeIn(Motion.sp(1f)), exit = shrinkVertically(Motion.sp(1f)) + fadeOut(Motion.sp(1f))) {"
+        }
+      ]
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/WinComponentsEditor.kt",
+      "sha256": "69a029ef92a5c73861ee789c43c964243d95f74a5bd13f74589c07f3b5d2aef3",
+      "primitives": [
+        "AnimatedVisibility",
+        "withFrameNanos"
+      ],
+      "timingReferences": [
+        {
+          "line": 309,
+          "source": "enter = androidx.compose.animation.fadeIn(Motion.tw(220)),"
+        },
+        {
+          "line": 310,
+          "source": "exit = androidx.compose.animation.fadeOut(Motion.tw(0)),"
+        },
+        {
+          "line": 320,
+          "source": "enter = androidx.compose.animation.fadeIn(Motion.tw(260)) + androidx.compose.animation.expandVertically(Motion.tw(260)),"
+        },
+        {
+          "line": 321,
+          "source": "exit = androidx.compose.animation.fadeOut(Motion.tw(180)) + androidx.compose.animation.shrinkVertically(Motion.tw(200)),"
+        },
+        {
+          "line": 411,
+          "source": "enter = androidx.compose.animation.fadeIn(Motion.tw(240)) + androidx.compose.animation.expandVertically(Motion.tw(240)) +"
+        },
+        {
+          "line": 412,
+          "source": "androidx.compose.animation.slideInVertically(Motion.tw(240)) { -it / 4 },"
+        },
+        {
+          "line": 413,
+          "source": "exit = androidx.compose.animation.fadeOut(Motion.tw(160)),"
+        }
+      ]
+    }
+  ]
+}

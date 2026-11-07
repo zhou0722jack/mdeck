@@ -2,6 +2,36 @@
 // Native SwiftUI port of DroidDeck LogoThrobber and LoadingOverlay.
 // Source, pinned hashes and licence: docs/droiddeck-steam-loading.json.
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#else
+import AppKit
+#endif
+
+/// UIHostingController in the non-key HUD window does not inherit the app's
+/// SwiftUI scenePhase reliably. Observe the application lifecycle directly.
+@MainActor final class DeckMotionActivity: ObservableObject {
+    static let shared = DeckMotionActivity()
+    @Published private(set) var active: Bool
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        #if canImport(UIKit)
+        active = UIApplication.shared.applicationState == .active
+        let foreground = UIApplication.didBecomeActiveNotification
+        let background = UIApplication.willResignActiveNotification
+        #else
+        active = NSApplication.shared.isActive
+        let foreground = NSApplication.didBecomeActiveNotification
+        let background = NSApplication.willResignActiveNotification
+        #endif
+        observers = [(foreground, true), (background, false)].map { name, active in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.active = active }
+            }
+        }
+    }
+}
 
 enum DeckSteamLogoGeometry {
     static let left = -55.98, width = 239.92, height = 223.72
@@ -10,7 +40,7 @@ enum DeckSteamLogoGeometry {
     private static let splitLeft = 56.055, splitRight = 71.885
     struct Motion { var bend: Double; var turn: Double; var ballScale: Double }
 
-    static func easing(_ value: Double, x1: Double, x2: Double) -> Double {
+    static func easing(_ value: Double, x1: Double, x2: Double, y1: Double = 0, y2: Double = 1) -> Double {
         let x = min(1, max(0, value))
         var lo = 0.0, hi = 1.0
         for _ in 0..<24 {
@@ -19,7 +49,7 @@ enum DeckSteamLogoGeometry {
             if at < x { lo = t } else { hi = t }
         }
         let t = (lo + hi) / 2
-        return 3 * (1 - t) * t * t + t * t * t
+        return 3 * (1 - t) * (1 - t) * t * y1 + 3 * (1 - t) * t * t * y2 + t * t * t
     }
 
     static func motion(_ progress: Double) -> Motion {
@@ -125,9 +155,10 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
     var error: String?
     var startedAt: Date
     var fraction: Double?
+    var motionEnabled = true
     var covers: [Image] = []
     @ViewBuilder var details: () -> Details
-    @Environment(\.scenePhase) private var scenePhase
+    @ObservedObject private var activity = DeckMotionActivity.shared
     @Environment(\.accessibilityReduceMotion) private var reduced
     private let background = Color(red: 10 / 255, green: 11 / 255, blue: 14 / 255)
     private let signal = Color(red: 61 / 255, green: 220 / 255, blue: 132 / 255)
@@ -136,16 +167,16 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
         switch phase {
         case .components: return L("Downloading and verifying components…")
         case .starting: return L("Preparing JIT and starting Steam…")
-        case .waitingForFrame:
+        case .waitingForFrame, .revealing:
             return error ?? (installer ? L("Waiting for the Steam installer's first frame…") : L("Waiting for Steam's first frame…"))
         case .failed: return error ?? L("Steam could not start. Check the log.")
         case .idle: return L("Ready")
         }
     }
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 60, paused: scenePhase != .active || reduced || phase == .failed)) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !activity.active || reduced || !motionEnabled || phase == .failed)) { timeline in
             let elapsed = max(0, timeline.date.timeIntervalSince(startedAt))
-            let still = reduced || phase == .failed
+            let still = reduced || !motionEnabled || phase == .failed
             ZStack {
                 background.ignoresSafeArea()
                 DeckSteamCapsuleWall(covers: covers, progress: still ? 0 : elapsed.truncatingRemainder(dividingBy: 65) / 65)
@@ -205,6 +236,221 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
             Text(String(format: "%02d:%02d", Int(elapsed) / 60, Int(elapsed) % 60))
                 .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4)).padding(.top, 26)
         }.padding(.horizontal, 28).padding(.vertical, 36).frame(maxWidth: .infinity)
+    }
+}
+
+/// DroidDeck Rise: 450ms fade/slide, staggered by 60ms per item.
+struct DeckHomeRise: ViewModifier {
+    var index: Int
+    var enabled: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var shown = false
+    func body(content: Content) -> some View {
+        content.opacity(shown || reduced || !enabled ? 1 : 0)
+            .offset(y: shown || reduced || !enabled ? 0 : 18)
+            .task {
+                withAnimation(reduced || !enabled ? nil : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.45).delay(Double(index) * 0.06)) {
+                    shown = true
+                }
+            }
+    }
+}
+
+enum DeckHomeMotion {
+    static func ease(_ p: Double, _ a: Double, _ b: Double, _ c: Double, _ d: Double) -> Double {
+        DeckSteamLogoGeometry.easing(p, x1: a, x2: c, y1: b, y2: d)
+    }
+    static func out(_ p: Double) -> Double { ease(p, 0, 0, 0.58, 1) }
+    static func span(_ p: Double, _ a: Double, _ b: Double, _ from: Double, _ to: Double,
+                     _ curve: (Double) -> Double) -> Double { from + (to - from) * curve((p - a) / (b - a)) }
+    static func fan(_ elapsed: Double, index: Int) -> Double {
+        let duration = [9.0, 11, 13][index]
+        let p = max(0, elapsed).truncatingRemainder(dividingBy: duration * 2) / duration
+        return ease(p <= 1 ? p : 2 - p, 0.4, 0, 0.2, 1)
+    }
+    static func bounce(_ position: Double, low: Double, high: Double) -> Double {
+        let length = max(1, high - low)
+        let p = ((position - low).truncatingRemainder(dividingBy: length * 2) + length * 2)
+            .truncatingRemainder(dividingBy: length * 2)
+        return low + (p <= length ? p : length * 2 - p)
+    }
+    static func placement(elapsed: Double, size: CGSize, still: Bool) -> (height: Double, centre: CGPoint) {
+        let h = min(size.height * 0.3, size.width * 0.28 * DeckSteamLogoGeometry.height / DeckSteamLogoGeometry.width)
+        let halfWidth = (DeckSteamLogoGeometry.cx - DeckSteamLogoGeometry.left) * h / DeckSteamLogoGeometry.height
+        let centre = CGPoint(x: bounce(size.width * 0.64 + (still ? 0 : elapsed * 51.2),
+                                       low: max(halfWidth + 10, size.width * 0.3), high: size.width - halfWidth - 10),
+                             y: bounce(size.height * 0.42 - (still ? 0 : elapsed * 38.4),
+                                       low: h / 2 + 16, high: max(h / 2 + 17, size.height * 0.7 - h / 2)))
+        return (h, centre)
+    }
+    struct Mark {
+        var fill: Double; var trace: Double; var traceAlpha: Double; var shown: Double
+        var pop: Double; var rise: Double; var turn: Double; var squashX: Double; var squashY: Double
+        var ripple: Double; var rippleAlpha: Double; var shake: Double
+    }
+    static func mark(intro: Double, ball: Double) -> Mark {
+        func inOut(_ p: Double) -> Double { ease(p, 0.42, 0, 0.58, 1) }
+        func popEase(_ p: Double) -> Double { ease(p, 0.15, 0.8, 0.3, 1) }
+        func drop(_ p: Double) -> Double { ease(p, 0.6, 0, 0.9, 0.5) }
+        let p = (ball - 0.9) / 1.3
+        var pop = 1.0, rise = 0.0
+        if p > 0 && p < 1 {
+            if p < 0.11 {
+                pop = span(p, 0, 0.11, 1, 0.92, inOut); rise = span(p, 0, 0.11, 0, 7, inOut)
+            } else if p < 0.31 {
+                pop = span(p, 0.11, 0.31, 0.92, 1.6, popEase); rise = span(p, 0.11, 0.31, 7, -42, popEase)
+            } else if p < 0.88 {
+                pop = span(p, 0.31, 0.88, 1.6, 1.54, inOut); rise = span(p, 0.31, 0.88, -42, -34, inOut)
+            } else {
+                pop = span(p, 0.88, 1, 1.54, 1, drop); rise = span(p, 0.88, 1, -34, 0, drop)
+            }
+        }
+        var sx = 1.0, sy = 1.0
+        let impact = ball - 2.2
+        if impact >= 0 && impact < 0.28 {
+            let q = impact / 0.28
+            if q < 0.3 { sx = span(q, 0, 0.3, 1, 1.1, out); sy = span(q, 0, 0.3, 1, 0.88, out) }
+            else if q < 0.65 { sx = span(q, 0.3, 0.65, 1.1, 0.97, out); sy = span(q, 0.3, 0.65, 0.88, 1.04, out) }
+            else { sx = span(q, 0.65, 1, 0.97, 1, out); sy = span(q, 0.65, 1, 1.04, 1, out) }
+        }
+        let rp = min(1, max(0, impact / 1.25))
+        let rippleAlpha = impact < 0 || impact > 1.25 ? 0 : rp < 0.7 ? 0.9 - 0.55 * rp / 0.7 : 0.35 * (1 - (rp - 0.7) / 0.3)
+        var shake = 0.0
+        if impact >= 0 && impact < 0.23 {
+            let q = impact / 0.23
+            shake = q < 0.25 ? span(q, 0, 0.25, 0, 7, out)
+                : q < 0.55 ? span(q, 0.25, 0.55, 7, -3, out) : span(q, 0.55, 1, -3, 0, out)
+        }
+        if ball > 3.6 { rise -= 4 * (0.5 - 0.5 * cos(2 * .pi * (ball - 3.6) / 5.2)) }
+        return Mark(fill: out((intro - 0.45) / 0.45), trace: ease(intro / 0.775, 0.45, 0, 0.25, 1),
+                    traceAlpha: intro < 0.775 ? 1 : max(0, 1 - (intro - 0.775) / 0.475),
+                    shown: out((intro - 0.65) / 0.3), pop: pop, rise: rise,
+                    turn: 720 * ease((ball - 1.29) / 0.76, 0.25, 0.7, 0.35, 1), squashX: sx, squashY: sy,
+                    ripple: ease(rp, 0.2, 0.6, 0.35, 1), rippleAlpha: rippleAlpha, shake: shake)
+    }
+}
+
+struct DeckSteamHomeBackground: View {
+    var covers: [Image]
+    var enabled: Bool
+    var ink: Color
+    var signal: Color
+    var background: Color
+    @ObservedObject private var activity = DeckMotionActivity.shared
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var began = Date()
+    @State private var pokeAt: Date?
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 60, paused: !activity.active || reduced || !enabled)) { timeline in
+            let still = reduced || !enabled
+            let elapsed = still ? 3.6 : max(0, timeline.date.timeIntervalSince(began))
+            let ball = still ? 3.6 : pokeAt.map { max(0, timeline.date.timeIntervalSince($0)) + 0.88 } ?? elapsed
+            ZStack {
+                if covers.isEmpty || covers.count >= 4 {
+                    DeckSteamCapsuleWall(covers: covers, progress: still ? 0 : elapsed.truncatingRemainder(dividingBy: covers.isEmpty ? 75 : 40) / (covers.isEmpty ? 75 : 40))
+                } else {
+                    DeckSteamHomeFan(covers: covers, elapsed: elapsed, still: still)
+                }
+                LinearGradient(stops: [.init(color: background.opacity(0.97), location: 0),
+                                       .init(color: background.opacity(0.86), location: 0.34),
+                                       .init(color: background.opacity(0.25), location: 0.68),
+                                       .init(color: background.opacity(0.1), location: 1)], startPoint: .leading, endPoint: .trailing)
+                LinearGradient(stops: [.init(color: .clear, location: 0.55), .init(color: background.opacity(0.9), location: 1)],
+                               startPoint: .top, endPoint: .bottom)
+                if covers.isEmpty {
+                    GeometryReader { geometry in
+                        DeckSteamHomeMark(elapsed: elapsed, ball: ball, still: still, ink: ink, signal: signal)
+                            .contentShape(Rectangle())
+                            .onTapGesture { location in
+                                let placement = DeckHomeMotion.placement(elapsed: elapsed, size: geometry.size, still: still)
+                                let radius = DeckSteamLogoGeometry.ball * placement.height / DeckSteamLogoGeometry.height
+                                if !still && ball >= 3.45 && hypot(location.x - placement.centre.x, location.y - placement.centre.y) <= radius * 1.4 {
+                                    pokeAt = timeline.date
+                                }
+                            }
+                    }
+                }
+            }
+        }.accessibilityHidden(true)
+    }
+}
+
+struct DeckSteamHomeFan: View {
+    var covers: [Image]
+    var elapsed: Double
+    var still: Bool
+    var body: some View {
+        Canvas { context, size in
+            let slots = [(0.54, 0.14, 0.62, -9.0), (0.70, 0.24, 0.56, 5.0), (0.40, 0.30, 0.50, -17.0)]
+            for index in covers.prefix(3).indices.reversed() {
+                let (x, y, height, lean) = slots[index]
+                let t = still ? 0 : DeckHomeMotion.fan(elapsed, index: index)
+                let h = size.height * height, w = h * 2 / 3
+                var tile = context
+                tile.translateBy(x: size.width * x + w / 2, y: size.height * y + h / 2 - 12 * t)
+                tile.rotate(by: .degrees(lean + 2 * t))
+                let rect = CGRect(x: -w / 2, y: -h / 2, width: w, height: h)
+                tile.addFilter(.shadow(color: .black.opacity(0.45), radius: 16, y: 12))
+                tile.clip(to: Path(roundedRect: rect, cornerRadius: 14))
+                let image = tile.resolve(covers[index])
+                if image.size.width > 0 && image.size.height > 0 {
+                    let scale = max(w / image.size.width, h / image.size.height)
+                    tile.draw(image, in: CGRect(x: -image.size.width * scale / 2, y: -image.size.height * scale / 2,
+                                               width: image.size.width * scale, height: image.size.height * scale))
+                }
+            }
+        }.accessibilityHidden(true)
+    }
+}
+
+struct DeckSteamHomeMark: View {
+    var elapsed: Double
+    var ball: Double
+    var still: Bool
+    var ink: Color
+    var signal: Color
+    var body: some View {
+        Canvas { context, size in
+            let (h, centre) = DeckHomeMotion.placement(elapsed: elapsed, size: size, still: still)
+            let scale = h / DeckSteamLogoGeometry.height, k = h / 460
+            let m = DeckHomeMotion.mark(intro: elapsed, ball: ball)
+            let radius = DeckSteamLogoGeometry.ball * scale
+            if m.rippleAlpha > 0 {
+                let reach = radius + (hypot(size.width, size.height) * 1.05 - radius) * m.ripple
+                context.stroke(Path(ellipseIn: CGRect(x: centre.x - reach, y: centre.y - reach, width: reach * 2, height: reach * 2)),
+                               with: .color(signal.opacity(m.rippleAlpha)), lineWidth: max(1.5, 2.5 * k))
+            }
+            func path(_ points: [CGPoint], lift: Double = 0) -> Path {
+                Path { p in
+                    for (i, q) in points.enumerated() {
+                        let point = CGPoint(x: centre.x + (q.x - DeckSteamLogoGeometry.cx) * scale,
+                                            y: centre.y + (q.y - DeckSteamLogoGeometry.cy) * scale + lift + m.shake * k)
+                        if i == 0 { p.move(to: point) } else { p.addLine(to: point) }
+                    }
+                    p.closeSubpath()
+                }
+            }
+            for points in [DeckSteamLogoGeometry.leftHalf(bend: 0), DeckSteamLogoGeometry.rightHalf] {
+                context.fill(path(points, lift: 5 * scale + 8 * k * (1 - m.fill)), with: .color(ink.opacity(0.4 * m.fill)))
+                context.fill(path(points, lift: 8 * k * (1 - m.fill)), with: .color(ink.opacity(m.fill)))
+                if m.traceAlpha > 0 {
+                    context.stroke(path(points).trimmedPath(from: 0, to: m.trace), with: .color(signal.opacity(m.traceAlpha)), lineWidth: max(1, 2 * scale))
+                }
+            }
+            let grow = (0.6 + 0.4 * m.shown) * m.pop
+            let r = radius * grow
+            let angle = m.turn * .pi / 180
+            let rx = max(0.25, r * abs(cos(angle)) * m.squashX)
+            let ry = r * m.squashY
+            let cy = centre.y + (m.rise + m.shake) * k
+            let half = r * 0.061 * sin(angle)
+            context.fill(Path(ellipseIn: CGRect(x: centre.x - r * 0.93, y: centre.y - r * 0.4, width: r * 1.86, height: r * 0.8)),
+                         with: .color(.black.opacity(0.25 * m.shown)))
+            context.fill(Path(ellipseIn: CGRect(x: centre.x - rx - abs(half), y: cy - ry, width: rx * 2 + abs(half) * 2, height: ry * 2)),
+                         with: .color(signal.opacity(0.55 * m.shown)))
+            context.fill(Path(ellipseIn: CGRect(x: centre.x - rx + (cos(angle) >= 0 ? half : -half), y: cy - ry, width: rx * 2, height: ry * 2)),
+                         with: .color(signal.opacity(m.shown)))
+        }.accessibilityHidden(true)
     }
 }
 

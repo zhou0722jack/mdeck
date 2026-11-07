@@ -218,7 +218,7 @@ enum DeckSteamFrameRules {
 /// counter can complete a request, and stale JIT completions cannot launch it.
 @MainActor final class DeckSteamLaunchPreparation: ObservableObject {
     static let shared = DeckSteamLaunchPreparation()
-    enum Phase: Equatable { case idle, components, starting, waitingForFrame, failed }
+    enum Phase: Equatable { case idle, components, starting, waitingForFrame, revealing, failed }
     @Published private(set) var presented = false
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var error: String?
@@ -233,6 +233,14 @@ enum DeckSteamFrameRules {
     private var target = ""
     private var session: UUID?
     private var waitingSince = Date()
+    private var waitingVisibleSince: Date?
+    private var firstFrameSeenAt: Date?
+    var revealID: UUID? { phase == .revealing ? requestID : nil }
+    // Keep the waiting stage visible after both its view and a real target
+    // frame arrive. The main JIT pool can suspend the whole process, so elapsed
+    // time since session startup cannot establish that this stage was painted.
+    static let minimumVisibleWait: TimeInterval = 0.7
+    static let revealDuration: TimeInterval = 0.45
     static let frameSlowAfter: TimeInterval = 120
 
     init(preparation: DeckComponentPreparation? = nil) {
@@ -250,6 +258,8 @@ enum DeckSteamFrameRules {
         slow = false
         startedAt = Date()
         session = nil
+        waitingVisibleSince = nil
+        firstFrameSeenAt = nil
         preparationStarted = false
         phase = .components
         presented = true
@@ -293,20 +303,37 @@ enum DeckSteamFrameRules {
         guard presented, phase == .starting else { return false }
         session = id
         waitingSince = date
+        waitingVisibleSince = nil
+        firstFrameSeenAt = nil
         phase = .waitingForFrame
         LogStore.shared.log("[steam-loading] waiting for target window first frame")
         return true
     }
 
+    func waitingStageShown(at date: Date = .now) {
+        guard presented, phase == .waitingForFrame, waitingVisibleSince == nil else { return }
+        waitingVisibleSince = date
+    }
+
     func observe(_ frames: [DeckSteamFrame], at date: Date = .now) {
         guard presented, phase == .waitingForFrame else { return }
         if frames.contains(where: { DeckSteamFrameRules.accepts($0, target: target, installer: installer) }) {
-            LogStore.shared.log("[steam-loading] target first frame received; loading layer closed")
-            finish()
+            if firstFrameSeenAt == nil { firstFrameSeenAt = date }
+            guard let waitingVisibleSince, let firstFrameSeenAt,
+                  date.timeIntervalSince(max(waitingVisibleSince, firstFrameSeenAt)) >= Self.minimumVisibleWait else { return }
+            error = nil
+            phase = .revealing
+            LogStore.shared.log("[steam-loading] target first frame received; revealing Steam beneath loading layer")
         } else if !slow && date.timeIntervalSince(waitingSince) >= Self.frameSlowAfter {
             slow = true
             error = L("Steam is taking longer than expected. Still waiting for its first frame…")
         }
+    }
+
+    func completeReveal(_ id: UUID) {
+        guard presented, revealID == id else { return }
+        LogStore.shared.log("[steam-loading] reveal fade completed; loading layer closed")
+        finish()
     }
 
     func fail(_ message: String) {
@@ -337,6 +364,8 @@ enum DeckSteamFrameRules {
         launch = nil
         preparationStarted = false
         session = nil
+        waitingVisibleSince = nil
+        firstFrameSeenAt = nil
         phase = .idle
         presented = false
     }
@@ -498,10 +527,13 @@ struct DeckSteamPreparationView: View {
     @ObservedObject private var preparation = DeckComponentPreparation.shared
     @ObservedObject private var launch = DeckSteamLaunchPreparation.shared
     @ObservedObject private var library = LibraryModel.shared
+    @ObservedObject private var appearance = DeckAppearance.shared
     @State private var covers: [Image] = []
+    @State private var layerOpacity = 1.0
     var body: some View {
         DeckSteamLoadingArtwork(phase: launch.phase, installer: launch.installer, error: launch.error,
-                               startedAt: launch.startedAt, fraction: preparation.loadingFraction, covers: covers) {
+                               startedAt: launch.startedAt, fraction: preparation.loadingFraction,
+                               motionEnabled: appearance.animations, covers: covers) {
             if launch.phase == .components || (launch.phase == .failed && !preparation.complete) {
                 DisclosureGroup("Component details") { DeckComponentProgress().padding(.top, 12) }
                     .font(.footnote).frame(maxWidth: 520).padding(.top, 20)
@@ -532,8 +564,26 @@ struct DeckSteamPreparationView: View {
                     }.buttonStyle(DeckButtonStyle())
                 }.padding(.top, 22)
             }
-        }.task {
+        }
+        .opacity(layerOpacity)
+        .onChange(of: launch.phase, initial: true) { _, phase in
+            guard phase == .revealing, let id = launch.revealID else {
+                layerOpacity = 1
+                return
+            }
+            withAnimation(.easeOut(duration: DeckSteamLaunchPreparation.revealDuration), completionCriteria: .removed) {
+                layerOpacity = 0
+            } completion: {
+                // A late animation callback must not dismiss a failed/retried launch.
+                launch.completeReveal(id)
+            }
+        }
+        .task(id: launch.phase) {
+            if launch.phase == .waitingForFrame { launch.waitingStageShown() }
+        }
+        .task {
             covers = DeckSteamLocalCovers.images()
+            LogStore.shared.log("[steam-loading] artwork motion=\(appearance.animations) application-active=\(DeckMotionActivity.shared.active)")
             launch.beginPreparation()
         }
     }

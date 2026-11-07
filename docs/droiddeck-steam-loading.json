@@ -3,13 +3,38 @@
   "commit": "18c7d56409de4cf3b63b1b09e60e0fe97a633a7d",
   "license": "GPL-3.0",
   "sources": [
-    {"path": "app/src/main/java/com/droiddeck/launcher/ui/Throbber.kt", "sha256": "07fde46bf4d2226d7c9ee3fed17b5f10aadf3c28f3dc169fe48838a39b889441"},
-    {"path": "app/src/main/java/com/droiddeck/launcher/ui/SessionLoading.kt", "sha256": "1278f36d34aba04646169e2241c48e4a02ad416fa38c82d16652c3fe6f982a28"},
-    {"path": "app/src/main/java/com/droiddeck/launcher/ui/SteamHome.kt", "sha256": "8419aaa36fc2a5669119ab309d4dee6f11d3783b3c777e7fbe8b0bb57d4658e2"}
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/Throbber.kt",
+      "sha256": "07fde46bf4d2226d7c9ee3fed17b5f10aadf3c28f3dc169fe48838a39b889441"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SessionLoading.kt",
+      "sha256": "1278f36d34aba04646169e2241c48e4a02ad416fa38c82d16652c3fe6f982a28"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/SteamHome.kt",
+      "sha256": "8419aaa36fc2a5669119ab309d4dee6f11d3783b3c777e7fbe8b0bb57d4658e2"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/EmptyLibrary.kt",
+      "sha256": "23e6c81f95b7b4e5339d9b591e263a69036bff61a5b8cce49245e9eba2cb5a57"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndScreen.kt",
+      "sha256": "9dd6bea4585504b2c51510381476a18ec1337e5fd0ecff58e97749ed891f559c"
+    },
+    {
+      "path": "app/src/main/java/com/droiddeck/launcher/ui/FrontEndWidgets.kt",
+      "sha256": "76290a1f9bcbdf542f9f512550180ec171645b755d1906b2d56f48569a6979b2"
+    }
   ],
   "nativeSource": "app/Madeira/DeckSteamLoading.swift",
   "logoLoopSeconds": 1.9,
   "wallDriftSeconds": 65,
-  "stages": ["components", "starting", "waitingForFrame"],
-  "adaptation": "Native SwiftUI Canvas geometry, timing, tilted cover wall and loading layout. The original four UI topics are grouped into the requested three phases. Existing local covers are downsampled; no artwork download competes with runtime preparation. First-frame completion is restricted to this Windows client's visible GDI/CEF image."
+  "stages": [
+    "components",
+    "starting",
+    "waitingForFrame"
+  ],
+  "adaptation": "Native SwiftUI Canvas logo, empty-library trace/pop/coin/ripple, reflected drift kept clear of mdeck controls, fan and tilted cover wall. Rise entry and button spring feedback use native SwiftUI. Artwork uses existing cached covers only. HUD animation follows actual application activity, independent of SwiftUI scenePhase. Three real launch phases continue into a completion-driven reveal fade over the actual target window."
 }
