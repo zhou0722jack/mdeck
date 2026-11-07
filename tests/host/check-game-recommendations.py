@@ -6,7 +6,7 @@ match the working lists they were taken from (Red Dead Redemption 2's line for
 line), every key that is not env.NAME is one Madeira reads (the generated
 settings catalog), no list overrides Social Club's DLLs, and the app applies them where the owner asked: a game's first sight (library
 start-up, saving an entry, Game details, a start) and Reset to Recommended at
-the bottom of Game details. Every game's own list ends with madeira-bcd's
+the bottom of Game details > Advanced. Every game's own list ends with madeira-bcd's
 defaults where upstream's differ, because madeira-bcd's games ran with them: MADEIRA_FREE_DELAY_MS = 2000, MADEIRA_CTX_CPU_AREA = 2 (madeira-bcd's
 fuller GetThreadContext; 1 is the control-only form) and MADEIRA_WAIT_CHILDREN = 1
 (opt-in here) and MADEIRA_JIT_DUMP = 0 (here the JIT-pool dump is on by
@@ -569,13 +569,17 @@ reset_section = detail[detail.index('Button("Reset to Recommended", systemImage:
 assert reset_section.index('Button("Reset", role: .destructive) { resetToRecommended() }') \
     < reset_section.index('Text(GameRecommendations.note(recommended, desktop: entry.desktop == true))')
 assert 'GameRecommendations.question(recommended, desktop: entry.desktop == true)' in reset_section
-# For every entry, the Desktop too: the section is not gated off.
-assert ('// madeira-bcd: always last, for every entry, the Desktop too (GameRecommendationsApply.swift).\n'
-        '                Section {\n') in detail
-assert detail.index('// madeira-bcd: always last,') < detail.index('Button("Reset to Recommended"')
-# Last in the form, after the Executable section and Remove from library (the error line is
-# shown with the page's other sections since the Game details pages).
-assert detail.index('Button("Remove from library"') < detail.index('Button("Reset to Recommended"')
+# The tabbed editor keeps one reset section in Advanced for every scope,
+# including the Desktop. It stays outside the inherited-profile disabled block.
+advanced = block(detail, '    @ViewBuilder private var advancedPage:', '\n    }\n')
+assert advanced.rstrip().endswith('setupActions\n    }')
+assert advanced.index('.disabled(inheritsSteamSettings)') < advanced.index('setupActions')
+actions = block(detail, '    @ViewBuilder private var setupActions:', '\n    }\n')
+assert actions.count('Button("Reset to Recommended"') == 1
+assert not re.search(r'\bif\b[^\n]*(?:entry\.desktop|isSteamGlobal|inheritsSteamSettings)', actions)
+groups = block(detail, '    private var pageGroups:', '\n    }\n')
+assert 'if isSteamGlobal { return [[.display, .controls, .launch, .compatibility], [.advanced]] }' in groups
+assert 'entry.desktop == true ? [.advanced] : [.library, .iniFiles, .advanced]' in groups
 assert 'if let error { Section' in detail
 assert '!remove, !confirmReset else { return }' in detail
 launch = block(content, '    private func launchPreparedLibraryEntry(_ entry: LibraryEntry, steamRequest: UUID? = nil) {', '\n    }\n')
@@ -604,7 +608,7 @@ assert ('if let on = rec.avx { LibraryPrefs.setAVX(on, for: windowsPath) }' in p
         and 'if let on = rec.nvidia { LibraryPrefs.setNvidia(on, for: windowsPath) }' in put
         and 'if let on = rec.olderNvidia { LibraryPrefs.setOlderNvidia(on, for: windowsPath) }' in put
         and 'if let on = rec.wineVCRT { LibraryPrefs.setWineVCRT(on, for: windowsPath) }' in put)
-print('PASS: first sight in the library (start-up, save, Game details, start); Reset to Recommended last in Game details')
+print('PASS: first sight in the library (start-up, save, Game details, start); one Reset to Recommended in Advanced for Steam, Desktop and games')
 
 # The Swift fixture: the real files with small stand-ins for the app types they use.
 stable_hash = block(prefs, '    static func stableHash(_ s: String) -> UInt64 {', '\n    }\n')
