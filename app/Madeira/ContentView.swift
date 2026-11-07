@@ -1286,6 +1286,7 @@ struct ContentView: View {
     @State private var devSheet: SettingsSheet?
     @StateObject private var logStore = LogStore.shared
     @StateObject private var jitCoordinator = JITCoordinator.shared
+    @ObservedObject private var steamPreparation = DeckSteamLaunchPreparation.shared
     @State private var jitStatus: JITStatus = .unknown
     /// Play without JIT: the start that waits for Enable JIT (jitReadyForLaunch).
     @State private var launchAfterJIT: (() -> Void)?
@@ -1354,6 +1355,21 @@ struct ContentView: View {
                 Button("Later", role: .cancel) { library.jitNotice = nil }
             } message: { Text(library.jitNotice ?? "") }
             .sheet(isPresented: $jitCoordinator.showSetup) { JITSetupView() }
+            .onChange(of: library.error) { _, message in
+                if let message { steamPreparation.fail(message) }
+            }
+            .onChange(of: library.restartNotice) { _, message in
+                if let message { steamPreparation.fail(message) }
+            }
+            .onChange(of: library.jitNotice) { _, message in
+                if let message { steamPreparation.fail(message) }
+            }
+            .onChange(of: library.current) { old, current in
+                if old != nil && current == nil { steamPreparation.sessionEnded(library.error) }
+            }
+            .onChange(of: steamPreparation.presented) { _, visible in
+                if !visible { DeckSteamNativeFrames.end() }
+            }
             // A Steam game's saves may not be the latest (cloudClear).
             .alert(library.cloudNotice?.title ?? L("Steam Cloud"), isPresented: Binding(get: { library.cloudNotice != nil },
                                                                                      set: { if !$0 { library.cloudNotice = nil } })) {
@@ -2424,7 +2440,7 @@ struct ContentView: View {
         jitStatus = .testing
         logStore.log("Requesting JIT with \(jitCoordinator.resolvedMethod.title)...")
 
-        jitCoordinator.enable { result in
+        AppEntryJIT.shared.enable { result in
             switch result {
             case .success:
                 jitStatus = .available
@@ -2455,6 +2471,9 @@ struct ContentView: View {
         guard let launch = launchAfterJIT else { return }
         launchAfterJIT = nil
         library.startingJIT = nil
+        if !started, steamPreparation.phase == .starting {
+            steamPreparation.fail(L("JIT was not enabled. Steam has not started."))
+        }
         guard started, StikJITHelper.ready, library.current == nil, wine_process_is_running() == 0 else {
             logStore.log("[jit-on-play] JIT did not come on: the game was not started")
             // A failure has its own error; this one closes the details page as well.
@@ -2569,6 +2588,25 @@ struct ContentView: View {
     /// applies the entry's launch profile and runs the same full sequence as the
     /// developer interface's buttons.
     private func launchLibraryEntry(_ entry: LibraryEntry) {
+        guard !steamPreparation.presented else { return }
+        if SteamClient.owns(entry) {
+            library.error = nil
+            steamPreparation.request(target: entry.launchWindowsPath, installer: entry.id == SteamClient.installerID) { request in
+                library.error = nil
+                library.restartNotice = nil
+                library.jitNotice = nil
+                launchPreparedLibraryEntry(entry, steamRequest: request)
+                if let message = library.error ?? library.restartNotice ?? library.jitNotice {
+                    steamPreparation.fail(message)
+                }
+            }
+            TouchControlsHost.attach()
+        } else {
+            launchPreparedLibraryEntry(entry)
+        }
+    }
+
+    private func launchPreparedLibraryEntry(_ entry: LibraryEntry, steamRequest: UUID? = nil) {
         // madeira-bcd: a game seen for the first time starts with Madeira's recommended
         // settings (GameRecommendationsApply.swift).
         var entry = entry
@@ -2610,8 +2648,12 @@ struct ContentView: View {
         // The same precondition runWineFullSequence checks: the JIT pool is
         // taken at launch, through the debugger. Without it, Play enables JIT and
         // continues from here once it is on.
-        guard jitReadyForLaunch(inLibrary: true, entry: entry.id, then: { startLibraryEntry(entry) }) else { return }
-        startLibraryEntry(entry)
+        let launch = {
+            if let steamRequest, !steamPreparation.permitsLaunch(steamRequest) { return }
+            startLibraryEntry(entry)
+        }
+        guard jitReadyForLaunch(inLibrary: true, entry: entry.id, then: launch) else { return }
+        launch()
     }
 
     /// The rest of Play, with JIT on: checks the entry's launch profile and starts it.
@@ -2693,6 +2735,7 @@ struct ContentView: View {
             : entry.launchWindowsPath.split(separator: "\\").last.map(String.init) ?? entry.launchWindowsPath
         LogStore.shared.startSessionLog(program: program)
         library.begin(entry)
+        if SteamClient.owns(entry), steamPreparation.sessionStarted(entry.id) { DeckSteamNativeFrames.begin() }
         runWineFullSequence(profile: entry)
     }
 
@@ -2750,6 +2793,8 @@ struct ContentView: View {
             if profile != nil { LibraryModel.shared.launchFailed() }
             return
         }
+        if AppEntryJIT.shared.deferLaunchUntilProbeFinishes({ runWineFullSequence(profile: profile) },
+                                                          failed: { LibraryModel.shared.launchFailed($0) }) { return }
         // Steam downloads wait for the session, and the app's own Steam connection closes
         // before Valve's client signs in with the same account (SteamOwnedLibrary).
         SteamOwnedLibrary.shared.sessionChanged(active: true)
@@ -4241,6 +4286,10 @@ final class TouchControlsModel: ObservableObject {
 final class ControlsWindow: UIWindow {
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         let m = TouchControlsModel.shared
+        if DeckSteamLaunchPreparation.shared.presented {
+            // Pairing/setup must remain usable while a Steam request waits for JIT.
+            return JITCoordinator.shared.showSetup ? nil : super.hitTest(point, with: event)
+        }
         // Edit mode owns the whole screen: drags and the scale pinch must not
         // leak through and swing the camera while you are arranging buttons.
         if m.editing { return super.hitTest(point, with: event) }
@@ -4307,6 +4356,8 @@ struct TouchControlsOverlay: View {
     @ObservedObject private var m = TouchControlsModel.shared
     @ObservedObject private var library = LibraryModel.shared
     @ObservedObject private var zones = GestureZonesModel.shared
+    @ObservedObject private var steamLoading = DeckSteamLaunchPreparation.shared
+    @ObservedObject private var steamJIT = JITCoordinator.shared
     @State private var pinchBase: Double?
 
     var body: some View {
@@ -4318,24 +4369,28 @@ struct TouchControlsOverlay: View {
             let session = library.current != nil || library.preparing != nil
             let landscape = geo.size.width > geo.size.height || session
             ZStack(alignment: .top) {
-                // The library between sessions (the window came up for a start that did not
-                // happen) draws nothing over the library's own screens.
-                if landscape && !(library.enabled && !session && !m.editing) {
-                    if m.editing {
-                        Color.clear.contentShape(editorCanvas(geo.size))
-                            .onTapGesture { m.selected = nil; zones.selected = nil }
-                    }
-                    if (m.visible || m.editing) && !library.blocksGameplayTouch {
-                        if GestureZonesModel.enabled {
-                            GestureZonesLayer(screen: geo.size, editing: m.editing)
+                if steamLoading.presented && !steamJIT.showSetup {
+                    DeckSteamPreparationView()
+                } else if !steamLoading.presented {
+                    // The library between sessions (the window came up for a start that did not
+                    // happen) draws nothing over the library's own screens.
+                    if landscape && !(library.enabled && !session && !m.editing) {
+                        if m.editing {
+                            Color.clear.contentShape(editorCanvas(geo.size))
+                                .onTapGesture { m.selected = nil; zones.selected = nil }
                         }
-                        controls(geo.size, session: session)
-                    }
-                    if session && !m.editing { LibraryHUD() } else { topBar }
-                    if m.editing, let i = m.index(of: m.selected) {
-                        MappingPanel(control: m.controls[i], screen: geo.size)
-                    } else if m.editing, let i = zones.index(of: zones.selected) {
-                        GestureZonePanel(zone: zones.zones[i], screen: geo.size)
+                        if (m.visible || m.editing) && !library.blocksGameplayTouch {
+                            if GestureZonesModel.enabled {
+                                GestureZonesLayer(screen: geo.size, editing: m.editing)
+                            }
+                            controls(geo.size, session: session)
+                        }
+                        if session && !m.editing { LibraryHUD() } else { topBar }
+                        if m.editing, let i = m.index(of: m.selected) {
+                            MappingPanel(control: m.controls[i], screen: geo.size)
+                        } else if m.editing, let i = zones.index(of: zones.selected) {
+                            GestureZonePanel(zone: zones.zones[i], screen: geo.size)
+                        }
                     }
                 }
             }

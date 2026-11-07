@@ -2009,6 +2009,14 @@ void winios_window_frame(HWND hwnd, int x, int y, int w, int h, int visible,
     });
 }
 
+int winios_window_has_visible_frame(unsigned long long hwnd) {
+    if (!NSThread.isMainThread || !hwnd || !g_compositor_view ||
+        g_compositor_view.hidden || !g_compositor_view.window) return 0;
+    CALayer *layer = g_layers[@(hwnd)];
+    if (!layer || layer.hidden || !layer.contents || CGRectIsEmpty(layer.frame)) return 0;
+    return !CGRectIsEmpty(CGRectIntersection(layer.frame, g_compositor_view.bounds));
+}
+
 /* MADEIRA_DUMP_SURFACES=1: save each window's DIB as PNG under
  * Documents/surfdump/ — surf-<hwnd>-first.png once, then
  * surf-<hwnd>-latest.png at most every 2s. Ground truth for whether a

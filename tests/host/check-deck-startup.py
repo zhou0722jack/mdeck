@@ -27,6 +27,7 @@ assert 'DeckStartupRoot { ContentView() }' in (app / 'MadeiraApp.swift').read_te
 assert 'installAutomatically()' not in (app / 'MadeiraApp.swift').read_text()
 assert 'DeckStartup.swift in Sources' in project and 'BootAnimation in Resources' in project
 assert '!DeckStartupModel.shared.blocking' in (app / 'SigningRefresh.swift').read_text()
+assert '!DeckSteamLaunchPreparation.shared.presented' in (app / 'SigningRefresh.swift').read_text()
 home = library[library.index('    var deckSteamHome:'):library.index('    var deckDesktop:')]
 assert home.count('Button {') == 1 and 'install: !SteamClient.installed' in home
 assert 'LibraryStatus()' not in home and 'enableJIT' not in home and 'Run Steam installer' not in home
@@ -43,7 +44,15 @@ for call in ['WineMonoModel.shared.install()', 'VCRedistModel.shared.install()',
     assert call in startup
 for forbidden in ['runWineFullSequence', 'URLSession', 'setenv(', 'poolSize', 'send_command(']:
     assert forbidden not in startup, forbidden
-assert 'isReady(component)' in startup and 'if complete { defaults.set(true' in startup
+assert 'isReady(component)' in startup and 'defaults.set(complete, forKey:' in startup
+content = (app / 'ContentView.swift').read_text()
+gate = content[content.index('    private func launchLibraryEntry('):content.index('    private func launchPreparedLibraryEntry(')]
+assert 'SteamClient.owns(entry)' in gate and 'steamPreparation.request(target: entry.launchWindowsPath' in gate
+assert 'launchPreparedLibraryEntry(entry, steamRequest: request)' in gate and 'TouchControlsHost.attach()' in gate
+assert 'steamPreparation.permitsLaunch(steamRequest)' in content
+assert '.fullScreenCover(isPresented: Binding(get: { steamPreparation.presented }' not in content
+assert 'DeckSteamPreparationView()' in content
+assert 'launch.beginPreparation()' in startup and 'DeckSteamLocalCovers.images()' in startup
 assert 'player?.pause()' in startup and 'watchdog?.cancel()' in startup
 assert 'view.movieLayer.player = nil' in startup and 'scenePhase == .active' in startup
 print('PASS: real verified installers reused; startup has no new Wine, JIT protocol or pool behavior')
@@ -72,7 +81,7 @@ import Foundation
             if !preparation.running { return }
             try? await Task.sleep(nanoseconds: 20_000_000)
         }
-        preconditionFailure("startup download queue did not finish")
+        preconditionFailure("component queue did not finish")
     }
     @MainActor static func main() async {
         let name = "mdeck-startup-fixture-" + UUID().uuidString
@@ -83,77 +92,142 @@ import Foundation
             defaults.removePersistentDomain(forName: name)
             return DeckComponentPreparation(defaults: defaults)
         }
-
+        let target = "C:\\Program Files\\Steam Client\\steam.exe"
+        func frame(_ image: String? = nil, visible: Bool = true, drawn: Bool = true,
+                   width: Int = 640, height: Int = 480) -> DeckSteamFrame {
+            DeckSteamFrame(image: image ?? target, width: width, height: height, visible: visible, drawn: drawn)
+        }
         var preparation = fresh()
-        defaults.set(4, forKey: "madeiraOnboardingRevision")
-        var flow = DeckStartupModel(defaults: defaults, preparation: preparation)
-        precondition(flow.phase == .chooseJIT, "legacy setup revisions must not skip the new choice")
-        flow.choose(.automatic)
-        precondition(flow.phase == .chooseJIT && StartupFixture.calls.isEmpty)
+        let startup = DeckStartupModel(defaults: defaults)
+        precondition(startup.phase == .chooseJIT)
+        startup.choose(.automatic)
+        precondition(startup.phase == .chooseJIT)
         MadeiraBuiltInJIT.isAvailable = false
-        flow.choose(.builtIn)
-        precondition(flow.phase == .chooseJIT && defaults.string(forKey: DeckStartupRules.choiceKey) == nil)
-        flow.choose(.externalScript)
-        flow.begin(); flow.begin()
-        precondition(defaults.string(forKey: DeckStartupRules.choiceKey) == "externalScript")
+        startup.choose(.builtIn)
+        precondition(startup.phase == .chooseJIT)
+        startup.choose(.externalScript)
+        precondition(startup.phase == .ready && StartupFixture.calls.isEmpty)
+        precondition(DeckStartupModel(defaults: defaults).phase == .ready)
+        print("PASS: first JIT choice and returning app opens do not download components")
+
+        var launch = DeckSteamLaunchPreparation(preparation: preparation)
+        var requests: [UUID] = []
+        launch.request(target: target, installer: false) { requests.append($0) }
+        launch.request(target: target, installer: false) { requests.append($0) }
+        precondition(launch.presented && launch.phase == .components && StartupFixture.calls.isEmpty)
+        launch.beginPreparation(); launch.beginPreparation()
+        precondition(StartupFixture.calls == DeckSetupComponent.allCases)
+        precondition(StartupFixture.active.count == 4 && StartupFixture.peakDownloads == 4)
+        launch.returnToLibrary()
+        precondition(launch.presented)
         await wait(preparation)
-        precondition(flow.phase == .ready && preparation.complete)
-        precondition(StartupFixture.calls == DeckSetupComponent.allCases, "install each missing component once in order")
-        precondition(defaults.bool(forKey: DeckStartupRules.completeKey))
-        StartupFixture.calls = []
-        let returning = DeckStartupModel(defaults: defaults, preparation: preparation)
-        returning.begin()
-        precondition(returning.phase == .ready && StartupFixture.calls.isEmpty)
-        print("PASS: first-run choice saved once; returning launches skip setup and downloads")
+        precondition(preparation.complete && launch.presented && launch.phase == .starting && requests.count == 1)
+        let token = requests[0]
+        precondition(launch.permitsLaunch(token))
+        let began = Date()
+        precondition(launch.sessionStarted(UUID(), at: began))
+        precondition(launch.phase == .waitingForFrame && launch.presented && !launch.permitsLaunch(token))
+        for invalid in [
+            frame("C:\\windows\\explorer.exe"), frame("C:\\windows\\system32\\conhost.exe"),
+            frame("C:\\Program Files (x86)\\Steam\\steam.exe"), frame("C:\\other\\steam.exe"),
+            frame(""), frame(visible: false), frame(drawn: false),
+            frame(width: 1, height: 1), frame("C:\\Program Files\\Steam Client\\steamapps\\common\\x\\steamwebhelper.exe")
+        ] {
+            launch.observe([invalid], at: began)
+            precondition(launch.presented && launch.phase == .waitingForFrame)
+        }
+        launch.observe([], at: began.addingTimeInterval(121))
+        precondition(launch.presented && launch.phase == .waitingForFrame && launch.slow)
+        launch.observe([frame()], at: began.addingTimeInterval(130))
+        precondition(!launch.presented && launch.phase == .idle)
+        print("PASS: one continuous layer survives download/start/long wait and closes only on the target's visible image")
+        print("PASS: desktop, console, Dock's other Steam, unknown/hidden/undrawn/tiny and game windows cannot close it")
+
+        precondition(DeckSteamFrameRules.accepts(frame("\\??\\C:\\PROGRAM FILES\\STEAM CLIENT\\STEAM.EXE"),
+                                               target: target, installer: false))
+        precondition(DeckSteamFrameRules.accepts(frame("C:\\Program Files\\Steam Client\\bin\\cef\\steamwebhelper.exe"),
+                                               target: target, installer: false))
+        let setup = "C:\\Madeira\\Installers\\SteamSetup.exe"
+        precondition(DeckSteamFrameRules.accepts(frame(setup), target: setup, installer: true))
+        precondition(!DeckSteamFrameRules.accepts(frame(), target: setup, installer: true))
+        print("PASS: NT/case normalization, same-client CEF ownership and a separately identified installer frame")
 
         preparation = fresh()
         StartupFixture.failures = [.gecko]
-        flow = DeckStartupModel(defaults: defaults, preparation: preparation)
-        flow.choose(.builtIn)
+        defaults.set(true, forKey: DeckStartupRules.completeKey)
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        requests = []
+        launch.request(target: target, installer: false) { requests.append($0) }
+        launch.beginPreparation()
         await wait(preparation)
-        precondition(JITCoordinator.shared.method == .builtIn)
-        precondition(flow.phase == .preparing && !preparation.complete)
+        precondition(launch.presented && launch.phase == .failed && requests.isEmpty)
         precondition(preparation.readyCount == 3 && !defaults.bool(forKey: DeckStartupRules.completeKey))
-        guard case .failed("gecko offline") = preparation.states[.gecko] else { preconditionFailure("failure missing") }
         StartupFixture.failures = []; StartupFixture.calls = []
-        flow.prepare()
+        launch.retry()
         await wait(preparation)
-        precondition(StartupFixture.calls == [.gecko] && flow.phase == .ready)
-        precondition(defaults.bool(forKey: DeckStartupRules.completeKey))
-        print("PASS: failure stays visible without a completion stamp; retry only downloads the missing component")
-
-        preparation = fresh()
-        StartupFixture.failures = [.mono]
-        flow = DeckStartupModel(defaults: defaults, preparation: preparation)
-        flow.choose(.externalScript)
-        flow.deferFailedDownloads()
-        precondition(flow.phase == .preparing, "cannot leave while an installer is running")
+        precondition(StartupFixture.calls == [.gecko] && launch.phase == .starting && requests.count == 1)
+        let abandoned = requests[0]
+        launch.returnToLibrary()
+        precondition(!launch.presented && !launch.permitsLaunch(abandoned))
+        requests = []
+        launch.request(target: target, installer: false) { requests.append($0) }
+        launch.beginPreparation()
         await wait(preparation)
-        flow.deferFailedDownloads()
-        precondition(flow.phase == .ready && !defaults.bool(forKey: DeckStartupRules.completeKey))
-        let resumed = DeckStartupModel(defaults: defaults, preparation: preparation)
-        precondition(resumed.phase == .preparing, "deferred downloads resume without repeating JIT selection")
-        print("PASS: defer never records success; incomplete setup resumes next launch")
+        precondition(requests.count == 1 && requests[0] != abandoned && !launch.permitsLaunch(abandoned))
+        precondition(launch.permitsLaunch(requests[0]))
+        launch.fail("JIT cancelled")
+        precondition(launch.presented && launch.phase == .failed && !launch.permitsLaunch(requests[0]))
+        print("PASS: failed component retry, duplicate request suppression and abandoned/failed JIT continuations")
 
         preparation = fresh()
         WineMonoModel.available = true; WineGeckoModel.available = true
-        preparation.prepare(); preparation.prepare()
+        var joined = 0
+        preparation.prepare { if $0 { joined += 1 } }
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        requests = []
+        launch.request(target: target, installer: false) { requests.append($0) }
+        launch.beginPreparation()
         await wait(preparation)
-        precondition(StartupFixture.calls == [.visualCPP, .dock] && preparation.complete)
-        print("PASS: existing components are reused and overlapping preparation cannot duplicate downloads")
+        precondition(StartupFixture.calls == [.visualCPP, .dock] && joined == 1 && requests.count == 1)
+        precondition(launch.sessionStarted(UUID()))
+        launch.sessionEnded("Wine stopped before frame")
+        precondition(launch.presented && launch.phase == .failed && launch.error == "Wine stopped before frame")
+        launch.returnToLibrary()
+        precondition(!launch.presented)
+        print("PASS: shared existing downloads and a session ending before the first frame stay distinct from success")
 
         preparation = fresh()
         StartupFixture.sessionRunning = true
-        preparation.prepare()
-        precondition(!preparation.running && !preparation.complete && StartupFixture.calls.isEmpty)
-        precondition(!defaults.bool(forKey: DeckStartupRules.completeKey))
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        launch.request(target: target, installer: false) { _ in preconditionFailure("active Wine launched") }
+        launch.beginPreparation()
+        precondition(!preparation.running && launch.phase == .failed && StartupFixture.calls.isEmpty)
         preparation = fresh()
         MadeiraDock.bundled = false; MadeiraDock.clientInstalled = true
         preparation.prepare()
         await wait(preparation)
-        precondition(!preparation.complete && preparation.readyCount == 3)
-        precondition(!StartupFixture.calls.contains(.dock))
-        print("PASS: active sessions and an IPA missing Dock cannot be reported as prepared")
+        precondition(!preparation.complete && preparation.readyCount == 3 && !StartupFixture.calls.contains(.dock))
+        print("PASS: active Wine sessions and an incomplete IPA cannot report ready")
+
+        preparation = fresh()
+        WineMonoModel.available = true; WineGeckoModel.available = true
+        VCRedistModel.shared.complete = true; MadeiraDock.clientInstalled = true
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        launch.request(target: target, installer: false) { _ in }
+        launch.beginPreparation()
+        await wait(preparation)
+        precondition(StartupFixture.calls.isEmpty && launch.phase == .starting && launch.presented)
+        precondition(launch.sessionStarted(UUID()))
+        launch.closeRequested()
+        precondition(launch.closing && launch.presented && launch.phase == .failed)
+        launch.sessionEnded(nil)
+        precondition(!launch.presented)
+        WineGeckoModel.available = false
+        launch.request(target: target, installer: false) { _ in }
+        launch.beginPreparation()
+        await wait(preparation)
+        precondition(StartupFixture.calls == [.gecko])
+        print("PASS: cached components still use the animation, explicit close completes safely, and missing files recheck")
     }
 }
 '''
@@ -170,7 +244,16 @@ with tempfile.TemporaryDirectory(prefix='mdeck-startup-check-') as directory:
         method_file = folder / 'JITMethod.swift'
         method_file.write_text('import SwiftUI\n' + methods)
         sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
+        sampler = library[library.index('@MainActor enum DeckSteamLocalCovers {'):library.index('\nstruct LibraryView: View {')]
+        sampler_file = folder / 'NativeFrames.swift'
+        sampler_file.write_text('import SwiftUI\nimport UIKit\nimport ImageIO\n' + sampler)
+        ios_fixture = folder / 'IOSDependencies.swift'
+        ios_fixture.write_text(fixture.read_text().replace('enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }', ''))
+        bridge = folder / 'NativeBridge.h'
+        bridge.write_text('#include "'+str(app / 'Winios/Winios.h')+'"\n#include "'+str(app / 'JITAllocator.h')+'"\n')
         subprocess.run(['xcrun', 'swiftc', '-typecheck', '-sdk', sdk, '-target', 'arm64-apple-ios18.0',
-                        str(app / 'DeckStartup.swift'), str(app / 'DeckDesign.swift'), str(method_file), str(fixture)], check=True)
-        print('PASS: production startup views and AVPlayer bridge typechecked against the iOS SDK with dependency stubs')
+                        '-import-objc-header', str(bridge),
+                        str(app / 'DeckStartup.swift'), str(app / 'DeckDesign.swift'), str(method_file), str(ios_fixture),
+                        str(app / 'DeckSteamLoading.swift'), str(app / 'AppEntryJIT.swift'), str(sampler_file)], check=True)
+        print('PASS: native loading views, actual window-census C bridge, startup and AVPlayer typechecked against iOS SDK')
 print('No IPA build, network download, signing, installation or physical-device test performed.')

@@ -7,6 +7,10 @@
 // pretend installation next to the binary, then without.
 
 import Foundation
+// The extracted portal/sign-in code uses the app's localized error helpers.
+// This resource-free harness checks their English fallback messages.
+func L(_ key: String) -> String { key }
+func LF(_ key: String, _ arguments: CVarArg...) -> String { String(format: key, arguments: arguments) }
 
 // MARK: - The app's side
 

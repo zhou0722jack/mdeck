@@ -1043,7 +1043,7 @@ final class LibraryModel: ObservableObject {
     var menuButtonRect = CGRect.zero
     var performanceRect = CGRect.zero
     /// The in-game menu and the starting screen take every touch.
-    var blocksGameplayTouch: Bool { preparing != nil || (current != nil && (menu || launching)) }
+    var blocksGameplayTouch: Bool { MainActor.assumeIsolated { DeckSteamLaunchPreparation.shared.presented } || preparing != nil || (current != nil && (menu || launching)) }
     private var timer: Timer?
     private var sawProcess = false
     // Why a session ended by itself (not Quit): the program the app launched
@@ -1757,7 +1757,19 @@ final class LibraryModel: ObservableObject {
             // do not end this starting screen; the game's window does (DockStartScreen).
             dockStart.poll(self, rendered: madeira_frame_count() >= launchPresent + 3)
         }
-        if dockStart.holding {
+        let steamHeld = MainActor.assumeIsolated { () -> Bool in
+            let steamLoading = DeckSteamLaunchPreparation.shared
+            guard let entry = activeEntry, SteamClient.owns(entry), steamLoading.presented else { return false }
+            steamLoading.observe(DeckSteamNativeFrames.snapshot())
+            if !steamLoading.presented {
+                DeckSteamNativeFrames.end()
+                showGameView(reason: "steam-target-first-frame")
+            }
+            return true
+        }
+        if steamHeld {
+            // Interactive Steam has its own ownership-checked frame condition.
+        } else if dockStart.holding {
             if launching && !launchSlow && Date().timeIntervalSince(launchStarted) > 30 { launchSlow = true }
         } else if launching {
             if madeira_frame_count() >= launchPresent + 3 {
@@ -1901,6 +1913,12 @@ final class LibraryModel: ObservableObject {
     private func finish() {
         if sawProcess, let next = steamRunRequest() { restartNotice = next }
         else if sawProcess, let report = exitReport() { error = report }
+        MainActor.assumeIsolated {
+            if let entry = activeEntry, SteamClient.owns(entry) {
+                DeckSteamLaunchPreparation.shared.sessionEnded(error)
+                DeckSteamNativeFrames.end()
+            }
+        }
         timer?.invalidate(); timer = nil
         saveCurrentProfile()
         controllerMode = nil
@@ -3292,6 +3310,46 @@ struct LibraryGroupedGames<LocalCell: View>: View {
     }
 }
 
+@MainActor enum DeckSteamLocalCovers {
+    static func images() -> [Image] {
+        LibraryModel.shared.entries.compactMap(\.coverFile).prefix(16).compactMap { name in
+            let file = LibraryModel.documents.appendingPathComponent("madeira-art/" + URL(fileURLWithPath: name).lastPathComponent)
+            guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+                  let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 336
+                  ] as CFDictionary) else { return nil }
+            return Image(uiImage: UIImage(cgImage: image))
+        }
+    }
+}
+
+/// Reuses the existing top-level ownership census, but requires actual image
+/// content on this window's visible compositor layer. Desktop/global presents
+/// and swapchain allocation alone cannot finish an interactive Steam start.
+@MainActor enum DeckSteamNativeFrames {
+    private static var active = false
+    static func begin() { active = true; winios_window_census_enable(1) }
+    static func end() {
+        guard active else { return }
+        active = false
+        winios_window_census_enable(0)
+    }
+    static func snapshot() -> [DeckSteamFrame] {
+        guard active else { return [] }
+        var raw = [winios_census_window](repeating: winios_census_window(), count: Int(WINIOS_CENSUS_MAX))
+        let count = Int(winios_window_census(&raw, Int32(raw.count)))
+        return raw.prefix(max(0, min(count, raw.count))).map { window in
+            let image = withUnsafeBytes(of: window.image) { bytes in String(decoding: bytes.prefix { $0 != 0 }, as: UTF8.self) }
+            return DeckSteamFrame(image: image, width: Int(window.w), height: Int(window.h),
+                                  visible: window.visible != 0,
+                                  drawn: winios_window_has_visible_frame(window.hwnd) != 0)
+        }
+    }
+}
+
 struct LibraryView: View {
     @Environment(\.deckPalette) private var palette
     @ObservedObject private var appearance = DeckAppearance.shared
@@ -3446,6 +3504,7 @@ struct LibraryView: View {
             deckSettingFocus = deckSettingChoices.first
         }
         .onReceive(controller.commands) { command in
+            guard !DeckSteamLaunchPreparation.shared.presented else { return }
             guard selected == nil, !browser, !deckComponentSetup, deckSettingsPage == nil,
                   !deckWorkshop, !steamClientPresented, settingsSheet == nil else { return }
             if command == "tab" {
@@ -4007,6 +4066,7 @@ private extension LibraryView {
                     }
                     Spacer(minLength: 40)
                     deckSteamActions
+                    AppEntryJITStatus()
                     if !SteamClient.installed {
                         Text("Steam will open its installer on the first launch.")
                             .font(.footnote).foregroundStyle(palette.muted)

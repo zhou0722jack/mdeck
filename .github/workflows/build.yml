@@ -37,6 +37,8 @@ jobs:
         run: |
           python3 tests/host/check-native-deck.py
           python3 tests/host/check-deck-startup.py
+          python3 tests/host/check-steam-loading-artwork.py
+          python3 tests/host/check-app-entry-jit.py
           python3 tests/host/check-wine-diagnostic-startup.py
           python3 tests/host/check-crt-callsite-diagnostics.py
           python3 tests/host/check-desktop-button-click.py

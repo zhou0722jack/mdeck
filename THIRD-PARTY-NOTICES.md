@@ -46,6 +46,8 @@ dependency license texts are in `LICENSES/`. See "Why GPL-3.0-or-later" below.
 
 The Simplified Chinese dialog font is **Noto Sans SC**, an unmodified SubsetOTF Regular file under SIL OFL 1.1, from [notofonts/noto-cjk](https://github.com/notofonts/noto-cjk) commit `f8d157532fbfaeda587e826d4cd5b21a49186f7c`. The bundled file `app/Madeira/fonts-zh/NotoSansSC-Regular.otf` has SHA-256 `faa6c9df652116dde789d351359f3d7e5d2285a2b2a1f04a2d7244df706d5ea9`; its licence and provenance ship alongside it. It is installed into new and existing Wine prefixes. Missing Chinese families map to it; Latin UI fonts link to it for Chinese glyphs.
 
+DroidDeck's Steam loading animation is ported to native SwiftUI in `app/Madeira/DeckSteamLoading.swift`: `LogoThrobber`/`LogoShape` from `Throbber.kt`, the loading layout and segments from `SessionLoading.kt`, and `TiltedWall` from `SteamHome.kt`, under GPL-3.0. The source commit, paths and hashes are recorded in `docs/droiddeck-steam-loading.json`. Source: [Droid-Deck/DroidDeck](https://github.com/Droid-Deck/DroidDeck/tree/18c7d56409de4cf3b63b1b09e60e0fe97a633a7d). DroidDeck's licence is bundled at `BootAnimation/LICENSE-DroidDeck.txt`.
+
 ## Why GPL-3.0-or-later
 
 The intent is that derivatives stay open source. LGPL deliberately permits

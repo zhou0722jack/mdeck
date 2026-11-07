@@ -703,7 +703,7 @@ struct ExternalJITScriptSection: View {
                 }
                 Button("Stop waiting", role: .cancel) { coordinator.cancelExternalScriptWait() }
             } else {
-                Button("Check external script attachment") { coordinator.enable { _ in } }
+                Button("Check external script attachment") { AppEntryJIT.shared.enable() }
                     .disabled(coordinator.busy)
             }
             if let error = coordinator.error {
@@ -788,7 +788,7 @@ struct JITSetupView: View {
                     Section {
                         Button("Check setup") { coordinator.prepareBuiltIn() }
                             .disabled(coordinator.busy || !coordinator.pairingImported)
-                        Button("Enable JIT") { coordinator.enableBuiltIn() }
+                        Button("Enable JIT") { AppEntryJIT.shared.enable() }
                             .disabled(coordinator.busy || !coordinator.pairingImported)
                         Button("Reset Developer Disk Image", role: .destructive) {
                             coordinator.resetDDI()
@@ -797,7 +797,7 @@ struct JITSetupView: View {
                 } else {
                     Section {
                         if StikJITHelper.isAvailable {
-                            Button("Enable JIT with StikDebug") { coordinator.enable() { _ in } }
+                            Button("Enable JIT with StikDebug") { AppEntryJIT.shared.enable() }
                         } else {
                             Link("Install StikDebug",
                                  destination: URL(string: "https://github.com/StikDebug/StikDebug/releases/latest")!)

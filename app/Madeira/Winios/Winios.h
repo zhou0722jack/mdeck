@@ -75,6 +75,9 @@ void winios_cursor_move(int x, int y);
  * (points, main thread) to desktop pixels through the compositor's own
  * mapping (0 when there is no desktop). */
 unsigned long long winios_surface_present_count(void);
+/* Main thread: a visible, on-screen GDI/CEF window has received image content.
+ * Creating a layer or a swapchain, or a hidden window repaint, is not a frame. */
+int winios_window_has_visible_frame(unsigned long long hwnd);
 int winios_compositor_set_hidden(int hidden);
 
 /* Game-mode windows (Winios.m). The window a game session's swapchain

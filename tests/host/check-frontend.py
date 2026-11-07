@@ -585,7 +585,10 @@ check('__attribute__((weak)) int madeira_dxmt_has_40_cap(void) {\n    return 0;'
       and 'madeira_dxmt_has_40_cap() != 0 && panelMaxFPS >= 120' in fps
       and 'ProMotionIntent.has40Cap || mode == 4' in lib, 'the 40 FPS cap is offered only with DXMT support and a 120 Hz panel')
 check('LibraryView(play: launchLibraryEntry' in content, 'ContentView shows the library when it is the chosen interface')
-launch_entry = block(content, 'private func launchLibraryEntry(')
+component_gate = block(content, 'private func launchLibraryEntry(')
+check('SteamClient.owns(entry)' in component_gate and 'steamPreparation.request' in component_gate,
+      'interactive Steam starts prepare components before the shared launch checks')
+launch_entry = block(content, 'private func launchPreparedLibraryEntry(')
 check(launch_entry.index('SteamClient.normalizeLaunch(&entry)') < launch_entry.index('GameRecommendations.prepare'),
       'library starts normalize saved Steam installer profiles before recommendations and JIT continuation')
 check(launch_entry.count('SteamClient.normalizeLaunch(&entry)') == 2

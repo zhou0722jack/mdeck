@@ -219,8 +219,14 @@ require('if model.startingJIT == entry.id {' in library and 'Text("Starting JIT"
 enable_jit = function(content, "private func enableJIT()")
 require(enable_jit.count("launchAfterJITEnded(started: false)") == 2 and enable_jit.count("launchAfterJITEnded(started: true)") == 1,
         "every way Enable JIT ends settles the waiting game")
-play = function(content, "private func launchLibraryEntry(")
-require("guard jitReadyForLaunch(inLibrary: true, entry: entry.id, then: { startLibraryEntry(entry) }) else { return }" in play
+component_gate = function(content, "private func launchLibraryEntry(")
+require('SteamClient.owns(entry)' in component_gate
+        and 'steamPreparation.request(target: entry.launchWindowsPath' in component_gate
+        and 'launchPreparedLibraryEntry(entry, steamRequest: request)' in component_gate,
+        "Steam waits for component preparation before entering the existing JIT launch checks")
+play = function(content, "private func launchPreparedLibraryEntry(")
+require("guard jitReadyForLaunch(inLibrary: true, entry: entry.id, then: launch) else { return }" in play
+        and 'if let steamRequest, !steamPreparation.permitsLaunch(steamRequest)' in play
         and play.index("cloudClear(") < play.index("jitReadyForLaunch(")
         and "then: { startDock(game, compactPool: compactPool, profile: profile) }) else { return }" in content,
         "Play and Dock starts continue after JIT without repeating the checks already passed")

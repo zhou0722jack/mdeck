@@ -578,7 +578,7 @@ assert detail.index('// madeira-bcd: always last,') < detail.index('Button("Rese
 assert detail.index('Button("Remove from library"') < detail.index('Button("Reset to Recommended"')
 assert 'if let error { Section' in detail
 assert '!remove, !confirmReset else { return }' in detail
-launch = block(content, '    private func launchLibraryEntry(_ entry: LibraryEntry) {', '\n    }\n')
+launch = block(content, '    private func launchPreparedLibraryEntry(_ entry: LibraryEntry) {', '\n    }\n')
 assert launch.index('if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }') < launch.index('BCDLaunch.applyLibrary(entry)')
 for name in ('GameRecommendations.swift', 'GameRecommendationsApply.swift'):
     assert project.count(f'/* {name} in Sources */') == 2, name   # PBXBuildFile and the Sources phase

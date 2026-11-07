@@ -5,6 +5,34 @@ run the bundled `madeira-jit.js` in StikDebug yourself, or let Madeira send it
 through the StikDebug app or its built-in StikJIT helper. All three routes use
 the same script and keep the live-debugger and signing checks.
 
+## App-entry request and independent probe
+
+After the initial JIT-method choice, entering Madeira requests the saved method
+immediately. External mode still observes StikDebug's attachment; it does not
+open StikDebug or run the external script on the user's behalf. Built-in and
+app-initiated methods keep their existing setup, pairing and network checks.
+Play joins a pending entry request instead of starting a second helper.
+
+Once ready and actively attached, a background worker immediately runs a tiny
+ARM64 return-42 probe, then repeats every five seconds while the app is active.
+Each round requests its own 16 KiB RX region, makes a shared RW alias, writes
+and executes the probe, wipes its contents and unmaps both views. This checks
+generated-code execution; it does not initialize FEX or translate Steam code.
+It does not mark the production pool ready or alter its size. Repeated execution
+does not grant JIT permission or guarantee iOS will retain it.
+
+No new round starts in the background, without a live debugger, or while a
+round is in flight. Wine startup permanently stops the entry timer and waits
+for an in-flight round's cleanup before allocating its usual pool. A late
+attachment callback cannot restart the loop. Execution/setup failure stops
+native retries; failed unmapping requires closing/reopening the app before
+launch, rather than accumulating temporary regions. Only faults inside the
+probe's two generated instructions are recovered; unrelated signal handlers
+are preserved. Logs use `[jit-entry]` and the Steam home shows current status.
+
+The host tests inject attachment/execution and Mach failure results. They prove
+scheduling and cleanup paths, not physical-iOS JIT acceptance.
+
 ## External StikDebug script
 
 New installations default to **External StikDebug script**. Upgrading keeps a

@@ -55233,6 +55233,230 @@
         }
       }
     },
+    "Preparing components": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "准备组件" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Preparing Steam": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在准备 Steam" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Return to library": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "返回主界面" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Missing components download together. Steam starts when all four are ready.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "将同时下载缺失的组件。四项全部就绪后，自动继续启动 Steam。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Wine Mono, Visual C++, Wine Gecko and Madeira Dock are checked and downloaded together when you start Steam.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "点击“启动 Steam”时，会统一检查 Wine Mono、Visual C++、Wine Gecko 和 Madeira Dock，并同时下载缺失的组件。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Closing the Steam session…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在关闭 Steam 会话…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Component details": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "组件详情" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Downloading and verifying components…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在下载并验证组件…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "First frame": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "首帧" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "JIT was not enabled. Steam has not started.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 尚未启用，Steam 未启动。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Preparing JIT and starting Steam…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在准备 JIT 并启动 Steam…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Ready": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "已就绪" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Some components could not be prepared. Retry the missing downloads.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "部分组件未能准备完成，请重试缺失的下载。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Starting Steam": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在启动 Steam" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Starting Steam installer": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在启动 Steam 安装程序" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Steam closed before its first frame appeared. Check the session log.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Steam 在显示首帧之前已关闭，请检查本次运行日志。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Steam could not start": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Steam 启动失败" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Steam could not start. Check the log.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Steam 无法启动，请检查日志。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Steam is taking longer than expected. Still waiting for its first frame…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "Steam 启动时间较长，仍在等待其首帧画面…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Waiting for Steam's first frame…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在等待 Steam 的首帧画面…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Waiting for the Steam installer's first frame…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在等待 Steam 安装程序的首帧画面…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "JIT is ready. A separate 16 KiB probe runs every 5 seconds until Steam starts.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 已就绪。启动 Steam 前，每 5 秒执行并回收一次独立的 16 KiB 探测缓冲区。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "JIT requested at app entry. Waiting for the selected method…": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "已在进入 App 时请求 JIT，正在等待所选方式就绪…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "The JIT probe could not release its temporary memory. Close and reopen Madeira before starting Steam.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 探测未能释放临时内存，请彻底关闭并重新打开 Madeira 后再启动 Steam。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "The entry JIT probe is paused while the app is inactive.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "App 不在前台，JIT 定时探测已暂停。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "The entry JIT probe stopped. Check JIT settings and the log.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 定时探测已停止，请检查 JIT 设置和日志。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "The independent JIT probe failed (%@). Check the log before retrying JIT.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "独立 JIT 探测失败（%@），请检查日志后再重试 JIT。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Waiting for JIT. Run Madeira's script in StikDebug if using external mode.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "正在等待 JIT。使用外部方式时，请在 StikDebug 中运行 Madeira 脚本。" }
+        }
+      },
+      "extractionState": "manual"
+    },
     "Preparing first launch": {
       "localizations": {
         "zh-Hans": {

@@ -620,7 +620,7 @@ struct DeveloperPortal {
         // Not under the Apple ID sheet: while it waits for the code, Apple's own sign-in
         // alert takes Madeira out of the foreground and back, which gets here.
         guard account != nil, let days = daysLeft, days <= Self.offerDays, prompt == nil, !signingIn,
-              !DeckStartupModel.shared.blocking else { return }
+              !DeckStartupModel.shared.blocking, !DeckSteamLaunchPreparation.shared.presented else { return }
         let today = Int(Date().timeIntervalSince1970 / 86400)
         guard UserDefaults.standard.integer(forKey: Self.offeredKey) != today else { return }
         UserDefaults.standard.set(today, forKey: Self.offeredKey)

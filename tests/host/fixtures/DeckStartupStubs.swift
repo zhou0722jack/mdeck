@@ -1,20 +1,27 @@
 import SwiftUI
 
 func L(_ key: String) -> String { key }
+func LF(_ key: String, _ arguments: CVarArg...) -> String { String(format: key, arguments: arguments) }
+@MainActor func isDebuggerAttached() -> Bool { true }
 
 @MainActor enum StartupFixture {
     static var calls: [DeckSetupComponent] = []
     static var failures: Set<DeckSetupComponent> = []
     static var sessionRunning = false
+    static var active: Set<DeckSetupComponent> = []
+    static var peakDownloads = 0
     static func download(_ component: DeckSetupComponent, finish: @escaping (Bool) -> Void) {
         calls.append(component)
+        active.insert(component)
+        peakDownloads = max(peakDownloads, active.count)
         Task {
             try? await Task.sleep(nanoseconds: 10_000_000)
+            active.remove(component)
             finish(!failures.contains(component))
         }
     }
     static func reset() {
-        calls = []; failures = []; sessionRunning = false
+        calls = []; failures = []; sessionRunning = false; active = []; peakDownloads = 0
         WineMonoModel.available = false; WineMonoModel.shared.error = nil
         VCRedistModel.shared.complete = false; VCRedistModel.shared.error = nil
         WineGeckoModel.available = false; WineGeckoModel.shared.error = nil
@@ -26,14 +33,24 @@ func L(_ key: String) -> String { key }
 @MainActor func wine_process_is_running() -> Int32 { StartupFixture.sessionRunning ? 1 : 0 }
 @MainActor func wineserver_is_running() -> Int32 { StartupFixture.sessionRunning ? 1 : 0 }
 
+struct DeckLocalCoverEntry { var coverFile: String? }
 @MainActor final class LibraryModel: ObservableObject {
     static let shared = LibraryModel()
     @Published var current: UUID?
+    var entries: [DeckLocalCoverEntry] = []
+    static var documents: URL { URL(fileURLWithPath: "/tmp") }
+    var error: String?
+    var restartNotice: String?
+    var jitNotice: String?
+    func requestQuit() {}
 }
 @MainActor final class LogStore {
     static let shared = LogStore()
     func log(_ text: String) {}
+    var logURL: URL { URL(fileURLWithPath: "/tmp/mdeck-test-log.txt") }
 }
+enum TouchControlsHost { @MainActor static func attach() {} }
+enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
 @MainActor final class WineMonoModel {
     static let shared = WineMonoModel()
     static var available = false
@@ -103,8 +120,9 @@ func L(_ key: String) -> String { key }
 @MainActor final class JITCoordinator {
     static let shared = JITCoordinator()
     var method: JITMethod = .externalScript
+    func enable(completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
 }
-enum StikJITHelper { static var scriptURL: URL? { nil } }
+enum StikJITHelper { static var scriptURL: URL? { nil }; static var ready: Bool { true } }
 struct JITSetupView: View { var body: some View { EmptyView() } }
 enum SettingsPages {
     enum Page: String, CaseIterable {

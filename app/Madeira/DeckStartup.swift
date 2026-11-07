@@ -40,12 +40,28 @@ enum DeckStartupRules {
     @Published private(set) var states: [DeckSetupComponent: State] = [:]
     @Published private(set) var running = false
     private let defaults: UserDefaults
+    private var completions: [(Bool) -> Void] = []
     init(defaults: UserDefaults = .standard) { self.defaults = defaults }
     var readyCount: Int { states.values.filter { $0 == .ready }.count }
     var complete: Bool { DeckStartupRules.complete(Set(states.compactMap { $0.value == .ready ? $0.key : nil })) }
+    var available: Bool { DeckSetupComponent.allCases.allSatisfy { isReady($0) } }
+    var loadingFraction: Double? {
+        var total = 0.0
+        for component in DeckSetupComponent.allCases {
+            switch states[component] ?? .waiting {
+            case .ready: total += 1
+            case .working(_, let fraction):
+                guard let fraction else { return nil }
+                total += min(1, max(0, fraction))
+            case .waiting: return nil
+            case .failed: break
+            }
+        }
+        return total / Double(DeckSetupComponent.allCases.count)
+    }
 
     func prepare(completion: @escaping (Bool) -> Void = { _ in }) {
-        guard !running else { return }
+        if running { completions.append(completion); return }
         guard LibraryModel.shared.current == nil, wine_process_is_running() == 0, wineserver_is_running() == 0 else {
             for component in DeckSetupComponent.allCases {
                 states[component] = .failed(L("End the current session before preparing components."))
@@ -54,26 +70,38 @@ enum DeckStartupRules {
             return
         }
         running = true
+        completions.append(completion)
         states = Dictionary(uniqueKeysWithValues: DeckSetupComponent.allCases.map { ($0, .waiting) })
-        LogStore.shared.log("[deck-startup] component preparation started")
+        LogStore.shared.log("[deck-components] concurrent preparation started")
+        // Each installer owns a separate destination. Start every missing
+        // component before awaiting any download; existing work is joined.
+        for component in DeckSetupComponent.allCases {
+            if isReady(component) { states[component] = .ready; continue }
+            if !isBusy(component) { start(component) }
+        }
         Task {
-            for component in DeckSetupComponent.allCases {
-                if isReady(component) { states[component] = .ready; continue }
-                start(component)
-                while isBusy(component) {
-                    states[component] = progress(component)
-                    try? await Task.sleep(nanoseconds: 150_000_000)
+            var pending = Set(DeckSetupComponent.allCases.filter { states[$0] != .ready })
+            while !pending.isEmpty {
+                for component in pending {
+                    if isBusy(component) {
+                        states[component] = progress(component)
+                    } else {
+                        states[component] = isReady(component) ? .ready
+                            : .failed(failure(component) ?? L("Component preparation did not finish. Try again."))
+                        pending.remove(component)
+                    }
                 }
-                if isReady(component) {
-                    states[component] = .ready
-                } else {
-                    states[component] = .failed(failure(component) ?? L("Component preparation did not finish. Try again."))
+                if !pending.isEmpty {
+                    try? await Task.sleep(nanoseconds: 150_000_000)
                 }
             }
             running = false
-            if complete { defaults.set(true, forKey: DeckStartupRules.completeKey) }
-            LogStore.shared.log("[deck-startup] component preparation ready=\(readyCount)/4")
-            completion(complete)
+            defaults.set(complete, forKey: DeckStartupRules.completeKey)
+            LogStore.shared.log("[deck-components] preparation ready=\(readyCount)/4")
+            let callbacks = completions
+            completions.removeAll()
+            let success = complete
+            for callback in callbacks { callback(success) }
         }
     }
 
@@ -139,27 +167,14 @@ enum DeckStartupRules {
 
 @MainActor final class DeckStartupModel: ObservableObject {
     static let shared = DeckStartupModel()
-    enum Phase { case chooseJIT, preparing, ready }
+    enum Phase { case chooseJIT, ready }
     @Published private(set) var phase: Phase
-    private var started = false
     private let defaults: UserDefaults
-    private let preparation: DeckComponentPreparation
     var blocking: Bool { phase != .ready }
 
-    init(defaults: UserDefaults = .standard, preparation: DeckComponentPreparation? = nil) {
+    init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.preparation = preparation ?? .shared
-        if !DeckStartupRules.validChoice(defaults.string(forKey: DeckStartupRules.choiceKey)) {
-            phase = .chooseJIT
-        } else {
-            phase = defaults.bool(forKey: DeckStartupRules.completeKey) ? .ready : .preparing
-        }
-    }
-
-    func begin() {
-        guard !started else { return }
-        started = true
-        if phase == .preparing { prepare() }
+        phase = DeckStartupRules.validChoice(defaults.string(forKey: DeckStartupRules.choiceKey)) ? .ready : .chooseJIT
     }
 
     func choose(_ method: JITMethod) {
@@ -167,20 +182,163 @@ enum DeckStartupRules {
         guard method != .builtIn || MadeiraBuiltInJIT.isAvailable else { return }
         JITCoordinator.shared.method = method
         defaults.set(method.rawValue, forKey: DeckStartupRules.choiceKey)
+        phase = .ready
+    }
+}
+
+struct DeckSteamFrame: Equatable {
+    var image: String
+    var width: Int
+    var height: Int
+    var visible: Bool
+    var drawn: Bool
+}
+
+enum DeckSteamFrameRules {
+    static func path(_ value: String) -> String {
+        var result = value.lowercased().replacingOccurrences(of: "/", with: "\\")
+        if result.hasPrefix("\\??\\") || result.hasPrefix("\\\\?\\") { result.removeFirst(4) }
+        return result
+    }
+
+    static func accepts(_ frame: DeckSteamFrame, target: String, installer: Bool) -> Bool {
+        guard frame.visible, frame.drawn, frame.width >= 160, frame.height >= 100 else { return false }
+        let image = path(frame.image), expected = path(target)
+        guard !image.isEmpty, !expected.isEmpty else { return false }
+        if image == expected { return true }
+        guard !installer, let slash = expected.lastIndex(of: "\\") else { return false }
+        let directory = String(expected[...slash])
+        return image.hasPrefix(directory) && !image.hasPrefix(directory + "steamapps\\")
+            && image.split(separator: "\\").last == "steamwebhelper.exe"
+    }
+}
+
+/// One continuous loading layer: components -> Steam/JIT startup -> a real
+/// visible frame from this client's window. No movie-duration or global-frame
+/// counter can complete a request, and stale JIT completions cannot launch it.
+@MainActor final class DeckSteamLaunchPreparation: ObservableObject {
+    static let shared = DeckSteamLaunchPreparation()
+    enum Phase: Equatable { case idle, components, starting, waitingForFrame, failed }
+    @Published private(set) var presented = false
+    @Published private(set) var phase: Phase = .idle
+    @Published private(set) var error: String?
+    @Published private(set) var installer = false
+    @Published private(set) var startedAt = Date()
+    @Published private(set) var closing = false
+    @Published private(set) var slow = false
+    private let preparation: DeckComponentPreparation
+    private var launch: ((UUID) -> Void)?
+    private var requestID: UUID?
+    private var preparationStarted = false
+    private var target = ""
+    private var session: UUID?
+    private var waitingSince = Date()
+    static let frameSlowAfter: TimeInterval = 120
+
+    init(preparation: DeckComponentPreparation? = nil) {
+        self.preparation = preparation ?? .shared
+    }
+
+    func request(target: String, installer: Bool, launch: @escaping (UUID) -> Void) {
+        guard !presented else { return }
+        requestID = UUID()
+        self.target = target
+        self.installer = installer
+        self.launch = launch
+        error = nil
+        closing = false
+        slow = false
+        startedAt = Date()
+        session = nil
+        preparationStarted = false
+        phase = .components
+        presented = true
+    }
+
+    func beginPreparation() {
+        guard presented, phase == .components, !preparationStarted else { return }
+        preparationStarted = true
         prepare()
     }
 
-    func prepare() {
-        phase = .preparing
+    func retry() {
+        guard presented, phase == .failed, session == nil, !preparation.running else { return }
+        requestID = UUID()
+        error = nil
+        slow = false
+        closing = false
+        phase = .components
+        prepare()
+    }
+
+    private func prepare() {
+        let id = requestID
         preparation.prepare { [weak self] success in
-            if success { self?.phase = .ready }
+            guard let self, self.presented, self.phase == .components, self.requestID == id else { return }
+            if success {
+                self.phase = .starting
+                LogStore.shared.log("[steam-loading] components ready; starting Steam")
+                if let id { self.launch?(id) }
+            } else {
+                self.fail(L("Some components could not be prepared. Retry the missing downloads."))
+            }
         }
     }
 
-    func deferFailedDownloads() {
-        guard !preparation.running else { return }
-        phase = .ready
-        LogStore.shared.log("[deck-startup] incomplete components deferred; retry on next launch")
+    func permitsLaunch(_ id: UUID) -> Bool {
+        presented && phase == .starting && requestID == id
+    }
+
+    @discardableResult func sessionStarted(_ id: UUID, at date: Date = .now) -> Bool {
+        guard presented, phase == .starting else { return false }
+        session = id
+        waitingSince = date
+        phase = .waitingForFrame
+        LogStore.shared.log("[steam-loading] waiting for target window first frame")
+        return true
+    }
+
+    func observe(_ frames: [DeckSteamFrame], at date: Date = .now) {
+        guard presented, phase == .waitingForFrame else { return }
+        if frames.contains(where: { DeckSteamFrameRules.accepts($0, target: target, installer: installer) }) {
+            LogStore.shared.log("[steam-loading] target first frame received; loading layer closed")
+            finish()
+        } else if !slow && date.timeIntervalSince(waitingSince) >= Self.frameSlowAfter {
+            slow = true
+            error = L("Steam is taking longer than expected. Still waiting for its first frame…")
+        }
+    }
+
+    func fail(_ message: String) {
+        guard presented else { return }
+        error = message
+        phase = .failed
+    }
+
+    func sessionEnded(_ message: String?) {
+        guard presented, session != nil else { return }
+        if closing { finish(); return }
+        session = nil
+        fail(message ?? L("Steam closed before its first frame appeared. Check the session log."))
+    }
+
+    func closeRequested() {
+        closing = true
+        fail(L("Closing the Steam session…"))
+    }
+
+    func returnToLibrary() {
+        guard !preparation.running, session == nil else { return }
+        finish()
+    }
+
+    private func finish() {
+        requestID = nil
+        launch = nil
+        preparationStarted = false
+        session = nil
+        phase = .idle
+        presented = false
     }
 }
 
@@ -188,8 +346,8 @@ enum DeckStartupRules {
 
 struct DeckStartupRoot<Content: View>: View {
     @ObservedObject private var startup = DeckStartupModel.shared
-    @ObservedObject private var preparation = DeckComponentPreparation.shared
     @Environment(\.accessibilityReduceMotion) private var reduced
+    @Environment(\.scenePhase) private var entryScenePhase
     @AppStorage(DeckStartupRules.movieKey) private var movieEnabled = true
     @AppStorage(DeckStartupRules.soundKey) private var soundEnabled = true
     @State private var movieFinished = false
@@ -218,26 +376,16 @@ struct DeckStartupRoot<Content: View>: View {
                             Text("mdeck").font(.system(size: 36, weight: .bold, design: .rounded))
                         }.frame(maxHeight: .infinity, alignment: .top).padding(.top, 44)
                     }
-                    VStack {
-                        Spacer(minLength: 16)
-                        if startup.phase == .preparing {
-                            ScrollView {
-                                DeckComponentProgress()
-                                if !preparation.running && !preparation.complete {
-                                    HStack(spacing: 14) {
-                                        Button("Retry downloads") { startup.prepare() }.buttonStyle(DeckButtonStyle(primary: true))
-                                        Button("Download later") { startup.deferFailedDownloads() }.buttonStyle(DeckButtonStyle())
-                                    }.padding(.top, 12)
-                                }
-                            }.frame(maxHeight: 350)
-                                .padding(20).background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22))
-                                .frame(maxWidth: 620)
-                        }
-                    }.padding(20)
                 }.foregroundStyle(.white)
             }
         }
-        .task { startup.begin() }
+        .onAppear { AppEntryJIT.shared.sceneChanged(active: entryScenePhase == .active, allowed: startup.phase == .ready) }
+        .onChange(of: entryScenePhase) { _, phase in
+            AppEntryJIT.shared.sceneChanged(active: phase == .active, allowed: startup.phase == .ready)
+        }
+        .onChange(of: startup.phase) { _, phase in
+            AppEntryJIT.shared.sceneChanged(active: entryScenePhase == .active, allowed: phase == .ready)
+        }
     }
 }
 
@@ -270,9 +418,9 @@ struct DeckJITChoiceView: View {
                         showSetup = true
                     }.buttonStyle(DeckButtonStyle())
                 }
-                Button("Continue and prepare components") { choose(selection) }
+                Button("Continue") { choose(selection) }
                     .buttonStyle(DeckButtonStyle(primary: true))
-                Text("The first launch downloads Wine Mono, Visual C++, Wine Gecko and Madeira Dock components. Keep this app open until preparation finishes.")
+                Text("Wine Mono, Visual C++, Wine Gecko and Madeira Dock are checked and downloaded together when you start Steam.")
                     .font(.footnote).foregroundStyle(palette.muted)
             }.padding(28).frame(maxWidth: 760).frame(maxWidth: .infinity, minHeight: 520)
         }
@@ -309,7 +457,7 @@ struct DeckComponentProgress: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Text("Preparing first launch").font(.title3.bold())
+                Text("Preparing components").font(.title3.bold())
                 Spacer()
                 Text("\(preparation.readyCount) / 4").font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
             }
@@ -343,6 +491,57 @@ struct DeckComponentProgress: View {
         case .gecko: return "Wine Gecko"
         case .dock: return "Madeira Dock"
         }
+    }
+}
+
+struct DeckSteamPreparationView: View {
+    @ObservedObject private var preparation = DeckComponentPreparation.shared
+    @ObservedObject private var launch = DeckSteamLaunchPreparation.shared
+    @ObservedObject private var library = LibraryModel.shared
+    @State private var covers: [Image] = []
+    var body: some View {
+        DeckSteamLoadingArtwork(phase: launch.phase, installer: launch.installer, error: launch.error,
+                               startedAt: launch.startedAt, fraction: preparation.loadingFraction, covers: covers) {
+            if launch.phase == .components || (launch.phase == .failed && !preparation.complete) {
+                DisclosureGroup("Component details") { DeckComponentProgress().padding(.top, 12) }
+                    .font(.footnote).frame(maxWidth: 520).padding(.top, 20)
+            }
+            if launch.phase == .failed {
+                HStack(spacing: 14) {
+                    if library.current == nil && !preparation.running {
+                        Button(preparation.complete ? L("Try again") : L("Retry downloads")) {
+                            clearLaunchAlerts(); launch.retry()
+                        }.buttonStyle(DeckButtonStyle(primary: true))
+                    }
+                    ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(DeckButtonStyle())
+                    if library.current != nil {
+                        Button("Close session") { launch.closeRequested(); library.requestQuit() }
+                            .buttonStyle(DeckButtonStyle()).disabled(launch.closing)
+                    } else if !preparation.running {
+                        Button("Return to library") { clearLaunchAlerts(); launch.returnToLibrary() }.buttonStyle(DeckButtonStyle())
+                    }
+                }.padding(.top, 22)
+            } else if launch.phase != .components {
+                HStack(spacing: 14) {
+                    ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
+                        .buttonStyle(DeckButtonStyle())
+                    Button("Cancel") {
+                        if library.current != nil { launch.closeRequested(); library.requestQuit() }
+                        else { launch.returnToLibrary() }
+                    }.buttonStyle(DeckButtonStyle())
+                }.padding(.top, 22)
+            }
+        }.task {
+            covers = DeckSteamLocalCovers.images()
+            launch.beginPreparation()
+        }
+    }
+
+    private func clearLaunchAlerts() {
+        library.error = nil
+        library.jitNotice = nil
+        library.restartNotice = nil
     }
 }
 
