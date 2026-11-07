@@ -155,6 +155,7 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
     var error: String?
     var startedAt: Date
     var fraction: Double?
+    var setupMessage: String? = nil
     var motionEnabled = true
     var covers: [Image] = []
     @ViewBuilder var details: () -> Details
@@ -162,11 +163,12 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
     @Environment(\.accessibilityReduceMotion) private var reduced
     private let background = Color(red: 10 / 255, green: 11 / 255, blue: 14 / 255)
     private let signal = Color(red: 61 / 255, green: 220 / 255, blue: 132 / 255)
-    private var active: Int { phase == .components ? 0 : phase == .starting ? 1 : 2 }
+    private var active: Int { phase == .components ? 0 : phase == .starting || phase == .installing ? 1 : 2 }
     private var message: String {
         switch phase {
         case .components: return L("Downloading and verifying components…")
         case .starting: return L("Preparing JIT and starting Steam…")
+        case .installing: return setupMessage ?? L("Preparing the Steam installation…")
         case .waitingForFrame, .revealing:
             return error ?? (installer ? L("Waiting for the Steam installer's first frame…") : L("Waiting for Steam's first frame…"))
         case .failed: return error ?? L("Steam could not start. Check the log.")
@@ -202,7 +204,7 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
         VStack(spacing: 0) {
             DeckSteamLogo(progress: still ? 0 : elapsed.truncatingRemainder(dividingBy: 1.9) / 1.9)
                 .frame(width: phase == .failed ? 88 : 110).padding(.bottom, 30)
-            Text(phase == .failed ? L("Steam could not start") : installer ? L("Starting Steam installer") : L("Starting Steam"))
+            Text(phase == .failed ? L("Steam could not start") : phase == .installing ? L("Installing Steam") : L("Starting Steam"))
                 .font(.system(size: 20, weight: .semibold)).foregroundStyle(.white).multilineTextAlignment(.center)
             Text(message).font(.system(size: 14)).foregroundStyle(.white.opacity(0.65))
                 .multilineTextAlignment(.center).padding(.top, 6).frame(maxWidth: 520)
@@ -214,7 +216,7 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
                                 Color.white.opacity(0.12)
                                 if segment < active { signal }
                                 else if segment == active {
-                                    if phase == .components, let fraction {
+                                    if (phase == .components || phase == .installing), let fraction {
                                         signal.frame(width: geometry.size.width * min(1, max(0, fraction)))
                                     } else if still { signal.opacity(0.5) }
                                     else {

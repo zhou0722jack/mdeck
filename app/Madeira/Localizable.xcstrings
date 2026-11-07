@@ -1,6 +1,149 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The Steam preparation controller is missing. Install a complete IPA.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "缺少 Steam 准备控制程序，请安装完整的 IPA。"
+          }
+        }
+      }
+    },
+    "Steam preparation failed (%@). Check the log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 准备失败（%@），请检查日志。"
+          }
+        }
+      }
+    },
+    "Steam setup reached an unknown page. Check the log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 安装程序进入了无法识别的页面，请检查日志。"
+          }
+        }
+      }
+    },
+    "Steam setup is not using the expected installation folder. Check the log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 安装目录与预期不一致，请检查日志。"
+          }
+        }
+      }
+    },
+    "Steam setup controls could not be updated. Check the log.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法操作 Steam 安装控件，请检查日志。"
+          }
+        }
+      }
+    },
+    "Finishing Steam setup…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在完成 Steam 安装…"
+          }
+        }
+      }
+    },
+    "Installing Steam files…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在安装 Steam 文件…"
+          }
+        }
+      }
+    },
+    "Preparing the Steam installation…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在准备 Steam 安装…"
+          }
+        }
+      }
+    },
+    "Steam setup closed. Checking the client…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "安装程序已关闭，正在检查 Steam 客户端…"
+          }
+        }
+      }
+    },
+    "Starting Steam with compatibility options…": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在带兼容参数启动 Steam…"
+          }
+        }
+      }
+    },
+    "Installing Steam": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在安装 Steam"
+          }
+        }
+      }
+    },
+    "Steam will be installed automatically behind the progress screen on the first launch.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "首次启动将在进度界面后自动安装 Steam。"
+          }
+        }
+      }
+    },
+    "Missing components are prepared first. If Steam.exe exists in the client folder, it starts with compatibility options. Otherwise setup runs behind the progress screen, closes, and Steam starts in the same session.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "先准备缺失的组件。客户端目录中已有 Steam.exe 时，会带兼容参数直接启动；否则在进度界面后安装，关闭安装程序后，在同一会话中启动 Steam。"
+          }
+        }
+      }
+    },
     "The official installer is included. Setup automatically selects Next twice, Install, then Finish when the expected pages appear. Keep the suggested folder. Unknown pages remain available for manual input.": {
       "extractionState": "manual",
       "localizations": {

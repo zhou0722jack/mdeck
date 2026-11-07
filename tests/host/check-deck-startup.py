@@ -47,8 +47,10 @@ for forbidden in ['runWineFullSequence', 'URLSession', 'setenv(', 'poolSize', 's
 assert 'isReady(component)' in startup and 'defaults.set(complete, forKey:' in startup
 content = (app / 'ContentView.swift').read_text()
 gate = content[content.index('    private func launchLibraryEntry('):content.index('    private func launchPreparedLibraryEntry(')]
-assert 'SteamClient.owns(entry)' in gate and 'steamPreparation.request(target: entry.launchWindowsPath' in gate
-assert 'launchPreparedLibraryEntry(entry, steamRequest: request)' in gate and 'TouchControlsHost.attach()' in gate
+assert 'SteamClient.owns(entry)' in gate and 'steamPreparation.request(target: SteamClient.windowsExecutable' in gate
+assert 'let resolved = SteamClient.entry(install: !SteamClient.installed)' in gate
+assert 'steamPreparation.resolvedRoute(installer:' in gate
+assert 'launchPreparedLibraryEntry(resolved, steamRequest: request)' in gate and 'TouchControlsHost.attach()' in gate
 assert 'steamPreparation.permitsLaunch(steamRequest)' in content
 assert '.fullScreenCover(isPresented: Binding(get: { steamPreparation.presented }' not in content
 assert 'DeckSteamPreparationView()' in content
@@ -261,6 +263,50 @@ import Foundation
         launch.completeReveal(staleReveal)
         precondition(launch.presented && launch.phase == .components)
         print("PASS: fast frames cannot skip the visible waiting stage; interrupted and stale fades cannot dismiss another state")
+
+        preparation = fresh()
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        launch.request(target: target, installer: false) { _ in }
+        launch.beginPreparation(); await wait(preparation)
+        launch.resolvedRoute(installer: true)
+        precondition(launch.sessionStarted(UUID(), at: fast) && launch.phase == .installing)
+        launch.observe([frame(setup)], at: fast.addingTimeInterval(20))
+        launch.observe([frame()], at: fast.addingTimeInterval(21))
+        precondition(launch.presented && launch.phase == .installing)
+        func status(_ stage: String, code: UInt32 = 0, step: Int = 4, percent: Int = -1, blocked: Int = 0) -> DeckSteamSetupStatus {
+            DeckSteamSetupStatus.decode("v1\nstage=\(stage)\nerror=\(code)\n", step:step, percent:percent, blocked:blocked)!
+        }
+        launch.observeSetup(status("installer",percent:42))
+        precondition(launch.setupFraction == 0.42 && launch.phase == .installing)
+        launch.observeSetup(status("checking"))
+        precondition(launch.presented && launch.phase == .installing && launch.setupFraction == nil)
+        launch.observeSetup(status("starting"))
+        precondition(launch.phase == .installing)
+        launch.observeSetup(status("waiting"),at:fast.addingTimeInterval(25))
+        precondition(launch.phase == .waitingForFrame && !launch.installer)
+        launch.waitingStageShown(at:fast.addingTimeInterval(25))
+        launch.observe([frame(setup)],at:fast.addingTimeInterval(26))
+        precondition(launch.phase == .waitingForFrame)
+        launch.observe([frame()],at:fast.addingTimeInterval(27))
+        launch.observe([frame()],at:fast.addingTimeInterval(28))
+        precondition(launch.phase == .revealing)
+        launch.completeReveal(launch.revealID!)
+        precondition(!launch.presented)
+        for corrupt in ["", "v1\nstage=checking\nerror=2\n", "v1\nstage=other\nerror=0\n", "v1\nstage=waiting\nerror=0"] {
+            precondition(DeckSteamSetupStatus.decode(corrupt,step:0,percent:0,blocked:0) == nil)
+        }
+        launch.request(target:target,installer:true){_ in};launch.beginPreparation();await wait(preparation)
+        precondition(launch.sessionStarted(UUID()))
+        launch.observeSetup(status("failed",code:2))
+        precondition(launch.phase == .failed && launch.presented)
+        launch.observeSetup(status("waiting"))
+        precondition(launch.phase == .failed)
+        launch.sessionEnded(nil); launch.returnToLibrary()
+        launch.request(target:target,installer:true){_ in};launch.beginPreparation();await wait(preparation)
+        precondition(launch.sessionStarted(UUID()))
+        launch.observeSetup(status("installer",blocked:2))
+        precondition(launch.phase == .failed && launch.presented)
+        print("PASS: setup/desktop/early client frames stay covered; only post-exit launch plus Steam's actual image completes; failures do not reveal")
     }
 }
 '''

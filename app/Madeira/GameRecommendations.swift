@@ -1274,6 +1274,7 @@ enum GameRecommendations {
         // The bundled installer and interactive client use the existing Steam
         // memory profile, independently of the pinned Madeira Dock runtime.
         if parts == ["c:", "madeira", "installers", "steamsetup.exe"]
+            || parts == ["c:", "madeira", "installers", "steambootstrap.exe"]
             || parts == ["c:", "program files", "steam client", "steam.exe"] {
             return steamBigPicture
         }

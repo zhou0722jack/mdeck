@@ -24,6 +24,7 @@ for path in "${required[@]}"; do
 done
 
 python3 "$ROOT/tools/build/runtime-components.py" verify all
+python3 "$ROOT/tools/check-steam-bootstrap-pe.py" "$ROOT/app/Madeira/BundledInstallers/SteamBootstrap.exe"
 
 rm -rf "$DERIVED" "$DIST/Payload"
 mkdir -p "$DIST"

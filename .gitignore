@@ -226,3 +226,4 @@ __pycache__/
 
 # Verified runtime component caches
 .runtime-cache/
+app/Madeira/BundledInstallers/SteamBootstrap.exe

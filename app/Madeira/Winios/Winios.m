@@ -40,6 +40,26 @@
 #include "Winios.h"
 #include "VulkanLayerGeometry.h"
 
+static pthread_mutex_t steam_setup_progress_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct winios_steam_setup_progress steam_setup_progress = {0, -1, 0};
+void winios_steam_setup_reset(void) {
+    pthread_mutex_lock(&steam_setup_progress_lock);
+    steam_setup_progress = (struct winios_steam_setup_progress){0, -1, 0};
+    pthread_mutex_unlock(&steam_setup_progress_lock);
+}
+void winios_steam_setup_note(int step, int percent, int blocked) {
+    if (step < 0 || step > 5 || percent < -1 || percent > 100 || blocked < 0 || blocked > 3) return;
+    pthread_mutex_lock(&steam_setup_progress_lock);
+    steam_setup_progress = (struct winios_steam_setup_progress){step, percent, blocked};
+    pthread_mutex_unlock(&steam_setup_progress_lock);
+}
+void winios_steam_setup_snapshot(struct winios_steam_setup_progress *out) {
+    if (!out) return;
+    pthread_mutex_lock(&steam_setup_progress_lock);
+    *out = steam_setup_progress;
+    pthread_mutex_unlock(&steam_setup_progress_lock);
+}
+
 /* csops syscall — CS_DEBUGGED is the flag StikDebug JIT rides on. Declared by
  * hand for the same reason JITAllocator.c does: <sys/codesign.h> is not in the
  * iOS SDK's public headers. */

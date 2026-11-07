@@ -128,6 +128,13 @@ struct winios_census_window {
  * window first shown minimized, for the rest of the session. */
 void winios_window_census_enable(int on);
 
+/* Own installer GUI thread -> host progress layer. percent=-1 is unknown.
+ * blocked: 0 normal, 1 unknown page, 2 unexpected folder, 3 control failure. */
+struct winios_steam_setup_progress { int step, percent, blocked; };
+void winios_steam_setup_reset(void);
+void winios_steam_setup_note(int step, int percent, int blocked);
+void winios_steam_setup_snapshot(struct winios_steam_setup_progress *out);
+
 /* Main thread. Copies up to `max` entries; returns how many were copied. */
 int winios_window_census(struct winios_census_window *out, int max);
 

@@ -46,7 +46,7 @@ private enum StikJIT {
 
 private enum MadeiraJITWork {
     /// One request at a time, as the XPC handler ran them before.
-    static let queue = DispatchQueue(label: "com.willfaust.madeora.jit-helper")
+    static let queue = DispatchQueue(label: "com.mdeck.chuan.jit-helper")
 
     /// Another preparation may install the cryptex after StikJIT's initial check.
     /// Verify that it is now mounted, then retry the normal operation just once.

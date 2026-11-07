@@ -213,12 +213,51 @@ enum DeckSteamFrameRules {
     }
 }
 
+struct DeckSteamSetupStatus {
+    enum Stage: String { case installer, checking, starting, waiting, failed }
+    var stage: Stage
+    var code: UInt32
+    var step: Int
+    var percent: Int
+    var blocked: Int
+    static func decode(_ text: String, step: Int, percent: Int, blocked: Int) -> Self? {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count == 4, lines[0] == "v1", lines[3].isEmpty,
+              lines[1].hasPrefix("stage="), lines[2].hasPrefix("error="),
+              let stage = Stage(rawValue: String(lines[1].dropFirst(6))),
+              let code = UInt32(lines[2].dropFirst(6)), stage == .failed || code == 0 else { return nil }
+        return Self(stage: stage, code: code, step: step, percent: percent, blocked: blocked)
+    }
+    var failure: String? {
+        if stage == .failed { return LF("Steam preparation failed (%@). Check the log.", String(code)) }
+        guard stage == .installer else { return nil }
+        switch blocked {
+        case 1: return L("Steam setup reached an unknown page. Check the log.")
+        case 2: return L("Steam setup is not using the expected installation folder. Check the log.")
+        case 3: return L("Steam setup controls could not be updated. Check the log.")
+        default: return nil
+        }
+    }
+    var message: String {
+        switch stage {
+        case .installer:
+            if step >= 5 { return L("Finishing Steam setup…") }
+            if step == 4 { return L("Installing Steam files…") }
+            return L("Preparing the Steam installation…")
+        case .checking: return L("Steam setup closed. Checking the client…")
+        case .starting: return L("Starting Steam with compatibility options…")
+        case .waiting: return L("Waiting for Steam's first frame…")
+        case .failed: return failure ?? L("Steam could not start. Check the log.")
+        }
+    }
+}
+
 /// One continuous loading layer: components -> Steam/JIT startup -> a real
 /// visible frame from this client's window. No movie-duration or global-frame
 /// counter can complete a request, and stale JIT completions cannot launch it.
 @MainActor final class DeckSteamLaunchPreparation: ObservableObject {
     static let shared = DeckSteamLaunchPreparation()
-    enum Phase: Equatable { case idle, components, starting, waitingForFrame, revealing, failed }
+    enum Phase: Equatable { case idle, components, starting, installing, waitingForFrame, revealing, failed }
     @Published private(set) var presented = false
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var error: String?
@@ -226,6 +265,8 @@ enum DeckSteamFrameRules {
     @Published private(set) var startedAt = Date()
     @Published private(set) var closing = false
     @Published private(set) var slow = false
+    @Published private(set) var setupMessage: String?
+    @Published private(set) var setupFraction: Double?
     private let preparation: DeckComponentPreparation
     private var launch: ((UUID) -> Void)?
     private var requestID: UUID?
@@ -256,6 +297,7 @@ enum DeckSteamFrameRules {
         error = nil
         closing = false
         slow = false
+        setupMessage = nil; setupFraction = nil
         startedAt = Date()
         session = nil
         waitingVisibleSince = nil
@@ -299,15 +341,35 @@ enum DeckSteamFrameRules {
         presented && phase == .starting && requestID == id
     }
 
+    func resolvedRoute(installer: Bool) {
+        guard presented, phase == .starting else { return }
+        self.installer = installer
+    }
+
     @discardableResult func sessionStarted(_ id: UUID, at date: Date = .now) -> Bool {
         guard presented, phase == .starting else { return false }
         session = id
         waitingSince = date
         waitingVisibleSince = nil
         firstFrameSeenAt = nil
-        phase = .waitingForFrame
-        LogStore.shared.log("[steam-loading] waiting for target window first frame")
+        phase = installer ? .installing : .waitingForFrame
+        LogStore.shared.log(installer ? "[steam-loading] setup controller started; installer remains covered" : "[steam-loading] waiting for target window first frame")
         return true
+    }
+
+    func observeSetup(_ status: DeckSteamSetupStatus?, at date: Date = .now) {
+        guard presented, phase == .installing, let status else { return }
+        if let failure = status.failure { fail(failure); return }
+        setupMessage = status.message
+        setupFraction = status.stage == .installer && status.step == 4 && (0...100).contains(status.percent)
+            ? Double(status.percent) / 100 : nil
+        if status.stage == .waiting {
+            installer = false
+            setupMessage = nil; setupFraction = nil
+            waitingSince = date; waitingVisibleSince = nil; firstFrameSeenAt = nil
+            phase = .waitingForFrame
+            LogStore.shared.log("[steam-loading] installer exited; client launched; waiting for Steam image")
+        }
     }
 
     func waitingStageShown(at date: Date = .now) {
@@ -367,6 +429,7 @@ enum DeckSteamFrameRules {
         waitingVisibleSince = nil
         firstFrameSeenAt = nil
         phase = .idle
+        setupMessage = nil; setupFraction = nil
         presented = false
     }
 }
@@ -532,7 +595,8 @@ struct DeckSteamPreparationView: View {
     @State private var layerOpacity = 1.0
     var body: some View {
         DeckSteamLoadingArtwork(phase: launch.phase, installer: launch.installer, error: launch.error,
-                               startedAt: launch.startedAt, fraction: preparation.loadingFraction,
+                               startedAt: launch.startedAt, fraction: launch.phase == .installing ? launch.setupFraction : preparation.loadingFraction,
+                               setupMessage: launch.setupMessage,
                                motionEnabled: appearance.animations, covers: covers) {
             if launch.phase == .components || (launch.phase == .failed && !preparation.complete) {
                 DisclosureGroup("Component details") { DeckComponentProgress().padding(.top, 12) }

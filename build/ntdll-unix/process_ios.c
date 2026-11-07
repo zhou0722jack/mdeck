@@ -1532,6 +1532,13 @@ static int ea_cef_kind( const WCHAR *image, int image_len, const WCHAR *cl, int 
  * commandline.txt to edit easily on the device, so this is how a game file
  * passes e.g. "GTA5_Enhanced.exe -scDebugLogging". Returns the arguments to
  * append, or NULL when `spec` does not name this image. */
+static int ios_setup_steam_autolaunch_deferred(const char *controlled, const WCHAR *parent, int parent_len,
+                                               const WCHAR *image, int image_len)
+{
+    return controlled && controlled[0] == '1' && !controlled[1] &&
+        ios_image_name_is(parent, parent_len, "steamsetup.exe") && ios_image_name_is(image, image_len, "steam.exe");
+}
+
 static const char *child_extra_args( const char *spec, const WCHAR *image, int image_len )
 {
     char name[64];
@@ -1764,6 +1771,20 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
 #ifdef WINE_IOS
     ERR("NtCreateUserProcess: image=%s cmdline=%s\n",
         debugstr_us( &params->ImagePathName ), madeira_debugstr_cmdline_us( &params->CommandLine ));
+
+    /* The session controller waits for setup's process handle before starting
+     * the client. Contain an unexpected wizard auto-launch even when its Run
+     * checkbox is absent/localized: never race two Steam startups. */
+    {
+        const char *controlled = getenv("MADEIRA_STEAM_CONTROLLED_SETUP");
+        const RTL_USER_PROCESS_PARAMETERS *parent_params = NtCurrentTeb()->Peb->ProcessParameters;
+        if (parent_params && ios_setup_steam_autolaunch_deferred(controlled,
+            parent_params->ImagePathName.Buffer, parent_params->ImagePathName.Length / sizeof(WCHAR),
+            params->ImagePathName.Buffer, params->ImagePathName.Length / sizeof(WCHAR))) {
+            dprintf(2, "[steam-bootstrap] wizard Steam auto-launch deferred until installer exits\n");
+            return STATUS_ACCESS_DENIED;
+        }
+    }
 
     /* TEMP HACK (Steam S3 2026-07-10, task #29): refuse to spawn Steam's
      * minidump reporter. The reporter child hits the deep guest-exception-

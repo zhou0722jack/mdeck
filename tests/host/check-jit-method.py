@@ -174,7 +174,7 @@ project = (root / "app/Madeira.xcodeproj/project.pbxproj").read_text()
 helper_source = (root / "app/MadeiraJITHelper/MadeiraJITHelper.swift").read_text()
 require(project.count('PRODUCT_BUNDLE_IDENTIFIER = "$(MADEIRA_BUNDLE_IDENTIFIER)";') == 2
         and project.count('PRODUCT_BUNDLE_IDENTIFIER = "$(MADEIRA_BUNDLE_IDENTIFIER).JITHelper";') == 2
-        and project.count("MADEIRA_BUNDLE_IDENTIFIER = com.willfaust.madeora;") == 2
+        and project.count("MADEIRA_BUNDLE_IDENTIFIER = com.mdeck.chuan;") == 2
         and "AppExtensionPoint" not in helper_source,
         "one setting, MADEIRA_BUNDLE_IDENTIFIER, names the app and the helper")
 
@@ -221,8 +221,8 @@ require(enable_jit.count("launchAfterJITEnded(started: false)") == 2 and enable_
         "every way Enable JIT ends settles the waiting game")
 component_gate = function(content, "private func launchLibraryEntry(")
 require('SteamClient.owns(entry)' in component_gate
-        and 'steamPreparation.request(target: entry.launchWindowsPath' in component_gate
-        and 'launchPreparedLibraryEntry(entry, steamRequest: request)' in component_gate,
+        and 'steamPreparation.request(target: SteamClient.windowsExecutable' in component_gate
+        and 'launchPreparedLibraryEntry(resolved, steamRequest: request)' in component_gate,
         "Steam waits for component preparation before entering the existing JIT launch checks")
 play = function(content, "private func launchPreparedLibraryEntry(")
 require("guard jitReadyForLaunch(inLibrary: true, entry: entry.id, then: launch) else { return }" in play

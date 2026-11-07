@@ -1760,6 +1760,7 @@ final class LibraryModel: ObservableObject {
         let steamHeld = MainActor.assumeIsolated { () -> Bool in
             let steamLoading = DeckSteamLaunchPreparation.shared
             guard let entry = activeEntry, SteamClient.owns(entry), steamLoading.presented else { return false }
+            steamLoading.observeSetup(SteamClient.preparationStatus())
             steamLoading.observe(DeckSteamNativeFrames.snapshot())
             if steamLoading.phase == .revealing && launching {
                 // Expose the actual Steam surface while the topmost loading
@@ -1885,6 +1886,15 @@ final class LibraryModel: ObservableObject {
         LibraryKeyboard.hide()
         quitRequested = true
         if quitRequestedAt == nil { quitRequestedAt = Date() }
+        if activeEntry?.id == SteamClient.installerID, MainActor.assumeIsolated({
+            let loading = DeckSteamLaunchPreparation.shared
+            return loading.presented && loading.installer
+        }) {
+            SteamClient.cancelPreparation()
+            sessionMessage = L("Closing the Steam session…")
+            menu = false
+            return
+        }
         // Ask the application to close (Alt+F4) through the normal input queue,
         // so it can save; the surface stays up until the native session ends.
         winios_post_key(0x12, 1); winios_post_key(0x73, 1)
@@ -4066,7 +4076,7 @@ private extension LibraryView {
                     Spacer(minLength: 40)
                     deckSteamActions.modifier(DeckHomeRise(index: 2, enabled: appearance.animations))
                     if !SteamClient.installed {
-                        Text("Steam will open its installer on the first launch.")
+                        Text("Steam will be installed automatically behind the progress screen on the first launch.")
                             .font(.footnote).foregroundStyle(palette.muted)
                             .modifier(DeckHomeRise(index: 3, enabled: appearance.animations))
                     }

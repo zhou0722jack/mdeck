@@ -1331,7 +1331,7 @@ struct ContentView: View {
                     developerBody
                 }
             }
-            .navigationTitle("Madeira")
+            .navigationTitle("mdeck")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             // The library keeps a material bar only before iOS 26. From iOS 26 the
@@ -2591,11 +2591,15 @@ struct ContentView: View {
         guard !steamPreparation.presented else { return }
         if SteamClient.owns(entry) {
             library.error = nil
-            steamPreparation.request(target: entry.launchWindowsPath, installer: entry.id == SteamClient.installerID) { request in
+            steamPreparation.request(target: SteamClient.windowsExecutable, installer: false) { request in
                 library.error = nil
                 library.restartNotice = nil
                 library.jitNotice = nil
-                launchPreparedLibraryEntry(entry, steamRequest: request)
+                // Components can take minutes; inspect the exact client folder
+                // after they finish, not before starting their downloads.
+                let resolved = SteamClient.entry(install: !SteamClient.installed)
+                steamPreparation.resolvedRoute(installer: resolved.id == SteamClient.installerID)
+                launchPreparedLibraryEntry(resolved, steamRequest: request)
                 if let message = library.error ?? library.restartNotice ?? library.jitNotice {
                     steamPreparation.fail(message)
                 }

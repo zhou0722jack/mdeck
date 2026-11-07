@@ -49,7 +49,7 @@ assert 'if let steamRequest, !steamPreparation.permitsLaunch(steamRequest)' in c
 main = r'''
 import SwiftUI
 import AppKit
-enum DeckSteamLaunchPreparation { enum Phase { case idle, components, starting, waitingForFrame, revealing, failed } }
+enum DeckSteamLaunchPreparation { enum Phase { case idle, components, starting, installing, waitingForFrame, revealing, failed } }
 enum ReviewStrings {
     static let values: [String:String] = {
         guard CommandLine.arguments.count > 2,
@@ -98,7 +98,7 @@ func L(_ key: String) -> String { ReviewStrings.values[key] ?? key }
         if CommandLine.arguments.count > 1 {
             let dir = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
             for (name, phase) in [("components",DeckSteamLaunchPreparation.Phase.components),
-                                  ("starting",.starting),("first-frame",.waitingForFrame)] {
+                                  ("starting",.starting),("installing",.installing),("first-frame",.waitingForFrame)] {
                 let view = DeckSteamLoadingArtwork(phase: phase, installer: false, error: nil,
                     startedAt: Date().addingTimeInterval(-0.95), fraction: 0.42) { EmptyView() }
                     .frame(width: 960, height: 640)

@@ -145,6 +145,7 @@ swift += block(lib, 'enum LaunchArgumentText {') + '\n'
 swift += block(pad_assist, 'struct PadAssistSettings: Codable, Equatable, Sendable') + '\n'
 swift += block(lib, 'struct LibraryEntry: Codable, Identifiable') + '\n'
 swift += 'enum SteamClient {\n' + re.search(r'    static let installerID = .*', steam_client)[0] + '\n'
+swift += re.search(r'    static let bootstrapPath = .*', steam_client)[0] + '\n'
 swift += block(steam_client, '    static func normalizeLaunch(') + '\n}\n'
 swift += block(lib, 'enum SyncEngine: String, CaseIterable, Identifiable') + '\n'
 swift += '\n'.join(l for l in display.splitlines() if not l.startswith('import ')) + '\n'
@@ -188,9 +189,9 @@ SteamClient.normalizeLaunch(&installer)
 installer.configureLaunch()
 expect(installer.servicesScript == nil && !installer.runsInDesktop && installer.launchMode == "direct",
        "saved Steam installer bypasses explorer and the services batch")
-expect(env("MADEIRA_EXE") == "C:\\Madeira\\Installers\\SteamSetup.exe" && env("MADEIRA_ARGS") ==
-       "/D=C:\\Program Files\\Steam Client" && env("MADEIRA_DESKTOP") == "0",
-       "Steam installer is the initial process and retains the final NSIS directory argument")
+expect(env("MADEIRA_EXE") == "C:\\Madeira\\Installers\\SteamBootstrap.exe" && installer.arguments.isEmpty &&
+       env("MADEIRA_DESKTOP") == "0",
+       "the session controller is the initial process and owns the installation-to-client handoff")
 var ordinaryServices = LibraryEntry(title: "Other", relativePath: "Other/setup.exe", bits: 32)
 ordinaryServices.startServices = true
 SteamClient.normalizeLaunch(&ordinaryServices)

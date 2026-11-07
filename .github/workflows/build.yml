@@ -43,6 +43,8 @@ jobs:
           python3 tests/host/check-crt-callsite-diagnostics.py
           python3 tests/host/check-opengl-wow64-teb.py
           python3 tests/host/check-steam-autoinstall.py
+          python3 tests/host/check-steam-preparation.py
+          python3 tests/host/check-steam-client-routing.py
           python3 tests/host/check-desktop-button-click.py
           python3 tests/host/check-chinese-fonts.py
           python3 tests/host/check-nls-extra-switch.py

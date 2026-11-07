@@ -7,13 +7,13 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 source = (ROOT / 'app/Madeira/SteamClient.swift').read_text()
 assert 'SteamClient.configureSession(profile)' in (ROOT / 'app/Madeira/ContentView.swift').read_text()
-assert 'setenv("MADEIRA_CHILD_ARGS", "steam.exe " + clientArguments, 1)' in source
-assert 'getenv("MADEIRA_CHILD_ARGS") == nil' in source
+assert 'setenv("MADEIRA_CHILD_ARGS", "steam.exe " + childArguments, 1)' in source
+assert 'compatibilityArguments' in source
 driver = (ROOT / 'build/win32u-unix/driver_ios.c').read_text()
 assert '#include "steam_installer_ios.h"' in driver and 'ios_steam_installer_poll();' in driver
 process = (ROOT / 'build/ntdll-unix/process_ios.c').read_text()
 rules = []
-for signature in ['static int ios_image_name_is(', 'static const char *child_extra_args(']:
+for signature in ['static int ios_image_name_is(', 'static int ios_setup_steam_autolaunch_deferred(', 'static const char *child_extra_args(']:
     start=process.index(signature); end=process.index('\n}',start)+2
     rules.append(process[start:end])
 classes = (ROOT / 'build/win32u-unix/class_ios.c').read_text()
@@ -56,8 +56,16 @@ typedef char *LPSTR;
 #define WM_GETTEXT 0x0d
 #define SMTO_ABORTIFHUNG 2
 #define CP_ACP 0
+#define WM_USER 0x400
+#define GWL_STYLE (-16)
+#define BS_TYPEMASK 0xf
+#define BS_AUTOCHECKBOX 3
+#define BS_CHECKBOX 2
+#define BM_GETCHECK 0xf0
+#define BM_SETCHECK 0xf1
+#define BST_UNCHECKED 0
 static uint64_t tick_ms;
-static unsigned stage,posted,ready=1,valid_directory=1,wrong_thread,dialog_enabled=1;
+static unsigned stage,posted,ready=1,valid_directory=1,wrong_thread,dialog_enabled=1,checked=1,unchecked,progress_updates;
 static WCHAR *wide(const char *s) {
     static WCHAR buffers[8][300];static unsigned index;
     WCHAR *b=buffers[index++%8];unsigned i;
@@ -95,20 +103,23 @@ static void RtlSetLastWin32Error(unsigned e) {(void)e;}
 static NTSTATUS get_shared_window_class(HWND h,struct object_lock *lock,const class_shm_t **out) {
     static class_shm_t shared;
     if(lock->pending) return 0;
-    const char *c=h==3?"Button":h==5?"Edit":"#32770";
+    const char *c=h==3||h==6?"Button":h==5?"Edit":h==7?"msctls_progress32":"#32770";
     shared.name_len=copy_text(shared.name,32,c)*2;shared.name_offset=0;*out=&shared;
     lock->pending=1;return STATUS_PENDING;
 }
 /* REAL_CLASS_READER */
 static int NtUserBuildHwndList(int a,HWND parent,int c,int d,unsigned thread,unsigned cap,HWND *out,ULONG *n) {
-    (void)a;(void)c;(void)d;(void)thread;assert(cap>=5);
+    (void)a;(void)c;(void)d;(void)thread;assert(cap>=6);
     if(!parent){out[0]=2;out[1]=1;*n=2;}
-    else{assert(parent==2);out[0]=3;out[1]=4+stage*10;out[2]=5;out[3]=1;*n=4;}return 0;
+    else{assert(parent==2);out[0]=3;out[1]=4+stage*10;out[2]=5;out[3]=6;out[4]=7;out[5]=1;*n=6;}return 0;
 }
 static HWND NtUserGetAncestor(HWND h,unsigned kind) {(void)h;assert(kind==GA_PARENT);return 2;}
-static int get_window_long(HWND h,int offset) {assert(offset==GWLP_ID);return h==3?1:0;}
+static int get_window_long(HWND h,int offset) {
+    if(offset==GWL_STYLE)return h==6?BS_AUTOCHECKBOX:0;
+    assert(offset==GWLP_ID);return h==3?1:0;
+}
 static int NtUserInternalGetWindowText(HWND h,WCHAR *out,unsigned cap) {
-    const char *s=h==5?"": /* Edit's WND.text is empty even when EDITSTATE.text is not. */
+    const char *s=h==6?"Run Steam":h==5?"": /* Edit's WND.text is empty even when EDITSTATE.text is not. */
         stage<2?"&Next >":stage==2?"&Install":"&Finish";
     return copy_text(out,cap,s);
 }
@@ -116,6 +127,12 @@ static void ios_steam_installer_poll(void);
 static LRESULT send_message_timeout(HWND h,unsigned msg,uintptr_t cap,LPARAM buffer,unsigned flags,unsigned timeout,int ansi) {
     static int depth;
     assert(++depth==1);
+    if(h==6){
+        assert(flags==SMTO_ABORTIFHUNG&&!ansi);
+        if(msg==BM_SETCHECK){checked=(unsigned)cap;unchecked++;depth--;return 0;}
+        assert(msg==BM_GETCHECK);depth--;return checked;
+    }
+    if(h==7){assert(msg==WM_USER+7||msg==WM_USER+8);depth--;return msg==WM_USER+8?42:cap?0:100;}
     assert(h==5 && msg==WM_GETTEXT && cap==260 && flags==SMTO_ABORTIFHUNG && timeout==250 && !ansi);
     WCHAR text[260];
     copy_text(text,260,valid_directory?"C:\\Program Files\\Steam Client":"D:\\other");
@@ -129,6 +146,9 @@ static int NtUserPostMessage(HWND h,unsigned msg,uintptr_t w,LPARAM l) {
 }
 static uint64_t ios_tiny_now_ns(void) {return tick_ms*1000000;}
 #include "steam_installer_ios.h"
+void winios_steam_setup_note(int step,int percent,int blocked) {
+    assert(step>=0&&step<=5&&percent>=-1&&percent<=100&&blocked>=0&&blocked<=3);progress_updates++;
+}
 /* CHILD_RULES */
 static void poll_for(unsigned count) {for(unsigned i=0;i<count;i++){tick_ms+=20;ios_steam_installer_poll();}}
 int main(void) {
@@ -169,7 +189,7 @@ int main(void) {
     RTL_USER_PROCESS_PARAMETERS params={0};
     __typeof__(*teb.Peb) peb={&params};teb.Peb=&peb;
     params.ImagePathName.Buffer=wide("C:\\other\\SteamSetup.exe");params.ImagePathName.Length=48;
-    setenv("MADEIRA_STEAM_AUTOINSTALL","1",1);poll_for(300);assert(!posted);
+    setenv("MADEIRA_STEAM_AUTOINSTALL","1",1);setenv("MADEIRA_STEAM_CONTROLLED_SETUP","1",1);poll_for(300);assert(!posted);
     params.ImagePathName.Buffer=wide("C:\\Madeira\\Installers\\SteamSetup.exe");params.ImagePathName.Length=72;
     wrong_thread=1;poll_for(300);assert(!posted);wrong_thread=0;
     dialog_enabled=0;poll_for(300);assert(!posted);dialog_enabled=1;
@@ -179,12 +199,18 @@ int main(void) {
     assert(posted==2 && stage==2);
     valid_directory=0;poll_for(300);assert(posted==2);
     valid_directory=1;poll_for(3000);
-    assert(posted==4&&stage==4);poll_for(1000);assert(posted==4);
+    assert(posted==4&&stage==4&&checked==0&&unchecked==1&&progress_updates>0);poll_for(1000);assert(posted==4);
     puts("PASS: real driver adapter posts four exact commands only to the pinned installer GUI thread, without focus or coordinates");
     WCHAR *steam=wide("C:\\Program Files\\Steam Client\\steam.exe");
     unsigned length=0;while(steam[length])length++;
     assert(child_extra_args("steam.exe -no-cef-sandbox -cef-disable-gpu",steam,length));
     assert(!child_extra_args("steam.exe -cef-disable-gpu",wide("C:\\other.exe"),12));
+    WCHAR *setup=wide("C:\\Madeira\\Installers\\SteamSetup.exe"),*controller=wide("C:\\Madeira\\Installers\\SteamBootstrap.exe");
+    int setup_len=lstrlenW(setup),controller_len=lstrlenW(controller);
+    assert(ios_setup_steam_autolaunch_deferred("1",setup,setup_len,steam,length));
+    assert(!ios_setup_steam_autolaunch_deferred("0",setup,setup_len,steam,length));
+    assert(!ios_setup_steam_autolaunch_deferred("1",controller,controller_len,steam,length));
+    assert(!ios_setup_steam_autolaunch_deferred("1",steam,length,steam,length));
     puts("PASS: existing child argument rule selects steam.exe for installer/updater restarts, not unrelated executables");
 }
 '''.replace('/* CHILD_RULES */','\n'.join(rules)).replace('/* REAL_CLASS_READER */',class_reader).replace('/* REAL_EDIT_READER */',edit_reader)
@@ -197,7 +223,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
     subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios18.0',
                     '-std=gnu11','-Wall','-Wextra','-Werror','-fsyntax-only',
                     '-I',str(ROOT/'build/win32u-unix'),str(file)],check=True)
-    method=source[source.index('    static func configureSession('):source.index('    /// Called after')]
+    method=source[source.index('    static func configureSession('):source.index('    static func cancelPreparation(')]
     swift=Path(tmp)/'Session.swift'
     swift.write_text('''import Foundation
 struct LibraryEntry { var id: Int }
@@ -206,7 +232,7 @@ enum SteamClient {
     static let installerID=1
     static let clientArguments="-no-cef-sandbox -cef-disable-gpu"
     static func owns(_ entry:LibraryEntry)->Bool { entry.id==1 || entry.id==2 }
-''' + method + '''}
+''' + method + r'''}
 @main struct Check {
     static func main() {
         unsetenv("MADEIRA_CHILD_ARGS"); unsetenv("MADEIRA_STEAM_AUTOINSTALL")
@@ -218,12 +244,19 @@ enum SteamClient {
         setenv("MADEIRA_CHILD_ARGS","custom.exe --user",1)
         setenv("MADEIRA_STEAM_AUTOINSTALL","0",1)
         SteamClient.configureSession(LibraryEntry(id:1))
-        precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="custom.exe --user")
-        precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="0")
+        precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="steam.exe "+SteamClient.clientArguments)
+        precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="1")
+        precondition(String(cString:getenv("MADEIRA_STEAM_CONTROLLED_SETUP"))=="1")
         unsetenv("MADEIRA_STEAM_AUTOINSTALL")
         SteamClient.configureSession(LibraryEntry(id:2))
         precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="0")
-        print("PASS: production Swift config scopes automation to the installer, propagates Steam child flags and preserves user overrides")
+        precondition(getenv("MADEIRA_STEAM_CONTROLLED_SETUP")==nil)
+        let flags=SteamClient.compatibilityArguments("-console \"-cef-disable-gpu\"")
+        precondition(flags=="-console \"-cef-disable-gpu\" -no-cef-sandbox")
+        precondition(SteamClient.compatibilityArguments(flags)==flags)
+        let nested=SteamClient.compatibilityArguments("-name \"x -cef-disable-gpu y\"")
+        precondition(nested.hasSuffix(" -no-cef-sandbox -cef-disable-gpu"))
+        print("PASS: production Swift config guarantees Steam compatibility flags and controlled setup, scopes non-Steam entries and deduplicates switches")
     }
 }
 ''')

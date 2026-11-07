@@ -25,6 +25,7 @@ log "Validating bundled Wine prefix"
 bash "$ROOT/tools/check-prefix-template.sh" "$ROOT/app/Madeira/prefix-template.tar.gz"
 
 "$ROOT/tools/build/setup-llvm-mingw.sh"
+bash "$ROOT/build/steam-bootstrap/build.sh"
 # Madeira Dock: without dockhost.exe in the bundle the app hides Dock and the Steam library.
 log "Building Madeira Dock"
 "$ROOT/build/madeira-dock/build.sh"
