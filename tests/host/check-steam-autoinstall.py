@@ -20,6 +20,10 @@ classes = (ROOT / 'build/win32u-unix/class_ios.c').read_text()
 start = classes.index('INT WINAPI NtUserGetClassName(')
 end = classes.index('\n}', start) + 2
 class_reader = classes[start:end]
+edit = (ROOT / 'wine/dlls/user32/edit.c').read_text()
+start = edit.index('static INT EDIT_WM_GetText(')
+end = edit.index('\n}', start) + 2
+edit_reader = edit[start:end]
 
 program = r'''
 #include <stdint.h>
@@ -46,6 +50,12 @@ struct { struct { RTL_USER_PROCESS_PARAMETERS *ProcessParameters; } *Peb; } teb;
 #define WM_COMMAND 0x111
 #define MAKEWPARAM(a,b) ((uintptr_t)(a)|((uintptr_t)(b)<<16))
 typedef intptr_t LPARAM;
+typedef intptr_t LRESULT;
+typedef WCHAR *LPWSTR;
+typedef char *LPSTR;
+#define WM_GETTEXT 0x0d
+#define SMTO_ABORTIFHUNG 2
+#define CP_ACP 0
 static uint64_t tick_ms;
 static unsigned stage,posted,ready=1,valid_directory=1,wrong_thread,dialog_enabled=1;
 static WCHAR *wide(const char *s) {
@@ -58,6 +68,16 @@ static int copy_text(WCHAR *out,unsigned cap,const char *s) {
     unsigned i;for(i=0;s[i]&&i+1<cap;i++)out[i]=(unsigned char)s[i];
     out[i]=0;return i;
 }
+typedef struct { WCHAR *text; } EDITSTATE;
+static void lstrcpynW(WCHAR *out,const WCHAR *in,int cap) {
+    int i=0;for(;i+1<cap && in[i];i++)out[i]=in[i];out[i]=0;
+}
+static int lstrlenW(const WCHAR *s) {int n=0;while(s[n])n++;return n;}
+static int WideCharToMultiByte(unsigned a,unsigned b,const WCHAR *c,int d,char *e,int f,void *g,void *h) {
+    (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;(void)g;(void)h;
+    assert(!"expected Unicode Edit read");return 0;
+}
+/* REAL_EDIT_READER */
 static unsigned GetCurrentThreadId(void) {return 24;}
 static unsigned get_window_thread(HWND h,void *unused) {(void)h;(void)unused;return wrong_thread?99:24;}
 static int is_window_visible(HWND h) {(void)h;return 1;}
@@ -88,9 +108,21 @@ static int NtUserBuildHwndList(int a,HWND parent,int c,int d,unsigned thread,uns
 static HWND NtUserGetAncestor(HWND h,unsigned kind) {(void)h;assert(kind==GA_PARENT);return 2;}
 static int get_window_long(HWND h,int offset) {assert(offset==GWLP_ID);return h==3?1:0;}
 static int NtUserInternalGetWindowText(HWND h,WCHAR *out,unsigned cap) {
-    const char *s=h==5?(valid_directory?"C:\\Program Files\\Steam Client":"D:\\other"):
+    const char *s=h==5?"": /* Edit's WND.text is empty even when EDITSTATE.text is not. */
         stage<2?"&Next >":stage==2?"&Install":"&Finish";
     return copy_text(out,cap,s);
+}
+static void ios_steam_installer_poll(void);
+static LRESULT send_message_timeout(HWND h,unsigned msg,uintptr_t cap,LPARAM buffer,unsigned flags,unsigned timeout,int ansi) {
+    static int depth;
+    assert(++depth==1);
+    assert(h==5 && msg==WM_GETTEXT && cap==260 && flags==SMTO_ABORTIFHUNG && timeout==250 && !ansi);
+    WCHAR text[260];
+    copy_text(text,260,valid_directory?"C:\\Program Files\\Steam Client":"D:\\other");
+    EDITSTATE es={text};
+    if(teb.Peb) for(unsigned i=0;i<64;i++)ios_steam_installer_poll();
+    LRESULT result=EDIT_WM_GetText(&es,(int)cap,(LPWSTR)buffer,TRUE);
+    depth--;return result;
 }
 static int NtUserPostMessage(HWND h,unsigned msg,uintptr_t w,LPARAM l) {
     assert(h==2&&msg==WM_COMMAND&&w==1&&l==3);assert(stage<4);posted++;stage++;return 1;
@@ -104,6 +136,10 @@ int main(void) {
     assert(NtUserGetClassName(2,0,&name)==6 && name.Length==0);
     assert(!steam_setup_ascii_equal(cls,name.Length/2,"#32770")); /* Build 16's old test rejects a real dialog */
     assert(steam_setup_class(2,"#32770") && steam_setup_class(3,"Button"));
+    WCHAR folder[260];
+    assert(NtUserInternalGetWindowText(5,folder,260)==0); /* Build 17's old directory read fails. */
+    assert(send_message_timeout(5,WM_GETTEXT,260,(LPARAM)folder,SMTO_ABORTIFHUNG,250,FALSE)>0);
+    assert(steam_setup_ascii_equal(folder,lstrlenW(folder),"C:\\Program Files\\Steam Client"));
     struct steam_setup_state state={0};
     const uint16_t zh_next[]={0x4e0b,0x4e00,0x6b65,'(','&','N',')','>'};
     const uint16_t zh_install[]={0x5b89,0x88c5,'(','&','I',')'};
@@ -138,7 +174,11 @@ int main(void) {
     wrong_thread=1;poll_for(300);assert(!posted);wrong_thread=0;
     dialog_enabled=0;poll_for(300);assert(!posted);dialog_enabled=1;
     setenv("MADEIRA_STEAM_AUTOINSTALL","0",1);poll_for(300);assert(!posted);
-    setenv("MADEIRA_STEAM_AUTOINSTALL","1",1);poll_for(3000);
+    setenv("MADEIRA_STEAM_AUTOINSTALL","1",1);
+    for(unsigned i=0;i<2000 && posted<2;i++)poll_for(1);
+    assert(posted==2 && stage==2);
+    valid_directory=0;poll_for(300);assert(posted==2);
+    valid_directory=1;poll_for(3000);
     assert(posted==4&&stage==4);poll_for(1000);assert(posted==4);
     puts("PASS: real driver adapter posts four exact commands only to the pinned installer GUI thread, without focus or coordinates");
     WCHAR *steam=wide("C:\\Program Files\\Steam Client\\steam.exe");
@@ -147,7 +187,7 @@ int main(void) {
     assert(!child_extra_args("steam.exe -cef-disable-gpu",wide("C:\\other.exe"),12));
     puts("PASS: existing child argument rule selects steam.exe for installer/updater restarts, not unrelated executables");
 }
-'''.replace('/* CHILD_RULES */','\n'.join(rules)).replace('/* REAL_CLASS_READER */',class_reader)
+'''.replace('/* CHILD_RULES */','\n'.join(rules)).replace('/* REAL_CLASS_READER */',class_reader).replace('/* REAL_EDIT_READER */',edit_reader)
 with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
     file=Path(tmp)/'check.c';file.write_text(program)
     binary=Path(tmp)/'check'

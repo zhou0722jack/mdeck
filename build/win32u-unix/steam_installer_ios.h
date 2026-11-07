@@ -31,17 +31,19 @@ static int steam_setup_class( HWND hwnd, const char *name )
 static void ios_steam_installer_poll(void)
 {
     static __thread struct steam_setup_state state;
-    static __thread unsigned calls, failures, manual_note, announced;
+    static __thread unsigned calls, failures, manual_note, announced, reading_directory;
     static __thread uint64_t next_poll;
     static __thread HWND noted_dialog, noted_page, noted_button;
     static __thread int noted_role = -1, noted_ready = -1, noted_directory = -1;
+    static __thread WCHAR noted_folder[260];
+    static __thread unsigned noted_folder_length, folder_announced;
     HWND windows[32], children[128];
     ULONG count, i;
     uint64_t now;
     const RTL_USER_PROCESS_PARAMETERS *params;
     const char *enabled = getenv( "MADEIRA_STEAM_AUTOINSTALL" );
 
-    if (!enabled || enabled[0] != '1' || enabled[1] || state.finished || ((++calls & 31) != 0)) return;
+    if (!enabled || enabled[0] != '1' || enabled[1] || state.finished || reading_directory || ((++calls & 31) != 0)) return;
     now = ios_tiny_now_ns() / 1000000;
     if (now < next_poll) return;
     next_poll = now + 150;
@@ -74,8 +76,26 @@ static void ios_steam_installer_poll(void)
                 if (steam_setup_class( child, "#32770" )) { page = child; pages++; }
             }
             if (steam_setup_class( child, "Edit" )) {
-                WCHAR folder[260];
-                int length = NtUserInternalGetWindowText( child, folder, ARRAY_SIZE(folder) );
+                WCHAR folder[260] = {0};
+                LRESULT length;
+                /* Edit owns its text in EDITSTATE, not WND.text. Read it via
+                 * the normal Unicode message on its own GUI thread. The
+                 * message path marshals the buffer for the 32-bit control.
+                 * A nested driver poll during its callback must not re-enter. */
+                reading_directory = 1;
+                length = send_message_timeout( child, WM_GETTEXT, ARRAY_SIZE(folder), (LPARAM)folder,
+                                               SMTO_ABORTIFHUNG, 250, FALSE );
+                reading_directory = 0;
+                if (length < 0 || (size_t)length >= ARRAY_SIZE(folder)) length = 0;
+                folder[length] = 0;
+                if (!folder_announced || (unsigned)length != noted_folder_length || memcmp(noted_folder, folder, length * sizeof(WCHAR))) {
+                    char shown[260];
+                    unsigned k;
+                    for (k = 0; k < (unsigned)length; k++) shown[k] = folder[k] >= 32 && folder[k] < 127 ? (char)folder[k] : '?';
+                    shown[k] = 0;
+                    dprintf(2, "[steam-autoinstall] directory read via WM_GETTEXT: chars=%u value=\"%s\"\n", (unsigned)length, shown);
+                    memcpy(noted_folder, folder, (length + 1) * sizeof(WCHAR)); noted_folder_length = length; folder_announced = 1;
+                }
                 if (length > 0 && steam_setup_ascii_equal( folder, length, "c:\\program files\\steam client" )) directory_ok = 1;
             }
         }
