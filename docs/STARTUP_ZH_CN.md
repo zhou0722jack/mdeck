@@ -61,7 +61,7 @@ JIT 附加仍由原有启动检查按所选方式执行。首页不再放置独�
 新启动视图与 AVPlayer 桥接已在 iOS SDK 下配合依赖替身通过类型检查。
 已检查动画媒体、190 帧完整性和转码画面对比，整体 SSIM 为 0.995711。
 
-完整 IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成，当前构建号为 10。
+完整 IPA 通过 GitHub Actions 的 `Build IPA` 工作流生成，当前构建号为 11。
 源码测试和打包检查均不能替代 iPad 上的动画声音、实际网络下载及 Steam 启动验证。
 此前的 Build 8 IPA 不包含本轮更改。
 
@@ -77,3 +77,33 @@ explorer 创建了 SteamSetup 子进程；该子进程加载 `xtajit.dll` 的 na
 但不代表 WoW64 后端已经修复或 Steam 已在 iPad 上运行成功。
 双击跳过和这次安装器路径调整从 Build 10 开始打包；已有 Build 9 包仍采用旧路径。
 本轮本机交互测试已由用户取消；不把模拟器测试程序的编译视为 Steam 或双击手势实测通过。
+
+## Build 11 的跟踪与异常诊断修正
+
+`06-58-22` 日志确认配置中已启用 `env.MADEIRA_DEBUG_VERBOSE=1`，但原来的日志级别
+选择发生在配置环境变量导出之前。新的 `build/madeira_debug.h` 直接读取全局和游戏配置，
+在 wineserver 启动前及 guest 启动前选择日志通道。开启“扩展日志”时额外加入
+`trace+msvcrt` 和 `trace+nls`，并写出 `[wine-debug]` 行确认实际选择。
+关闭扩展日志时不追加这两个通道，也不输出这条详细设置记录；用户手动配置的
+Wine 追踪选项仍按自己的配置工作。
+这避免“配置显示已开启，Wine 初始化却缓存了此前默认通道”的时序问题。
+
+同一次运行先在 `kernelbase!wcstombs_codepage` 触发异常，退出后，系统线程在无 Wine TEB
+时进入 `handle_syscall_fault`，再次访问空指针并产生重复异常。该处理函数现在先检查
+TEB 和 syscall frame，无 Wine 状态时返回，不再把宿主线程当成 Wine syscall 处理。
+
+宿主测试已执行实际日志选择函数和实际异常处理函数，覆盖全局/游戏/环境配置优先级、
+缺少 TEB、缺少 frame、非 syscall，以及 Wine 的异常跳转与正常返回。
+这两项修改改善日志生效与异常处理；字符转换表首个访问异常尚未修复，不能视为 Steam
+安装成功。这些修改从 Build 11 开始打包，现有 Build 10 IPA 不包含。
+
+新增 CRT 调用来源诊断保存在 Madeira 自己的
+`build/windows-runtime/patches/0001-crt-invalid-parameter-callsite.patch`。
+构建时应用于固定版本的 Wine，不更改子模块提交。失败检查会记录表达式、函数、
+源码位置和调用地址，参数处理器收到的原始参数、errno、处理器优先级及致命异常均保留。
+`madeira_crt` 专用通道实时读取“扩展日志”开关，不缓存开关值：关闭后停止新增详细输出，
+原有错误行仍保留。开关关闭时不进行格式化或调用栈采集。
+
+`tests/host/check-crt-callsite-diagnostics.py` 编译补丁后的实际检查宏与错误处理函数，
+覆盖正常路径无输出、开关切换、errno 保留、参数单次求值、处理器参数与优先级、
+致命异常及 noreturn 退出。它是宿主语义测试，不代表完整 Windows DLL 编译或 Steam 实测。

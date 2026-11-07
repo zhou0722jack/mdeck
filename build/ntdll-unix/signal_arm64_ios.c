@@ -10844,9 +10844,12 @@ NTSTATUS WINAPI NtCallbackReturn( void *ret_ptr, ULONG ret_len, NTSTATUS status 
  */
 static BOOL handle_syscall_fault( ucontext_t *context, EXCEPTION_RECORD *rec )
 {
-    struct syscall_frame *frame = get_syscall_frame();
+    struct syscall_frame *frame;
     DWORD i;
 
+    /* Native UIKit/dispatch threads have no Wine TEB or syscall frame. */
+    if (!NtCurrentTeb()) return FALSE;
+    if (!(frame = get_syscall_frame())) return FALSE;
     if (!is_inside_syscall( SP_sig(context) )) return FALSE;
 
     TRACE( "code=%x flags=%x addr=%p pc=%p tid=%04x\n",

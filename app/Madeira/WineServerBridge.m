@@ -8,6 +8,7 @@
 #import <stdarg.h>
 
 #include "WineServerBridge.h"
+#include "../../build/madeira_debug.h"
 #include <sys/time.h>
 
 static FILE *g_ws_bridge_log = NULL;
@@ -134,6 +135,8 @@ int wineserver_start(const char *prefix_path) {
         wine_log_msg("Wineserver already running");
         return 0;
     }
+
+    madeira_configure_wine_debug();
 
     // Store prefix path
     if (g_prefix_path) free(g_prefix_path);

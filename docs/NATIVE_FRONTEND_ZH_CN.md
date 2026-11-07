@@ -69,7 +69,7 @@ Madeira Dock 的宿主随包提供，首次下载的是它需要的 Valve 客户
 以及改动 Swift 源码的语法解析和工程 plist 检查。
 启动视频共 190 帧，转码前后的画面 SSIM 为 0.995711，原始视频和产物均记录哈希。
 
-IPA 构建使用 GitHub Actions 的 `Build IPA` 工作流，当前构建号为 10。
+IPA 构建使用 GitHub Actions 的 `Build IPA` 工作流，当前构建号为 11。
 以上源码检查不能代替完整编译；原生页面实际布局、音效、网络下载及 iPad 上的
 Steam 启动还须通过实机验证。
 `dist/native-build8/Madeira.ipa` 是此前的原生前端包，不包含这次的启动流程改动。

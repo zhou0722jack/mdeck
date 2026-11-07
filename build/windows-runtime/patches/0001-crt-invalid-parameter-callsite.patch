@@ -1,0 +1,93 @@
+Madeira: retain invalid CRT parameter call sites behind extended logging
+
+The release CRT intentionally passes NULL metadata to parameter handlers.
+Keep that ABI, errno, handler precedence and fatal exception behavior.
+The madeira_crt trace channel reads the live iOS diagnostics flag on each
+check and never caches it. Only failed checks collect source metadata.
+No stack walk or caller-controlled data is dereferenced.
+
+diff --git a/dlls/msvcrt/errno.c b/dlls/msvcrt/errno.c
+index e011eff4..e43a6587 100644
+--- a/dlls/msvcrt/errno.c
++++ b/dlls/msvcrt/errno.c
+@@ -473,6 +473,7 @@ void __cdecl _invalid_parameter(const wchar_t *expr, const wchar_t *func,
+     if (invalid_parameter_handler) invalid_parameter_handler( expr, func, file, line, arg );
+     else
+     {
++        msvcrt_trace_invalid_parameter( NULL, "_invalid_parameter", __FILE__, __LINE__, __builtin_return_address(0) );
+         ERR( "%s:%u %s: %s %Ix\n", debugstr_w(file), line, debugstr_w(func), debugstr_w(expr), arg );
+ #if _MSVCR_VER >= 80
+         RaiseException( STATUS_INVALID_CRUNTIME_PARAMETER, EXCEPTION_NONCONTINUABLE, 0, NULL );
+@@ -487,6 +488,7 @@ void __cdecl _invalid_parameter(const wchar_t *expr, const wchar_t *func,
+  */
+ void CDECL _invalid_parameter_noinfo(void)
+ {
++    msvcrt_trace_invalid_parameter( NULL, "_invalid_parameter_noinfo", __FILE__, __LINE__, __builtin_return_address(0) );
+     _invalid_parameter( NULL, NULL, NULL, 0, 0 );
+ }
+ 
+@@ -495,6 +497,7 @@ void CDECL _invalid_parameter_noinfo(void)
+  */
+ void CDECL _invalid_parameter_noinfo_noreturn(void)
+ {
++    msvcrt_trace_invalid_parameter( NULL, "_invalid_parameter_noinfo_noreturn", __FILE__, __LINE__, __builtin_return_address(0) );
+     _invalid_parameter( NULL, NULL, NULL, 0, 0 );
+     _exit( STATUS_INVALID_CRUNTIME_PARAMETER );
+ }
+diff --git a/dlls/msvcrt/msvcrt.h b/dlls/msvcrt/msvcrt.h
+index 47cf70f1..aed06682 100644
+--- a/dlls/msvcrt/msvcrt.h
++++ b/dlls/msvcrt/msvcrt.h
+@@ -357,16 +357,23 @@ struct fpnum {
+ struct fpnum fpnum_parse(wchar_t (*)(void*), void (*)(void*),
+         void*, pthreadlocinfo, BOOL);
+ int fpnum_double(struct fpnum*, double*);
+-/* Maybe one day we'll enable the invalid parameter handlers with the full set of information (msvcrXXd)
+- *      #define MSVCRT_INVALID_PMT(x) MSVCRT_call_invalid_parameter_handler(x, __FUNCTION__, __FILE__, __LINE__, 0)
+- *      #define MSVCRT_CHECK_PMT(x)   ((x) ? TRUE : MSVCRT_INVALID_PMT(#x),FALSE)
+- * Until this is done, just keep the same semantics for CHECK_PMT(), but without generating / sending
+- * any information
+- * NB : MSVCRT_call_invalid_parameter_handler is a wrapper around _invalid_parameter in order
+- * to do the Ansi to Unicode transformation
+- */
+-#define MSVCRT_INVALID_PMT(x,err)   (*_errno() = (err), _invalid_parameter(NULL, NULL, NULL, 0, 0))
+-#define MSVCRT_CHECK_PMT_ERR(x,err) ((x) || (MSVCRT_INVALID_PMT( 0, (err) ), FALSE))
++/* Madeira: the dedicated channel follows the host's live diagnostics switch. */
++#include "wine/debug.h"
++static inline void msvcrt_trace_invalid_parameter( const char *check, const char *function,
++                                                  const char *file, unsigned int line, void *caller )
++{
++    WINE_DECLARE_DEBUG_CHANNEL(madeira_crt);
++    int saved_errno;
++    if (!TRACE_ON(madeira_crt)) return;
++    saved_errno = *_errno();
++    TRACE_(madeira_crt)("[crt-invalid-check] function=%s check=%s file=%s line=%u caller=%p\n",
++                       function, check ? check : "(unspecified)", file, line, caller);
++    *_errno() = saved_errno;
++}
++#define MSVCRT_INVALID_PMT(x,err)   (msvcrt_trace_invalid_parameter((x), __func__, __FILE__, \
++                                                                __LINE__, __builtin_return_address(0)), \
++                                   *_errno() = (err), _invalid_parameter(NULL, NULL, NULL, 0, 0))
++#define MSVCRT_CHECK_PMT_ERR(x,err) ((x) || (MSVCRT_INVALID_PMT( #x, (err) ), FALSE))
+ #define MSVCRT_CHECK_PMT(x)         MSVCRT_CHECK_PMT_ERR((x), EINVAL)
+ 
+ typedef int (*puts_clbk_a)(void*, int, const char*);
+diff --git a/dlls/ntdll/unix/debug.c b/dlls/ntdll/unix/debug.c
+index ee21f8fc..6b3806d1 100644
+--- a/dlls/ntdll/unix/debug.c
++++ b/dlls/ntdll/unix/debug.c
+@@ -253,6 +253,14 @@ unsigned char __cdecl __wine_dbg_get_channel_flags( struct __wine_debug_channel
+     int min, max, pos, res;
+     unsigned char flags;
+ 
++#ifdef WINE_IOS
++    if (!strcmp( channel->name, "madeira_crt" ))
++    {
++        extern int madeira_get_diag_enabled(void);
++        /* Keep INIT set so a later UI toggle is observed instead of cached. */
++        return (1 << __WINE_DBCL_INIT) | (madeira_get_diag_enabled() ? 1 << __WINE_DBCL_TRACE : 0);
++    }
++#endif
+     if (!(channel->flags & (1 << __WINE_DBCL_INIT))) return channel->flags;
+ 
+     if (nb_debug_options == -1) init_options();

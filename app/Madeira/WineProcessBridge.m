@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include "../../build/madeira_cfg.h"   /* ml1095: one config file */
+#include "../../build/madeira_debug.h"
 #include "../../build/madeira_redact.h"   /* the arguments are logged with credential-like values redacted */
 #include <sys/stat.h>
 #include <pwd.h>
@@ -1533,42 +1534,7 @@ static void *wine_process_thread(void *arg) {
             LOG("WINEDLLPATH=%{public}s", bundlePath.UTF8String);
         }
 
-        /* Wine trace channels.
-         *
-         * 2026-05-19 perf pivot: the verbose default (err+all, fixme+all,
-         * warn+module, warn+file, trace+process, trace+module, trace+loaddll,
-         * trace+loadorder, trace+win, trace+user32, trace+syscall, trace+file)
-         * was generating ~220 KB/sec of log writes — the dominant source of
-         * the 1.35s-per-frame menu rendering. trace+syscall + trace+file alone
-         * are likely 90%+ of the volume (every Nt* call writes 3-5 log lines).
-         *
-         * Default is now PERF: only err+all (so we still see real failures).
-         * For debugging, set MADEIRA_DEBUG_VERBOSE=1 in the environment to
-         * restore the full trace channel set. */
-        {
-            const char *verbose = getenv("MADEIRA_DEBUG_VERBOSE");
-            if (verbose && *verbose && *verbose != '0') {
-                setenv("WINEDEBUG", "err+all,fixme+all,warn+module,warn+file,trace+process,trace+module,trace+loaddll,trace+loadorder,trace+win,trace+user32,trace+syscall,trace+file", 1);
-                LOG("WINEDEBUG = verbose (MADEIRA_DEBUG_VERBOSE set)");
-            } else {
-                /* err+all keeps real failure messages, but subtract err+virtual
-                 * because our iOS virtual_ios.c uses ERR() for informational
-                 * traces ("iOS vm_protect RW+COPY OK", "iOS JIT: pool size",
-                 * "iOS JIT: copied image"). Those produce thousands of lines
-                 * per boot. Real failures in virtual_ios.c use distinctive
-                 * FATAL/FAIL prefixes our app surfaces via other paths. */
-                /* ml740: warn+seh removed again now the tracing it existed for is
-                 * done. It routes every OutputDebugStringA through an exception
-                 * dispatch, which is real overhead in hot paths; re-add it only
-                 * alongside MADEIRA_TF_TRACE. */
-                /* fixme-d3dcompiler: Wine's shader reflection prints one
-                 * skip_u32_unknown line per unknown RDEF dword. Metro 2033
-                 * Redux reflects every shader at load: ~90,000 of a
-                 * 105,000-line log in six seconds, all of it parsed by LogStore. */
-                setenv("WINEDEBUG", "err+all,err-virtual,fixme-d3dcompiler", 1);
-                LOG("WINEDEBUG = err+all,err-virtual,fixme-d3dcompiler (perf default — set MADEIRA_DEBUG_VERBOSE=1 for full trace)");
-            }
-        }
+        madeira_configure_wine_debug();
 
         // Phase 3D investigation: re-enabled. Investigation C concluded
         // wineserver dispatch is fine; the `ws_log drops at high rate`

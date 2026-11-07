@@ -35,6 +35,8 @@ jobs:
         run: |
           python3 tests/host/check-native-deck.py
           python3 tests/host/check-deck-startup.py
+          python3 tests/host/check-wine-diagnostic-startup.py
+          python3 tests/host/check-crt-callsite-diagnostics.py
       - name: Check build reuse rules
         run: |
           python3 tests/host/check-build-inputs.py
@@ -375,7 +377,7 @@ jobs:
             app/Madeira/legal/LICENSES-rppairing-crates.txt
       - uses: actions/cache@v4
         with:
-          key: plan19-${{ steps.sdk.outputs.key }}-wine-host-${{ steps.pins.outputs.wine }}-${{ hashFiles('tools/build/build-wine.sh', 'tools/build/setup-llvm-mingw.sh') }}
+          key: plan19-${{ steps.sdk.outputs.key }}-wine-host-${{ steps.pins.outputs.wine }}-${{ hashFiles('tools/build/build-wine.sh', 'tools/build/setup-llvm-mingw.sh', 'build/windows-runtime/apply-patches.sh', 'build/windows-runtime/patches/**') }}
           path: |
             wine/build-macos
             wine/build-arm64ec

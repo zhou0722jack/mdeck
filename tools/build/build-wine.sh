@@ -7,6 +7,7 @@ MINGW="$ROOT/toolchains/llvm-mingw-20260421-ucrt-macos-universal/bin"
 export PATH="$MINGW:$PATH"
 
 [[ -x "$WINE/configure" ]] || { echo "ERROR: wine submodule is missing" >&2; exit 1; }
+bash "$ROOT/build/windows-runtime/apply-patches.sh"
 
 # Native macOS build tree. Madeira's iOS unix-side libraries consume config.h,
 # generated headers, and host build outputs from here. aarch64 is the native
