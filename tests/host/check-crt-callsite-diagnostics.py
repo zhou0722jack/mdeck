@@ -7,6 +7,9 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
+wine_root = Path(subprocess.check_output(['git', '-C', str(ROOT / 'wine'), 'rev-parse', '--show-toplevel'], text=True).strip())
+assert wine_root == ROOT / 'wine', 'Initialize the pinned Wine submodule before running this check'
+assert subprocess.check_output(['git', '-C', str(wine_root), 'rev-parse', 'HEAD'], text=True).strip() == subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD:wine'], text=True).strip()
 patch = ROOT / 'build/windows-runtime/patches/0001-crt-invalid-parameter-callsite.patch'
 lines = patch.read_text().splitlines(keepends=True)
 sources = {}

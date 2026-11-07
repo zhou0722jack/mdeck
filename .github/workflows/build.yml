@@ -27,6 +27,8 @@ jobs:
       ipaenv: ${{ steps.sdk.outputs.ipa }}
     steps:
       - uses: actions/checkout@v4
+      - name: Fetch pinned Wine diagnostic sources
+        run: git submodule update --init --depth 1 wine
       - name: Check Simplified Chinese localization
         run: python3 tests/host/check-localization.py
       - name: Check bundled Steam installer
