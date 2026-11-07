@@ -48,7 +48,7 @@ void winios_steam_setup_reset(void) {
     pthread_mutex_unlock(&steam_setup_progress_lock);
 }
 void winios_steam_setup_note(int step, int percent, int blocked) {
-    if (step < 0 || step > 5 || percent < -1 || percent > 100 || blocked < 0 || blocked > 3) return;
+    if (step < 0 || step > 5 || percent < -1 || percent > 100 || blocked < 0 || blocked > 4) return;
     pthread_mutex_lock(&steam_setup_progress_lock);
     steam_setup_progress = (struct winios_steam_setup_progress){step, percent, blocked};
     pthread_mutex_unlock(&steam_setup_progress_lock);

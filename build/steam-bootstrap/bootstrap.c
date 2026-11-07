@@ -19,6 +19,12 @@ static const WCHAR client_dir[] = L"C:\\Program Files\\Steam Client";
 static const WCHAR state_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.state";
 static const WCHAR temp_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.state.tmp";
 static const WCHAR cancel_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.cancel";
+static const WCHAR config_dir[] = L"C:\\Program Files\\Steam Client\\config";
+static const WCHAR apps_dir[] = L"C:\\Program Files\\Steam Client\\steamapps";
+static const WCHAR config_stage[] = L"C:\\Madeira\\Installers\\SteamLibraries.config.vdf";
+static const WCHAR apps_stage[] = L"C:\\Madeira\\Installers\\SteamLibraries.steamapps.vdf";
+static const WCHAR config_vdf[] = L"C:\\Program Files\\Steam Client\\config\\libraryfolders.vdf";
+static const WCHAR apps_vdf[] = L"C:\\Program Files\\Steam Client\\steamapps\\libraryfolders.vdf";
 
 static void zero_bytes(void *data, SIZE_T length) {
     unsigned char *p = data;
@@ -76,6 +82,16 @@ static BOOL start_program(const WCHAR *path, WCHAR *command, const WCHAR *direct
     return CreateProcessW(path, command, NULL, NULL, FALSE, 0, NULL, directory, &startup, process);
 }
 
+static DWORD register_libraries(void) {
+    /* Do not populate the target before NSIS verifies that it is empty. */
+    if (!CreateDirectoryW(config_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return GetLastError();
+    if (!CreateDirectoryW(apps_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return GetLastError();
+    if (!CopyFileW(config_stage, config_vdf, FALSE)) return GetLastError();
+    if (!CopyFileW(apps_stage, apps_vdf, FALSE)) return GetLastError();
+    OutputDebugStringA("[steam-bootstrap] libraries registered after installer exit");
+    return ERROR_SUCCESS;
+}
+
 static DWORD bootstrap_run(void) {
     PROCESS_INFORMATION process;
     DWORD error, code = 0, attributes;
@@ -96,6 +112,9 @@ static DWORD bootstrap_run(void) {
     if (cancelled()) return failed(ERROR_CANCELLED);
     attributes = GetFileAttributesW(client_path);
     if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) return failed(ERROR_FILE_NOT_FOUND);
+    error = register_libraries();
+    if (error) return failed(error);
+    if (cancelled()) return failed(ERROR_CANCELLED);
     if (!report("starting", 0)) return failed(ERROR_WRITE_FAULT);
     if (!start_program(client_path, client_command, client_dir, &process)) return failed(GetLastError());
     CloseHandle(process.hThread);

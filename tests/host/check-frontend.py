@@ -154,6 +154,23 @@ swift += r'''
 var failed = 0
 func expect(_ cond: Bool, _ what: String) { print((cond ? "PASS: " : "FAIL: ") + what); if !cond { failed += 1 } }
 
+var steamDefaults = LibraryEntry(title: "Steam", relativePath: "Program Files/Steam Client/Steam.exe", bits: 32)
+steamDefaults.resolution = "1600x900"; steamDefaults.fpsMode = 2
+steamDefaults.metalFXUpscale = 1.5; steamDefaults.frameGeneration = true
+steamDefaults.cpuCount = 4; steamDefaults.controlOpacity = 0.9; steamDefaults.controllerMode = "keys"
+var ownedProfile = LibraryEntry(title: "Owned fixture", relativePath: "Games/Fixture", bits: 64)
+let ownedIdentity = ownedProfile.id
+ownedProfile.steamAppID = 42; ownedProfile.steamProgram = "bin/game.exe"
+ownedProfile.coverFile = "own.jpg"; ownedProfile.arguments = "--own-option"; ownedProfile.largeReservations = true
+ownedProfile.inheritRuntimeSettings(from: steamDefaults)
+expect(ownedProfile.resolution == "1600x900" && ownedProfile.fpsMode == 2 && ownedProfile.metalFXUpscale == 1.5
+       && ownedProfile.frameGeneration == true && ownedProfile.cpuCount == 4 && ownedProfile.controlOpacity == 0.9,
+       "Steam-wide display, frame, CPU and control tuning copies into a game's launch profile")
+expect(ownedProfile.id == ownedIdentity && ownedProfile.steamAppID == 42 && ownedProfile.steamProgram == "bin/game.exe"
+       && ownedProfile.coverFile == "own.jpg" && ownedProfile.arguments == "--own-option" && ownedProfile.relativePath == "Games/Fixture",
+       "global Steam tuning preserves the game's identity, install path, chosen program, artwork and arguments")
+expect(ownedProfile.largeReservations == nil, "an unset global runtime option clears an inherited per-game value")
+
 // Display intent: the default keeps a 60 Hz floor; maximum refresh is opt-in.
 expect(ProMotionIntent.maxHz(for: 1) == 60 && ProMotionIntent.maxHz(for: 3) == 60,
        "30 and 60 FPS caps keep the default 60 Hz panel floor")
@@ -639,7 +656,7 @@ check('Picker("Aspect & scaling"' in detail and 'entry.display = $0' in detail, 
 # entry leaves out names or starts one particular program: its title and cover, how it
 # starts, its launch arguments, a Home Screen link, its executable. A block gated off
 # for the Desktop must be one of those and hold no other control.
-form_body = detail[:detail.index('.navigationTitle("Game details")')]
+form_body = detail[:detail.index('.navigationTitle(isSteamGlobal ?')]
 desktop_out = ('Section("Library details")', 'Picker("Start"', 'TextField("Launch arguments"',
                'Text("Home Screen")', 'Section("Executable")')
 desktop_controls = {'Picker("Start"', 'Toggle("Start Windows services first"'}
@@ -663,7 +680,7 @@ check('Picker("Aspect & scaling", selection: $model.displayMode)' in hud and 'MA
 check('LabeledContent("Opacity")' in hud and 'LabeledContent("Size")' in hud, 'in-game menu: control opacity and size')
 check('Text("Touch").tag("touch")' in lib and 'input.touchMode = value == "touch"' in lib,
       'pointer settings: Absolute, Relative and Touch')
-save = block(model, 'func saveCurrentProfile()')
+save = block(model, 'func saveCurrentProfile()') + block(model, 'private func sessionProfile(')
 check('entry.display = displayMode.rawValue' in save and 'entry.controlOpacity = opacity' in save
       and 'entry.controlSize = controls.sizeScale' in save, 'a session saves display mode, opacity and size to the game')
 begin = block(model, 'func begin(_ entry: LibraryEntry')

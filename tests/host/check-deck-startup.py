@@ -308,6 +308,11 @@ import Foundation
         precondition(launch.sessionStarted(UUID()))
         launch.observeSetup(status("installer",blocked:2))
         precondition(launch.phase == .failed && launch.presented)
+        launch.sessionEnded(nil); launch.returnToLibrary()
+        launch.request(target:target,installer:true){_ in};launch.beginPreparation();await wait(preparation)
+        precondition(launch.sessionStarted(UUID()))
+        launch.observeSetup(status("installer",blocked:4))
+        precondition(launch.phase == .failed && launch.presented && launch.error?.contains("dialog") == true)
         print("PASS: setup/desktop/early client frames stay covered; only post-exit launch plus Steam's actual image completes; failures do not reveal")
     }
 }

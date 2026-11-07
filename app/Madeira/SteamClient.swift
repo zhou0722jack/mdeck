@@ -39,14 +39,20 @@ enum SteamClient {
         let id = install ? installerID : clientID
         let path = install ? bootstrapPath : clientDirectory + "/" + (executableURL?.lastPathComponent ?? "Steam.exe")
         let saved = LibraryModel.shared.entries.first { $0.id == id }
+        let global = LibraryModel.shared.entries.first { $0.id == clientID }
         let gameProfile = appID.flatMap { id in LibraryModel.shared.entries.first { $0.steamAppID == id } }
-        var entry = gameProfile ?? saved
+        let customized = gameProfile?.steamUseGlobalSettings == false ? gameProfile : nil
+        var entry = customized ?? gameProfile ?? global ?? saved
             ?? LibraryEntry(title: install ? L("Steam installer") : "Steam", relativePath: path, bits: 32)
+        if customized == nil, gameProfile != nil, let global { entry.inheritRuntimeSettings(from: global) }
         entry.id = id
         entry.relativePath = path
         entry.launchMode = "desktop"
         entry.startServices = true
         entry.steamClientAppID = appID
+        entry.title = gameProfile?.title ?? (install ? L("Steam installer") : "Steam")
+        entry.steamUseGlobalSettings = gameProfile?.steamUseGlobalSettings
+        entry.steamSettingsPath = customized?.windowsPath ?? windowsExecutable
         entry.steamAppID = nil
         entry.bigPicture = nil
         entry.workingDirectory = nil
@@ -60,6 +66,19 @@ enum SteamClient {
         }
         normalizeLaunch(&entry)
         return entry
+    }
+
+    /// The same editor/profile as a library game's settings, with Steam-wide scope.
+    static var settingsEntry: LibraryEntry {
+        var profile = LibraryModel.shared.entries.first { $0.id == clientID }
+            ?? LibraryModel.shared.entries.first { $0.id == installerID }
+            ?? LibraryEntry(title: "Steam", relativePath: clientDirectory + "/Steam.exe", bits: 32)
+        profile.id = clientID; profile.relativePath = clientDirectory + "/Steam.exe"
+        profile.title = L("Steam settings")
+        profile.steamAppID = nil; profile.steamClientAppID = nil; profile.steamSettingsPath = nil
+        profile.steamUseGlobalSettings = nil
+        profile.arguments = extraArguments
+        return profile
     }
 
     static let bigPictureKey = "mdeck.steam.bigPicture"
@@ -198,19 +217,75 @@ enum SteamClient {
         }
         let target = try destination(installerPath)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try FileManager.default.createDirectory(at: destination(clientDirectory), withIntermediateDirectories: true)
         try data.write(to: target, options: .atomic)
         guard let helper = Bundle.main.url(forResource: "SteamBootstrap", withExtension: "exe", subdirectory: "BundledInstallers") else {
             throw LibraryError.message(L("The Steam preparation controller is missing. Install a complete IPA."))
         }
         try Data(contentsOf: helper).write(to: destination(bootstrapPath), options: .atomic)
+        try stageInstallationLibraries()
+        try prepareInstallationDirectory()
         for name in ["SteamBootstrap.state", "SteamBootstrap.state.tmp", "SteamBootstrap.cancel"] {
             let file = try destination("Madeira/Installers/" + name)
             if FileManager.default.fileExists(atPath: file.path) { try FileManager.default.removeItem(at: file) }
         }
         winios_steam_setup_reset()
-        try registerLibraries()
         LogStore.shared.log("[steam-installer] verified bundled setup; route=session-controller; installer UI covered; bits=32")
+    }
+
+    static func stagedLibrariesPath(_ section: String) -> String {
+        "Madeira/Installers/SteamLibraries." + section + ".vdf"
+    }
+
+    private static var libraryRoots: [String] {
+        MadeiraDock.steamLibraries(drive: LibraryModel.drive).compactMap { library in
+            guard library.hasSuffix("/steamapps") else { return nil }
+            return String(library.dropLast("/steamapps".count))
+        }
+    }
+
+    /// NSIS requires an empty target. The controller installs these snapshots
+    /// only after SteamSetup exits, before starting Steam in the same session.
+    static func stageInstallationLibraries() throws {
+        let paths = libraryRoots
+        for section in ["config", "steamapps"] {
+            let source = try destination(clientDirectory + "/" + section + "/libraryfolders.vdf")
+            let existing = FileManager.default.fileExists(atPath: source.path) ? try Data(contentsOf: source) : nil
+            let data = try ExternalSteamLibraries.add(paths: paths, to: existing)
+            let staged = try destination(stagedLibrariesPath(section))
+            try FileManager.default.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try data.write(to: staged, options: .atomic)
+        }
+    }
+
+    /// Recover Build 20's metadata-only target without deleting anything.
+    /// Any actual installation/game content remains untouched and blocks setup.
+    static func prepareInstallationDirectory() throws {
+        let fm = FileManager.default
+        let folder = try destination(clientDirectory)
+        if fm.fileExists(atPath: folder.path) {
+            let entries = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if !entries.isEmpty {
+                for directory in entries {
+                    let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+                    guard ["config", "steamapps"].contains(directory.lastPathComponent.lowercased()),
+                          values.isDirectory == true, values.isSymbolicLink != true else {
+                        throw LibraryError.message(L("The Steam folder contains existing files but Steam.exe is missing. Preserve or move that folder before installing Steam."))
+                    }
+                    for file in try fm.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.isRegularFileKey, .isSymbolicLinkKey]) {
+                        let values = try file.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+                        guard file.lastPathComponent.lowercased() == "libraryfolders.vdf",
+                              values.isRegularFile == true, values.isSymbolicLink != true else {
+                            throw LibraryError.message(L("The Steam folder contains existing files but Steam.exe is missing. Preserve or move that folder before installing Steam."))
+                        }
+                    }
+                }
+                let backup = try destination("Madeira/Installers/SteamClient-metadata-" + UUID().uuidString + ".backup")
+                try fm.createDirectory(at: backup.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try fm.moveItem(at: folder, to: backup)
+                LogStore.shared.log("[steam-installer] preserved metadata-only target as " + backup.lastPathComponent)
+            }
+        }
+        try fm.createDirectory(at: folder, withIntermediateDirectories: true)
     }
 
     /// Let Valve's interactive client see games downloaded by mdeck and the
@@ -218,11 +293,8 @@ enum SteamClient {
     static func registerLibraries() throws {
         // A running client owns these files. A launch preflight registers again
         // after the session ends if a native download was finishing as it began.
-        guard wine_process_is_running() == 0, wineserver_is_running() == 0 else { return }
-        let paths = MadeiraDock.steamLibraries(drive: LibraryModel.drive).compactMap { library -> String? in
-            guard library.hasSuffix("/steamapps") else { return nil }
-            return String(library.dropLast("/steamapps".count))
-        }
+        guard installed, wine_process_is_running() == 0, wineserver_is_running() == 0 else { return }
+        let paths = libraryRoots
         for sub in ["config", "steamapps"] {
             let file = try destination(clientDirectory + "/" + sub + "/libraryfolders.vdf")
             let existing = FileManager.default.fileExists(atPath: file.path) ? try Data(contentsOf: file) : nil

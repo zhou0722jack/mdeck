@@ -65,7 +65,7 @@ enum SettingsPages {
         // A page shows when the long page would show its sections: the same switches.
         @MainActor var shown: Bool {
             switch self {
-            case .steam: return SteamSettingsSection.shown
+            case .steam: return true
             case .gog, .itch, .epic, .ea: return false
             case .signing: return SigningRefresh.enabled
             case .graphics: return GraphicsSettings.shown
@@ -163,11 +163,9 @@ struct SettingsPageView: View {
     @ViewBuilder private var content: some View {
         switch page {
         case .steam:
-            SteamClientLaunchSettings()
-            SteamSettingsSection(open: { sheet = $0 })
-            Section("Global settings") {
-                ForEach([SettingsPages.Page.graphics, .display, .memory, .pointer], id: \.self) { page in
-                    NavigationLink(page.title) { SettingsPageView(page: page, startDock: startDock) }
+            Section {
+                NavigationLink("Steam game settings") {
+                    LibraryDetail(entry: SteamClient.settingsEntry, play: { _ in }, scope: .steamGlobal)
                 }
             }
         case .gog: GOGSettingsSection(open: { sheet = $0 })

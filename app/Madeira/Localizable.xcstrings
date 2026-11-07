@@ -1,6 +1,105 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "These runtime settings apply to Steam itself and games started through Steam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些通用运行设置同时用于启动 Steam 客户端，以及通过 Steam 启动的游戏。"
+          }
+        }
+      }
+    },
+    "Use global Steam game settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用 Steam 全局游戏设置"
+          }
+        }
+      }
+    },
+    "Turn this off to edit this game's display, controls and compatibility settings. Its saved settings are kept while it follows the global profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭此项后可单独修改本游戏的显示、控制和兼容性设置。使用全局配置时，原有单游戏设置仍会保留。"
+          }
+        }
+      }
+    },
+    "Steam game settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 游戏设置"
+          }
+        }
+      }
+    },
+    "Steam account and downloads": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 账户与下载"
+          }
+        }
+      }
+    },
+    "Steam runtime config": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 运行配置"
+          }
+        }
+      }
+    },
+    "These runtime options apply to Steam and games using the global Steam profile.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些运行选项作用于 Steam，以及使用 Steam 全局配置的游戏。"
+          }
+        }
+      }
+    },
+    "The Steam folder contains existing files but Steam.exe is missing. Preserve or move that folder before installing Steam.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 目录内已有文件，但缺少 Steam.exe。请先保留或移走该目录，再安装 Steam；应用不会自动删除其中的文件。"
+          }
+        }
+      }
+    },
+    "Steam setup is waiting on a confirmation or error dialog. Export the log to read the message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Steam 安装器被确认或错误弹窗阻塞，请导出日志查看具体提示。"
+          }
+        }
+      }
+    },
     "Steam Store": {
       "extractionState": "manual",
       "localizations": {

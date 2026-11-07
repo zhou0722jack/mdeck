@@ -32,6 +32,7 @@ typedef struct { HANDLE hProcess,hThread; } PROCESS_INFORMATION;
 #define ERROR_WRITE_FAULT 29
 #define ERROR_CANCELLED 1223
 #define ERROR_FILE_NOT_FOUND 2
+#define ERROR_ALREADY_EXISTS 183
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258
 static DWORD GetLastError(void);
@@ -47,6 +48,8 @@ static DWORD WaitForSingleObject(HANDLE,DWORD);
 static BOOL GetExitCodeProcess(HANDLE,DWORD *);
 static BOOL TerminateProcess(HANDLE,DWORD);
 static BOOL CreateProcessW(const WCHAR *,WCHAR *,void *,void *,BOOL,DWORD,void *,const WCHAR *,STARTUPINFOW *,PROCESS_INFORMATION *);
+static BOOL CreateDirectoryW(const WCHAR *,void *);
+static BOOL CopyFileW(const WCHAR *,const WCHAR *,BOOL);
 '''
 HARNESS = r'''
 #include <assert.h>
@@ -55,10 +58,10 @@ HARNESS = r'''
 #define MADEIRA_BOOTSTRAP_HOST_TEST 1
 #include "BOOTSTRAP"
 enum { OK, SETUP_CREATE_FAIL, SETUP_EXIT_FAIL, CLIENT_MISSING, CLIENT_CREATE_FAIL,
-       CANCEL_BEFORE, CANCEL_DURING, WRITE_FAIL, MOVE_FAIL };
-static int scenario, launches, installer_closed, cancelled_now, terminations, closes;
+       CANCEL_BEFORE, CANCEL_DURING, WRITE_FAIL, MOVE_FAIL, DIRECTORY_FAIL, VDF_COPY_FAIL, EXISTING_DIRS, CANCEL_AFTER_REGISTER };
+static int scenario, launches, installer_closed, cancelled_now, terminations, closes, copies;
 static char written_text[160],stages[512];
-static DWORD GetLastError(void){return 5;}
+static DWORD GetLastError(void){return scenario==EXISTING_DIRS?ERROR_ALREADY_EXISTS:5;}
 static void OutputDebugStringA(const char *s){(void)s;}
 static HANDLE CreateFileW(const WCHAR *p,DWORD a,DWORD b,void *c,DWORD d,DWORD e,HANDLE f){
     assert(p==temp_path);(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;
@@ -93,17 +96,29 @@ static BOOL CreateProcessW(const WCHAR *path,WCHAR *cmd,void *a,void *b,BOOL inh
         if(scenario==SETUP_CREATE_FAIL)return FALSE;
         p->hProcess=1;p->hThread=101;
     }else{
-        assert(path==client_path&&launches==1&&installer_closed&&dir==client_dir);
+        assert(path==client_path&&launches==1&&installer_closed&&dir==client_dir&&copies==2);
         if(scenario==CLIENT_CREATE_FAIL)return FALSE;
         p->hProcess=2;p->hThread=102;
     }
     launches++;return TRUE;
 }
+static BOOL CreateDirectoryW(const WCHAR *path,void *security){
+    assert(installer_closed&&launches==1&&!security&&(path==config_dir||path==apps_dir));
+    return scenario!=DIRECTORY_FAIL&&scenario!=EXISTING_DIRS;
+}
+static BOOL CopyFileW(const WCHAR *from,const WCHAR *to,BOOL fail_exists){
+    assert(installer_closed&&launches==1&&!fail_exists);
+    assert((copies==0&&from==config_stage&&to==config_vdf)||(copies==1&&from==apps_stage&&to==apps_vdf));
+    if(scenario==VDF_COPY_FAIL)return FALSE;
+    copies++;
+    if(scenario==CANCEL_AFTER_REGISTER&&copies==2)cancelled_now=1;
+    return TRUE;
+}
 int main(void){
-    for(scenario=OK;scenario<=MOVE_FAIL;scenario++){
-        launches=installer_closed=cancelled_now=terminations=closes=0;written_text[0]=stages[0]=0;
+    for(scenario=OK;scenario<=CANCEL_AFTER_REGISTER;scenario++){
+        launches=installer_closed=cancelled_now=terminations=closes=copies=0;written_text[0]=stages[0]=0;
         DWORD code=bootstrap_run();
-        if(scenario==OK){
+        if(scenario==OK||scenario==EXISTING_DIRS){
             assert(!code&&launches==2&&installer_closed&&closes==8);
             const char *a=strstr(stages,"stage=installer"),*b=strstr(stages,"stage=checking"),*c=strstr(stages,"stage=starting"),*d=strstr(stages,"stage=waiting");
             assert(a&&b&&c&&d&&a<b&&b<c&&c<d);
@@ -113,7 +128,7 @@ int main(void){
             if(scenario!=WRITE_FAIL&&scenario!=MOVE_FAIL)assert(strstr(stages,"stage=failed"));
         }
     }
-    puts("PASS: production controller waits for installer exit, checks exact Steam path, starts one successor; setup/file/start/cancel/state-write failures block handoff");
+    puts("PASS: production controller waits for installer exit, checks Steam, registers both staged libraries before starting it; directory/copy/cancel/setup failures block handoff");
 }
 '''
 with tempfile.TemporaryDirectory(prefix='mdeck-preparation-') as tmp:
@@ -124,4 +139,24 @@ with tempfile.TemporaryDirectory(prefix='mdeck-preparation-') as tmp:
     subprocess.run(['xcrun','clang','-std=gnu11','-fshort-wchar','-Wall','-Wextra','-Werror',
                     '-I',str(folder),str(folder/'check.c'),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
+    native=(ROOT/'app/Madeira/Winios/Winios.m').read_text()
+    snapshot=native[native.index('static pthread_mutex_t steam_setup_progress_lock'):native.index('/* csops syscall')]
+    bridge=folder/'progress.c'
+    bridge.write_text('#include <assert.h>\n#include <pthread.h>\n'
+        'struct winios_steam_setup_progress { int step,percent,blocked; };\n'+snapshot+r'''
+int main(void) {
+    struct winios_steam_setup_progress value;
+    winios_steam_setup_reset();
+    winios_steam_setup_note(4,-1,4);winios_steam_setup_snapshot(&value);
+    assert(value.step==4&&value.percent==-1&&value.blocked==4);
+    winios_steam_setup_note(4,50,5);winios_steam_setup_snapshot(&value);
+    assert(value.blocked==4&&value.percent==-1);
+    winios_steam_setup_reset();winios_steam_setup_snapshot(&value);
+    assert(value.step==0&&value.percent==-1&&value.blocked==0);
+}
+''')
+    bridge_binary=folder/'progress'
+    subprocess.run(['xcrun','clang','-std=c11','-Wall','-Wextra','-Werror','-pthread',str(bridge),'-o',str(bridge_binary)],check=True)
+    subprocess.run([str(bridge_binary)],check=True)
+    print('PASS: production native progress bridge transmits modal block 4 and rejects unknown codes')
 print('Host control-flow test with fake Win32 processes; no real Wine/Steam or IPA execution.')

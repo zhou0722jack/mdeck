@@ -8,7 +8,7 @@ import SwiftUI
 
 /// The library's Steam settings: the signed-in account, Sign in / Sign out
 /// (SteamSignIn; the token stays in its Keychain store), language, cloud and
-/// download settings. Presented from the Steam home page.
+/// download settings. Presented from the store's account button.
 struct SteamSettingsSection: View {
     /// Opens Steam sign-in. LibraryView presents the sheet from the
     /// Settings Form: a sheet attached to this section closed again as soon as it
@@ -71,6 +71,24 @@ struct SteamSettingsSection: View {
         }
         .onAppear { signIn.refresh() }
         .onReceive(NotificationCenter.default.publisher(for: SteamSignIn.didChange)) { _ in signIn.refresh() }
+    }
+}
+
+struct SteamAccountSettingsView: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var signIn = false
+    var body: some View {
+        NavigationStack {
+            Form {
+                SteamSettingsSection { route in
+                    if case .steamSignIn = route { signIn = true }
+                }
+            }
+            .modifier(DeckFormSkin())
+            .navigationTitle("Steam account and downloads")
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+        .sheet(isPresented: $signIn) { SteamSignInView() }
     }
 }
 

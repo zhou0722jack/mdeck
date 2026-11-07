@@ -550,7 +550,7 @@ assert other_legacy['switches'] == legacy['switches'] and other_legacy['version'
 # Where the app applies them.
 save = block(library, '    func save(_ entry: LibraryEntry, metadata: Bool = false) {', '\n    }\n')
 assert save.index('let isNew = !next.contains { $0.id == entry.id || (entry.steamAppID != nil && $0.steamAppID == entry.steamAppID) }') \
-    < save.index('GameRecommendations.prepare(&entry, new: isNew)') < save.index('persist(next, metadata:')
+    < save.index('GameRecommendations.prepare(&entry, new: isNew && entry.id != SteamClient.clientID)') < save.index('persist(next, metadata:')
 init = block(library, '    private init() {\n        refreshFlag()', '\n    }\n')
 assert init.index('resetPhoneResolution()') < init.index('applyRecommendations()')
 apply_all = block(library, '    private func applyRecommendations() {', '\n    }\n')
@@ -559,7 +559,7 @@ steam_apply = block(library, '    private func applySteamMetadata() {', '\n    }
 assert 'GameRecommendations.prepare(&fresh, new: true)' in steam_apply and 'GameRecommendations.prepare(&next[i])' in steam_apply
 assert 'guard !readOnly' in apply_all and 'GameRecommendations.prepare(&next[i])' in apply_all and 'persist(next)' in apply_all
 detail = block(library, 'struct LibraryDetail: View {', '\n/// madeira-bcd: a game\'s own options as the fork stores them')
-assert '.onAppear {\n                migrateEntryOptions()\n                prepareRecommendation()\n                reloadBCD()\n            }' in detail
+assert '.onAppear {\n                migrateEntryOptions()\n                if !isSteamGlobal { prepareRecommendation() }\n                reloadBCD()\n            }' in detail
 assert 'let isNew = !model.entries.contains { $0.id == entry.id }' in detail
 assert 'if GameRecommendations.prepare(&entry, new: isNew) { model.save(entry) }' in detail
 # Adding a game by hand opens its page with the entry the library stored.
@@ -578,8 +578,10 @@ assert detail.index('// madeira-bcd: always last,') < detail.index('Button("Rese
 assert detail.index('Button("Remove from library"') < detail.index('Button("Reset to Recommended"')
 assert 'if let error { Section' in detail
 assert '!remove, !confirmReset else { return }' in detail
-launch = block(content, '    private func launchPreparedLibraryEntry(_ entry: LibraryEntry) {', '\n    }\n')
-assert launch.index('if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }') < launch.index('BCDLaunch.applyLibrary(entry)')
+launch = block(content, '    private func launchPreparedLibraryEntry(_ entry: LibraryEntry, steamRequest: UUID? = nil) {', '\n    }\n')
+assert launch.index('if GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }') < launch.index('startLibraryEntry(entry)')
+start_library = block(content, '    private func startLibraryEntry(', '\n    }\n')
+assert start_library.index('BCDLaunch.applyLibrary(entry)') < start_library.index('runWineFullSequence(profile: entry)')
 for name in ('GameRecommendations.swift', 'GameRecommendationsApply.swift'):
     assert project.count(f'/* {name} in Sources */') == 2, name   # PBXBuildFile and the Sources phase
     assert project.count(f'/* {name} */') == 3, name              # fileRef, PBXFileReference and the group

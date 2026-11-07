@@ -25,7 +25,7 @@
 3. 点击“下载”进入已有 `SteamOwnedLibrary` 队列，不申请正式 JIT 池、不启动 Wine、SteamSetup、Steam.exe 或 Dock。
 4. 支持暂停、继续与失败重试。下载选项继续提供安装位置、语言、分支与 DLC 选择。
 5. 内容由 Steam 内容服务器提供，沿用真实授权、分块校验和续传；安装完成后由 `AppManifestWriter` 写入标准 appmanifest 和 InstalledDepots。
-6. 将完成的游戏库路径合并登记到交互客户端的 `config/libraryfolders.vdf` 与 `steamapps/libraryfolders.vdf`，保留已有条目和元数据。客户端运行时不写这些文件，下次启动前再登记。登记失败保留已下载的游戏并报告错误。
+6. 已有 Steam.exe 时，将完成的游戏库路径合并登记到交互客户端的两个 `libraryfolders.vdf`，保留已有条目和元数据。客户端尚未安装时不写安装目录，首装时先在目录外暂存，安装器退出后、启动 Steam 前才写入。客户端运行时也不写这些文件，下次启动前再登记。登记失败保留已下载的游戏并报告错误。
 7. 游戏库重新扫描安装记录，显示“开始游戏”。点击后沿用全局 Steam 设置与客户端 `-applaunch` 路线。用户也可以启动大屏 Steam，从其游戏库运行相同安装。
 
 历史原生下载目录 `Program Files (x86)/Steam/steamapps` 继续有效，它只是游戏库文件目录，不会因此下载 Dock 客户端。交互客户端自己的 `Program Files/Steam Client/steamapps` 也允许由原生下载器更新。外置游戏库保留原有权限与路径检查。

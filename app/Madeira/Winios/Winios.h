@@ -129,7 +129,8 @@ struct winios_census_window {
 void winios_window_census_enable(int on);
 
 /* Own installer GUI thread -> host progress layer. percent=-1 is unknown.
- * blocked: 0 normal, 1 unknown page, 2 unexpected folder, 3 control failure. */
+ * blocked: 0 normal, 1 unknown page, 2 unexpected folder, 3 control failure,
+ * 4 modal confirmation/error dialog. */
 struct winios_steam_setup_progress { int step, percent, blocked; };
 void winios_steam_setup_reset(void);
 void winios_steam_setup_note(int step, int percent, int blocked);

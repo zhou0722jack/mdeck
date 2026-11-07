@@ -24,12 +24,17 @@ fixture=r'''
 import Foundation
 func L(_ value:String)->String{value}
 func LF(_ value:String,_ args:CVarArg...)->String{String(format:value,arguments:args)}
-struct LibraryEntry {
+struct LibraryEntry: Codable {
     var id=UUID(); var title:String; var relativePath:String; var bits:Int
     var launchMode="",arguments="",startServices=false
     var steamAppID:Int?; var steamClientAppID:Int?; var bigPicture:Bool?
     var workingDirectory:String?
+    var steamUseGlobalSettings:Bool?; var steamSettingsPath:String?
+    var windowsPath:String { "C:\\"+relativePath.replacingOccurrences(of:"/",with:"\\") }
     var resolution="1280x720"
+    // The production LibraryEntry copy routine is executed with all fields by
+    // check-frontend.py. This route fixture needs its resolution surface only.
+    mutating func inheritRuntimeSettings(from source:LibraryEntry){resolution=source.resolution}
 }
 final class LibraryModel {
     static let shared=LibraryModel();var entries:[LibraryEntry]=[]
@@ -59,7 +64,40 @@ func winios_steam_setup_reset(){}
         defer{for (key,value) in zip(keys,savedDefaults){defaults.set(value,forKey:key)}}
         precondition(SteamClient.windowsExecutable=="C:\\Program Files\\Steam Client\\Steam.exe")
         let folder=root.appendingPathComponent(SteamClient.clientDirectory)
+        try SteamClient.registerLibraries()
+        precondition(!fm.fileExists(atPath:folder.path),"native downloads must not populate an uninstalled client's directory")
         try fm.createDirectory(at:folder,withIntermediateDirectories:true)
+        // Reproduce Build 20: registration left only two VDFs in the target.
+        let metadata=Data(#""libraryfolders" { "0" { "path" "C:\\Games" "keep" "original" } }"#.utf8)
+        for section in ["config","steamapps"] {
+            let directory=folder.appendingPathComponent(section)
+            try fm.createDirectory(at:directory,withIntermediateDirectories:true)
+            try metadata.write(to:directory.appendingPathComponent("libraryfolders.vdf"))
+        }
+        try SteamClient.stageInstallationLibraries()
+        try SteamClient.prepareInstallationDirectory()
+        let emptyTarget=try fm.contentsOfDirectory(atPath:folder.path)
+        precondition(emptyTarget.isEmpty)
+        let controllerFolder=root.appendingPathComponent("Madeira/Installers")
+        let backups=try fm.contentsOfDirectory(at:controllerFolder,includingPropertiesForKeys:nil).filter{$0.lastPathComponent.hasPrefix("SteamClient-metadata-")}
+        precondition(backups.count==1)
+        for section in ["config","steamapps"] {
+            let restored=try Data(contentsOf:backups[0].appendingPathComponent(section+"/libraryfolders.vdf"))
+            precondition(restored==metadata)
+            let staged=try Data(contentsOf:root.appendingPathComponent(SteamClient.stagedLibrariesPath(section)))
+            var stagedParser=try SteamKeyValues(staged)
+            let snapshot=try stagedParser.read()
+            precondition(snapshot["libraryfolders"]?["0"]?["keep"]?.string=="original")
+        }
+        // Unknown/game files must never be removed to make NSIS happy.
+        let preserved=folder.appendingPathComponent("steamapps/common/Fixture/game.bin")
+        try fm.createDirectory(at:preserved.deletingLastPathComponent(),withIntermediateDirectories:true)
+        let gameBytes=Data([9,8,7]);try gameBytes.write(to:preserved)
+        var refused=false
+        do { try SteamClient.prepareInstallationDirectory() } catch { refused=true }
+        precondition(refused)
+        let preservedBytes=try Data(contentsOf:preserved);precondition(preservedBytes==gameBytes)
+        try fm.removeItem(at:folder.appendingPathComponent("steamapps"))
         // Dock's separate client cannot satisfy the requested client path.
         let dock=root.appendingPathComponent("Program Files (x86)/Steam")
         try fm.createDirectory(at:dock,withIntermediateDirectories:true)
@@ -80,10 +118,29 @@ func winios_steam_setup_reset(){}
         var original=LibraryEntry(title:"Fixture game",relativePath:"Games/Fixture",bits:64)
         original.steamAppID=570;original.arguments="-novid -language schinese"
         original.resolution="1920x1080";original.workingDirectory="C:\\Games\\Fixture"
-        LibraryModel.shared.entries=[original]
+        var shared=SteamClient.settingsEntry;shared.resolution="1600x900"
+        LibraryModel.shared.entries=[original,shared]
         let game=SteamClient.entry(install:false,appID:570)
         precondition(game.steamClientAppID==570&&game.steamAppID==nil&&game.arguments.contains("-applaunch 570 -novid -language schinese"))
-        precondition(game.title==original.title&&game.resolution==original.resolution&&game.workingDirectory==nil)
+        precondition(game.title==original.title&&game.resolution==shared.resolution&&game.workingDirectory==nil)
+        precondition(SteamClient.entry(install:false).resolution==shared.resolution)
+        precondition(SteamClient.entry(install:true).resolution==shared.resolution)
+        precondition(game.steamSettingsPath==SteamClient.windowsExecutable)
+        original.steamUseGlobalSettings=false
+        LibraryModel.shared.entries=[original,shared]
+        let customized=SteamClient.entry(install:false,appID:570)
+        precondition(customized.resolution==original.resolution&&customized.steamSettingsPath==original.windowsPath)
+        precondition(SteamClient.entry(install:false).resolution==shared.resolution)
+        original.steamUseGlobalSettings=true
+        LibraryModel.shared.entries=[original,shared]
+        let session=SteamTuningFixture();session.entries=[original,shared];session.begin(game)
+        session.saveCurrentProfile();precondition(session.saves.isEmpty)
+        session.desiredResolution="1024x768";session.saveCurrentProfile()
+        precondition(session.saves.count==1&&session.saves[0].steamUseGlobalSettings==false)
+        precondition(session.saves[0].resolution=="1024x768")
+        session.entries[0].steamUseGlobalSettings=false
+        session.saveCurrentProfile()
+        precondition(session.saves.count==2&&session.saves[1].steamUseGlobalSettings==false)
         precondition(!SteamClient.entry(install:false).arguments.contains("-applaunch"))
         defaults.set(false,forKey:SteamClient.bigPictureKey)
         precondition(!SteamClient.entry(install:false).arguments.contains("-gamepadui"))
@@ -137,7 +194,7 @@ func winios_steam_setup_reset(){}
         precondition(SteamClient.preparationStatus()==nil)
         SteamClient.cancelPreparation()
         precondition(fm.fileExists(atPath:setup.appendingPathComponent("SteamBootstrap.cancel").path))
-        print("PASS: exact client routing, global Big Picture and quoted arguments, game display profile and flags, installer/update handoff, stale request isolation, real VDF registration, status and cancellation")
+        print("PASS: empty first-install target, Build 20 metadata backup, staged VDF preservation, game files protected; exact routing, flags, real VDF registration, status and cancellation")
     }
 }
 '''
@@ -154,7 +211,16 @@ with tempfile.TemporaryDirectory(prefix='mdeck-client-route-') as tmp:
         discovery+=block(dock,method)+'\n'
     discovery+='}\n'
     writer=(ROOT/'app/Madeira/SwiftSteam/Install/AppManifestWriter.swift').read_text()
-    (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer)
+    library=(ROOT/'app/Madeira/Library.swift').read_text()
+    session=r'''
+final class SteamTuningFixture {
+    var activeEntry:LibraryEntry?;var current:UUID?;var entries:[LibraryEntry]=[]
+    var initialSteamSessionProfile:Data?;var saves:[LibraryEntry]=[];var desiredResolution=""
+    func sessionProfile(_ original:LibraryEntry)->LibraryEntry{var next=original;next.resolution=desiredResolution;return next}
+    func save(_ entry:LibraryEntry){saves.append(entry)}
+    func begin(_ entry:LibraryEntry){activeEntry=entry;current=entry.id;desiredResolution=entry.resolution;initialSteamSessionProfile=encodedSessionProfile(sessionProfile(entry))}
+'''+block(library,'    private func encodedSessionProfile(')+'\n'+block(library,'    func saveCurrentProfile()')+'\n}\n'
+    (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer+'\n'+session)
     (folder/'Check.swift').write_text(fixture)
     subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
     subprocess.run([str(folder/'check')],check=True)

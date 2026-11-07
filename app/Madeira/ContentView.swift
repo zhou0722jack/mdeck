@@ -2604,6 +2604,9 @@ struct ContentView: View {
         }
         if SteamClient.owns(entry) {
             library.error = nil
+            if !library.entries.contains(where: { $0.id == SteamClient.clientID }) {
+                library.save(SteamClient.settingsEntry)
+            }
             steamPreparation.request(target: SteamClient.windowsExecutable, installer: false) { request in
                 library.error = nil
                 library.restartNotice = nil
@@ -2630,7 +2633,7 @@ struct ContentView: View {
         // Repair saved installer routes before recommendation/JIT checks.
         SteamClient.normalizeLaunch(&entry)
         let isNew = !library.entries.contains { $0.id == entry.id }
-        if GameRecommendations.prepare(&entry, new: isNew) { library.save(entry) }
+        if GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }
         SteamClient.normalizeLaunch(&entry)
         // A resumed/retried game request must pass the same component and
         // interactive-client route as the initial library button.
@@ -2758,7 +2761,7 @@ struct ContentView: View {
     /// what its own fields do not choose). For the Desktop entry too: Game details
     /// writes them for every entry, and BCDLaunch.applyLibrary clears them there.
     static func reassertBCDSwitches(_ entry: LibraryEntry) {
-        let path = entry.windowsPath
+        let path = entry.settingsWindowsPath
         var on: [String] = []
         if LibraryPrefs.avx(path) { setenv("MADEIRA_FEX_AVX", "1", 1); on.append("avx") }
         if LibraryPrefs.wineVCRT(path) { setenv("MADEIRA_WINE_VCRT", "1", 1); on.append("wine-vcrt") }

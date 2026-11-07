@@ -66,6 +66,7 @@ typedef char *LPSTR;
 #define BST_UNCHECKED 0
 static uint64_t tick_ms;
 static unsigned stage,posted,ready=1,valid_directory=1,wrong_thread,dialog_enabled=1,checked=1,unchecked,progress_updates;
+static unsigned modal,last_blocked;
 static WCHAR *wide(const char *s) {
     static WCHAR buffers[8][300];static unsigned index;
     WCHAR *b=buffers[index++%8];unsigned i;
@@ -103,23 +104,24 @@ static void RtlSetLastWin32Error(unsigned e) {(void)e;}
 static NTSTATUS get_shared_window_class(HWND h,struct object_lock *lock,const class_shm_t **out) {
     static class_shm_t shared;
     if(lock->pending) return 0;
-    const char *c=h==3||h==6?"Button":h==5?"Edit":h==7?"msctls_progress32":"#32770";
+    const char *c=h==3||h==6?"Button":h==5?"Edit":h==7?"msctls_progress32":h==9?"Static":"#32770";
     shared.name_len=copy_text(shared.name,32,c)*2;shared.name_offset=0;*out=&shared;
     lock->pending=1;return STATUS_PENDING;
 }
 /* REAL_CLASS_READER */
 static int NtUserBuildHwndList(int a,HWND parent,int c,int d,unsigned thread,unsigned cap,HWND *out,ULONG *n) {
     (void)a;(void)c;(void)d;(void)thread;assert(cap>=6);
-    if(!parent){out[0]=2;out[1]=1;*n=2;}
+    if(!parent){out[0]=modal?8:2;out[1]=1;*n=2;}
+    else if(parent==8){out[0]=3;out[1]=9;out[2]=1;*n=3;}
     else{assert(parent==2);out[0]=3;out[1]=4+stage*10;out[2]=5;out[3]=6;out[4]=7;out[5]=1;*n=6;}return 0;
 }
-static HWND NtUserGetAncestor(HWND h,unsigned kind) {(void)h;assert(kind==GA_PARENT);return 2;}
+static HWND NtUserGetAncestor(HWND h,unsigned kind) {(void)h;assert(kind==GA_PARENT);return modal?8:2;}
 static int get_window_long(HWND h,int offset) {
     if(offset==GWL_STYLE)return h==6?BS_AUTOCHECKBOX:0;
     assert(offset==GWLP_ID);return h==3?1:0;
 }
 static int NtUserInternalGetWindowText(HWND h,WCHAR *out,unsigned cap) {
-    const char *s=h==6?"Run Steam":h==5?"": /* Edit's WND.text is empty even when EDITSTATE.text is not. */
+    const char *s=h==9?"Destination folder must be empty.":modal?"OK":h==6?"Run Steam":h==5?"": /* Edit's WND.text is empty even when EDITSTATE.text is not. */
         stage<2?"&Next >":stage==2?"&Install":"&Finish";
     return copy_text(out,cap,s);
 }
@@ -145,9 +147,13 @@ static int NtUserPostMessage(HWND h,unsigned msg,uintptr_t w,LPARAM l) {
     assert(h==2&&msg==WM_COMMAND&&w==1&&l==3);assert(stage<4);posted++;stage++;return 1;
 }
 static uint64_t ios_tiny_now_ns(void) {return tick_ms*1000000;}
+static const char *debugstr_wn(const WCHAR *text,int length){
+    static char out[300];int i;
+    for(i=0;i<length&&i<299;i++)out[i]=text[i]<128?(char)text[i]:'?';out[i]=0;return out;
+}
 #include "steam_installer_ios.h"
 void winios_steam_setup_note(int step,int percent,int blocked) {
-    assert(step>=0&&step<=5&&percent>=-1&&percent<=100&&blocked>=0&&blocked<=3);progress_updates++;
+    assert(step>=0&&step<=5&&percent>=-1&&percent<=100&&blocked>=0&&blocked<=4);last_blocked=(unsigned)blocked;progress_updates++;
 }
 /* CHILD_RULES */
 static void poll_for(unsigned count) {for(unsigned i=0;i<count;i++){tick_ms+=20;ios_steam_installer_poll();}}
@@ -198,7 +204,12 @@ int main(void) {
     for(unsigned i=0;i<2000 && posted<2;i++)poll_for(1);
     assert(posted==2 && stage==2);
     valid_directory=0;poll_for(300);assert(posted==2);
-    valid_directory=1;poll_for(3000);
+    valid_directory=1;
+    for(unsigned i=0;i<2000 && posted<3;i++)poll_for(1);
+    assert(posted==3&&stage==3);
+    modal=1;poll_for(100);assert(posted==3&&last_blocked!=4);
+    poll_for(300);assert(posted==3&&last_blocked==4);
+    modal=0;poll_for(3000);
     assert(posted==4&&stage==4&&checked==0&&unchecked==1&&progress_updates>0);poll_for(1000);assert(posted==4);
     puts("PASS: real driver adapter posts four exact commands only to the pinned installer GUI thread, without focus or coordinates");
     WCHAR *steam=wide("C:\\Program Files\\Steam Client\\steam.exe");

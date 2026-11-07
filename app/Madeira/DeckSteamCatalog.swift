@@ -55,6 +55,7 @@ struct DeckSteamCatalog: View {
     @State private var focused: Int?
     @State private var columns = 1
     @State private var showSignIn = false
+    @State private var showAccountSettings = false
     @State private var downloadOptions: GameSelection?
     @State private var settingsEntry: LibraryEntry?
     @State private var allItems: [SteamGamesRules.Item] = []
@@ -98,6 +99,7 @@ struct DeckSteamCatalog: View {
         }
         .background(palette.background).foregroundStyle(palette.text)
         .sheet(isPresented: $showSignIn) { SteamSignInView() }
+        .sheet(isPresented: $showAccountSettings) { SteamAccountSettingsView() }
         .sheet(item: $downloadOptions) { selection in
             SteamGameSheet(appID: selection.id) { entry in
                 withAnimation(motion) { selected = entry.steamAppID }
@@ -132,7 +134,7 @@ struct DeckSteamCatalog: View {
         .onChange(of: filter) { _, _ in arrange() }
         .onChange(of: sort) { _, _ in arrange() }
         .onReceive(controller.commands) { command in
-            guard !DeckSteamLaunchPreparation.shared.presented, !showSignIn,
+            guard !DeckSteamLaunchPreparation.shared.presented, !showSignIn, !showAccountSettings,
                   downloadOptions == nil, settingsEntry == nil else { return }
             navigate(command)
         }
@@ -226,7 +228,7 @@ struct DeckSteamCatalog: View {
                 }
             } label: { Image(systemName: "arrow.up.arrow.down") }.accessibilityLabel("Sort by")
             Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(steam.refreshing).accessibilityLabel("Refresh Steam library")
-            Button { showSignIn = true } label: { Image(systemName: "person.crop.circle") }.accessibilityLabel("Steam account")
+            Button { showAccountSettings = true } label: { Image(systemName: "person.crop.circle") }.accessibilityLabel("Steam account and downloads")
         }.font(.system(size: 18)).buttonStyle(.borderless).frame(minHeight: 36)
     }
 

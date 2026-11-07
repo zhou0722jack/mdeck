@@ -234,6 +234,28 @@ struct LibraryEntry: Codable, Identifiable {
     var bigPicture: Bool?
     /// A transient request for the interactive Steam client to launch this App ID.
     var steamClientAppID: Int?
+    /// Nil/true follows the Steam-wide runtime profile; false keeps this game's tuning.
+    var steamUseGlobalSettings: Bool?
+    /// A client route can execute Steam while reading the selected game's tuning.
+    var steamSettingsPath: String?
+    var settingsWindowsPath: String { steamSettingsPath ?? windowsPath }
+
+    /// Copy tuning only. Game identity, artwork, program choice, arguments and
+    /// installation metadata always remain attached to the original game.
+    mutating func inheritRuntimeSettings(from source: LibraryEntry) {
+        resolution = source.resolution; display = source.display; fpsMode = source.fpsMode
+        metalFXUpscale = source.metalFXUpscale; frameGeneration = source.frameGeneration
+        reducedX87 = source.reducedX87; fullX87 = source.fullX87
+        liveLogs = source.liveLogs; performance = source.performance; touchControls = source.touchControls
+        controls = source.controls; controlLayout = source.controlLayout; zones = source.zones
+        overlayFields = source.overlayFields; controlOpacity = source.controlOpacity; controlSize = source.controlSize
+        controllerMode = source.controllerMode; controllerBinds = source.controllerBinds
+        padMouseVertical = source.padMouseVertical; padAssist = source.padAssist
+        cpuCount = source.cpuCount; anisotropyLimit = source.anisotropyLimit
+        fastSync = source.fastSync; semaphoreFastPath = source.semaphoreFastPath
+        config = source.config; avx = source.avx; reportNVIDIA = source.reportNVIDIA
+        largeReservations = source.largeReservations
+    }
     /// Touch controls' opacity (0.15...1, nil = 0.7) and overall size (0.5...2,
     /// nil = 1) in this game's sessions.
     var controlOpacity: Double?
@@ -1083,6 +1105,7 @@ final class LibraryModel: ObservableObject {
     private var savedControls: [TouchControl] = []
     private var savedLayout: String?
     private var savedZones: [GestureZone] = []
+    private var initialSteamSessionProfile: Data?
     private var savedVisible = true
     private var savedSize = 1.0
     /// The session's first frame makes the drawable's shape known (Aspect).
@@ -1155,8 +1178,10 @@ final class LibraryModel: ObservableObject {
         // never to Steam's global profile or its -applaunch command line.
         if let appID = entry.steamClientAppID {
             guard let original = entries.first(where: { $0.steamAppID == appID }) else { return }
+            if original.steamUseGlobalSettings != false && entry.steamUseGlobalSettings != false { return }
             entry.id = original.id; entry.relativePath = original.relativePath
             entry.steamAppID = appID; entry.steamClientAppID = nil
+            entry.steamSettingsPath = nil
             entry.arguments = original.arguments; entry.launchMode = original.launchMode
             entry.startServices = original.startServices; entry.bits = original.bits
             entry.workingDirectory = original.workingDirectory; entry.lastPlayed = original.lastPlayed
@@ -1164,7 +1189,7 @@ final class LibraryModel: ObservableObject {
         // madeira-bcd: a game seen for the first time gets Madeira's recommended settings
         // (GameRecommendationsApply.swift): a finished Steam download, a new or saved entry.
         let isNew = !next.contains { $0.id == entry.id || (entry.steamAppID != nil && $0.steamAppID == entry.steamAppID) }
-        GameRecommendations.prepare(&entry, new: isNew)
+        GameRecommendations.prepare(&entry, new: isNew && entry.id != SteamClient.clientID)
         // A Steam game has one entry: a details page opened before its card first saved
         // one (refreshSteamMetadata) updates that entry.
         if let i = next.firstIndex(where: { $0.id == entry.id }) ??
@@ -1752,6 +1777,7 @@ final class LibraryModel: ObservableObject {
         applyControllerMode()
         padAssist = entry.padAssist
         GamepadInput.shared.setPadAssist(padAssist)
+        initialSteamSessionProfile = entry.steamClientAppID == nil ? nil : encodedSessionProfile(sessionProfile(entry))
         MetalHostView.shared.isHidden = false
         ProMotionIntent.apply(mode: entry.effectiveFPSMode)
         ThermalPacing.shared.begin()
@@ -1917,27 +1943,42 @@ final class LibraryModel: ObservableObject {
         menu = false
         fputs("[frontend] graceful close requested\n", stderr)
     }
-    func saveCurrentProfile() {
+    private func sessionProfile(_ original: LibraryEntry) -> LibraryEntry {
         let controls = TouchControlsModel.shared
+        var entry = original
+        entry.controls = controls.controls
+        entry.zones = GestureZonesModel.shared.zones
+        if ControlPresetsModel.enabled { entry.controlLayout = controls.layoutID }
+        entry.touchControls = controls.visible
+        entry.fpsMode = fpsMode; entry.performance = performance
+        entry.overlayFields = overlayFields
+        entry.controlOpacity = opacity; entry.controlSize = controls.sizeScale
+        if GamepadInput.keyboardMouseAvailable { entry.controllerMode = controllerMode }
+        if GamepadInput.keyboardMouseAvailable { entry.controllerBinds = controllerBinds.isEmpty ? nil : controllerBinds }
+        if GamepadInput.keyboardMouseAvailable { entry.padMouseVertical = padMouseVertical == 1 ? nil : padMouseVertical }
+        entry.padAssist = padAssist
+        if MadeiraConfig.flag("MADEIRA_SESSION_TOOLS") { entry.display = displayMode.rawValue }
+        return entry
+    }
+
+    private func encodedSessionProfile(_ entry: LibraryEntry) -> Data? {
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        return try? encoder.encode(entry)
+    }
+
+    func saveCurrentProfile() {
         let profile = activeEntry?.steamClientAppID != nil ? activeEntry
             : current.flatMap { id in entries.first(where: { $0.id == id }) }
-        if var entry = profile {
-            entry.controls = controls.controls
-            entry.zones = GestureZonesModel.shared.zones
-            if ControlPresetsModel.enabled { entry.controlLayout = controls.layoutID }
-            entry.touchControls = controls.visible
-            entry.fpsMode = fpsMode; entry.performance = performance
-            entry.overlayFields = overlayFields
-            entry.controlOpacity = opacity; entry.controlSize = controls.sizeScale
-            if GamepadInput.keyboardMouseAvailable { entry.controllerMode = controllerMode }
-            if GamepadInput.keyboardMouseAvailable { entry.controllerBinds = controllerBinds.isEmpty ? nil : controllerBinds }
-            if GamepadInput.keyboardMouseAvailable { entry.padMouseVertical = padMouseVertical == 1 ? nil : padMouseVertical }
-            entry.padAssist = padAssist
-            // The in-game Aspect & scaling choice sticks to the game. MADEIRA_SESSION_TOOLS=0
-            // hides that picker and leaves the stored choice alone.
-            if MadeiraConfig.flag("MADEIRA_SESSION_TOOLS") { entry.display = displayMode.rawValue }
-            save(entry)
+        guard let profile else { return }
+        var entry = sessionProfile(profile)
+        if let appID = entry.steamClientAppID {
+            // Opening/closing the menu must not turn inherited defaults into
+            // a permanent copy. A real in-session edit becomes a game override.
+            if entries.first(where: { $0.steamAppID == appID })?.steamUseGlobalSettings != false,
+               encodedSessionProfile(entry) == initialSteamSessionProfile { return }
+            entry.steamUseGlobalSettings = false
         }
+        save(entry)
     }
     private func finish() {
         if sawProcess, let next = steamRunRequest() { restartNotice = next }
@@ -3471,9 +3512,13 @@ struct LibraryView: View {
             .toolbar(.hidden, for: .navigationBar)
             .modifier(LibrarySheets(model: model, browser: $browser, selected: $selected, play: play, jit: jit))
             .sheet(item: $deckSettingsPage) { route in
+                if route.page == .steam {
+                    LibraryDetail(entry: SteamClient.settingsEntry, play: play, scope: .steamGlobal)
+                } else {
                 NavigationStack {
                     SettingsPageView(page: route.page, startDock: startDock)
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { deckSettingsPage = nil } } }
+                }
                 }
             }
             .sheet(isPresented: $deckWorkshop) { SteamWorkshopHub() }
@@ -4364,12 +4409,18 @@ private struct LibraryPlayStyle: ButtonStyle {
 }
 
 struct LibraryDetail: View {
+    enum Scope { case game, steamGlobal }
     @Environment(\.deckPalette) private var deckPalette
     @Environment(\.accessibilityReduceMotion) private var deckReducedMotion
     @State private var deckSelectedPage: Page?
     @Namespace private var deckDetailSelection
     @State internal var entry: LibraryEntry
     var play: (LibraryEntry) -> Void
+    var scope: Scope = .game
+    private var isSteamGlobal: Bool { scope == .steamGlobal }
+    private var inheritsSteamSettings: Bool {
+        !isSteamGlobal && entry.steamAppID != nil && !entry.startsSteamGameDirectly && entry.steamUseGlobalSettings != false
+    }
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var model = LibraryModel.shared
     @State private var importCover = false
@@ -4432,6 +4483,7 @@ struct LibraryDetail: View {
     }
     /// Reset to Recommended: the recommendation's config and switches, written at once.
     private func resetToRecommended() {
+        if entry.steamAppID != nil { entry.steamUseGlobalSettings = false }
         recommended = GameRecommendations.reset(&entry)
         model.save(entry)
         reloadBCD()
@@ -4566,6 +4618,7 @@ struct LibraryDetail: View {
     /// The rows of the details page, in groups. The Desktop entry has no launch options
     /// or library details; a Steam game has its Steam pages.
     private var pageGroups: [[Page]] {
+        if isSteamGlobal { return [[.display, .controls, .launch, .compatibility], [.advanced]] }
         let launch = entry.usesLaunchOptions || entry.desktop != true
         let steam: [Page] = entry.steamAppID == nil ? (entry.gogProductID != nil ? [.gog] : entry.itchGameID != nil ? [.itch] : [])
             : (SteamOwnedLibrary.cloudEnabled ? [.steam, .cloud, .achievements] : [.steam, .achievements])
@@ -4603,6 +4656,7 @@ struct LibraryDetail: View {
     }
 
     @ViewBuilder private func pageSections(_ page: Page) -> some View {
+        Group {
             switch page {
             case .display: displayPage
             case .controls: controlsPage
@@ -4621,6 +4675,7 @@ struct LibraryDetail: View {
             case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)
             case .advanced: advancedPage
             }
+        }.disabled(inheritsSteamSettings && [.display, .controls, .compatibility, .advanced].contains(page))
     }
 
     @ViewBuilder private var displayPage: some View {
@@ -4702,6 +4757,9 @@ struct LibraryDetail: View {
     }
 
     @ViewBuilder private var launchPage: some View {
+        if isSteamGlobal {
+            SteamClientLaunchSettings()
+        } else {
         // ml1163: how the program starts. Not for the Desktop entry, nor for a Steam
         // game started through Madeira Dock, whose desktop and command are Dock's:
         // there these choices would do nothing.
@@ -4744,6 +4802,7 @@ struct LibraryDetail: View {
             } header: { Text("Launch arguments") } footer: {
                 Text(entry.steamAppID == nil ? L("Passed on every start. Above: the full command.") : L("Steam adds these to the selected launch option on every start."))
             }
+        }
         }
     }
 
@@ -4896,10 +4955,10 @@ struct LibraryDetail: View {
                 }))
                 .onDisappear { reloadBCD() }
             } label: {
-                LabeledContent("This game's config", value: Self.configSummary(bcd.configText))
+                LabeledContent(isSteamGlobal ? L("Steam runtime config") : L("This game's config"), value: Self.configSummary(bcd.configText))
             }
         } header: { Text("Advanced") } footer: {
-            Text("Per-game madeira.cfg lines; they override the global file.")
+            Text(isSteamGlobal ? L("These runtime options apply to Steam and games using the global Steam profile.") : L("Per-game madeira.cfg lines; they override the global file."))
         }
     }
 
@@ -4918,6 +4977,10 @@ struct LibraryDetail: View {
                         .font(.subheadline).foregroundStyle(deckPalette.muted)
                 }
                 if DockOffline.enabled, let appID = entry.steamAppID, !entry.startsSteamGameDirectly { DockOfflineMark(appID: appID) }
+                if isSteamGlobal {
+                    Text("These runtime settings apply to Steam itself and games started through Steam.")
+                        .font(.footnote).foregroundStyle(deckPalette.muted)
+                } else {
                 Button(action: start) {
                     HStack(spacing: 10) {
                         if model.startingJIT == entry.id {
@@ -4930,6 +4993,7 @@ struct LibraryDetail: View {
                 }
                 .buttonStyle(DeckButtonStyle(primary: true)).disabled(leaving)
                 .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { playFrame = $0 }
+                }
             }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
         }.frame(height: 250)
     }
@@ -4961,6 +5025,18 @@ struct LibraryDetail: View {
                 deckDetailHeader
                 deckDetailTabs
                 Form {
+                    if !isSteamGlobal, entry.steamAppID != nil, !entry.startsSteamGameDirectly {
+                        Section {
+                            Toggle("Use global Steam game settings", isOn: Binding(get: { entry.steamUseGlobalSettings != false }, set: { entry.steamUseGlobalSettings = $0 }))
+                        } footer: {
+                            Text("Turn this off to edit this game's display, controls and compatibility settings. Its saved settings are kept while it follows the global profile.")
+                        }
+                    }
+                    if isSteamGlobal {
+                        Section {
+                            NavigationLink("Graphics") { Form { GraphicsSettings(refresh: 0) }.navigationTitle("Graphics") }
+                        }
+                    }
                     if let selection = deckSelectedPage { pageSections(selection) }
                 // A Play error sits under Play.
                 if let error { Section { Text(error).foregroundStyle(.red) } }
@@ -4979,7 +5055,7 @@ struct LibraryDetail: View {
                     FPSChoice(mode: $entry.fpsMode)
                     Toggle("Performance overlay", isOn: $entry.performance)
                     Toggle("Touch controls", isOn: $entry.touchControls)
-                }
+                }.disabled(inheritsSteamSettings)
                 ForEach(Array(pageGroups.enumerated()), id: \.offset) { _, group in
                     Section {
                         ForEach(group, id: \.self) { item in
@@ -5024,7 +5100,7 @@ struct LibraryDetail: View {
             }
             .background(deckPalette.background)
             .onAppear { if deckSelectedPage == nil { deckSelectedPage = pageGroups.first?.first } }
-            .navigationTitle("Game details").navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(isSteamGlobal ? L("Steam settings") : L("Game details")).navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Page.self) { item in page(item) }
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
@@ -5038,7 +5114,7 @@ struct LibraryDetail: View {
             // madeira-bcd: the game's own switches and config file, and its recommended settings.
             .onAppear {
                 migrateEntryOptions()
-                prepareRecommendation()
+                if !isSteamGlobal { prepareRecommendation() }
                 reloadBCD()
             }
         }
@@ -5048,6 +5124,7 @@ struct LibraryDetail: View {
                                 otherGame: pending.setup.match(steamAppID: entry.steamAppID, program: GameSetup.programName(entry)) == 0) { controls, ini in
                 do {
                     try pending.setup.apply(to: &entry, controls: controls, iniFiles: ini)
+                    if entry.steamAppID != nil { entry.steamUseGlobalSettings = false }
                     model.save(entry)
                     reloadBCD()
                 } catch {
@@ -5083,7 +5160,7 @@ struct LibraryDetail: View {
             if command == "back" {
                 if path.isEmpty { model.save(entry); dismiss() } else { path.removeLast() }
             }
-            if command == "accept", path.isEmpty { start() }
+            if command == "accept", path.isEmpty, !isSteamGlobal { start() }
         }
     }
 }

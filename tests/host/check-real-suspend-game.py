@@ -32,7 +32,7 @@ def check(condition, label):
 
 m = re.search(r'static func realSuspend\(_ entry: LibraryEntry\?\).*?\n    \}\n', bcd, re.S)
 fn = m.group(0) if m else ''
-i_game = fn.find('LibraryPrefs.realSuspend(entry.windowsPath)')
+i_game = fn.find('LibraryPrefs.realSuspend(entry.settingsWindowsPath)')
 i_cfg = fn.find('MadeiraConfig.get("real-suspend")')
 i_auto = fn.find('isUnityIL2CPP(entry)')
 check(fn != '', 'BCDLaunch.realSuspend exists')
@@ -65,6 +65,8 @@ let defaults = UserDefaults(suiteName: suite)!
 defer { defaults.removePersistentDomain(forName: suite) }
 struct LibraryEntry {
     var windowsPath: String
+    var steamSettingsPath: String? = nil
+    var settingsWindowsPath: String { steamSettingsPath ?? windowsPath }
     var launchWindowsPath: String { windowsPath }
     var desktop: Bool? = nil
     static func hostURL(ofWindowsPath path: String) -> URL? { URL(fileURLWithPath: path) }
@@ -92,6 +94,11 @@ precondition(BCDLaunch.realSuspend(game)?.value == "0")
 LibraryPrefs.setRealSuspend(true, for: game.windowsPath)
 precondition(BCDLaunch.realSuspend(game)?.value == "1")
 LibraryPrefs.setRealSuspend(false, for: game.windowsPath)
+precondition(BCDLaunch.realSuspend(game)?.value == "0")
+let sharedPath = directory.appendingPathComponent("steam-shared-settings.exe").path
+LibraryPrefs.setRealSuspend(true, for: sharedPath)
+let inherited = LibraryEntry(windowsPath: game.windowsPath, steamSettingsPath: sharedPath)
+precondition(BCDLaunch.realSuspend(inherited)?.value == "1")
 precondition(BCDLaunch.realSuspend(game)?.value == "0")
 LibraryPrefs.setRealSuspend(nil, for: game.windowsPath)
 MadeiraConfig.setting = " \n"

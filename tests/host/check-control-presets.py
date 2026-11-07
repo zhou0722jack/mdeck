@@ -352,7 +352,8 @@ model_lib = function(lib, 'final class LibraryModel: ObservableObject {')
 begin = function(model_lib, 'func begin(_ entry: LibraryEntry')
 assert 'store.resolvedID(entry.controlLayout)' in begin and 'savedLayout = controls.layoutID' in begin
 assert begin.index('if let profile = entry.controls') < begin.index('resolvedID'), "the layout follows the game's own controls only"
-assert 'entry.controlLayout = controls.layoutID' in function(model_lib, 'func saveCurrentProfile()')
+assert 'entry = sessionProfile(profile)' in function(model_lib, 'func saveCurrentProfile()')
+assert 'entry.controlLayout = controls.layoutID' in function(model_lib, 'private func sessionProfile(')
 fin = function(model_lib, 'private func finish()')
 assert fin.index('saveCurrentProfile()') < fin.index('controls.layoutID = savedLayout'), 'the session restores the shared layout after saving'
 

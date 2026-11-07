@@ -90,7 +90,7 @@ enum BCDLaunch {
             applyExtras(avx: false, wineVCRT: false, nvidia: false, profile: nil)
             return
         }
-        let path = entry.windowsPath
+        let path = entry.settingsWindowsPath
         let profile = GameProfile(windowsPath: path)
         // A chosen card replaces both NVIDIA switches.
         let card = GPUCards.card(LibraryPrefs.gpuCard(path))
@@ -99,7 +99,7 @@ enum BCDLaunch {
         applyExtras(avx: LibraryPrefs.avx(path), wineVCRT: LibraryPrefs.wineVCRT(path),
                     nvidia: nvidia, olderNvidia: olderNvidia, card: card, profile: profile)
         applyJapanese(LibraryPrefs.japanese(path))
-        if let appID = entry.steamAppID {
+        if let appID = entry.steamAppID ?? entry.steamClientAppID {
             if let card { D3D9Identity.syncGamePrefs(appID: appID, card: card) }
             else { D3D9Identity.syncGamePrefs(appID: appID, olderNvidia: olderNvidia) }
         }
@@ -124,7 +124,7 @@ enum BCDLaunch {
     /// real suspension can deadlock a game that suspends a thread holding a lock
     /// Madeira's own code needs, so it stays off for everything else.
     static func realSuspend(_ entry: LibraryEntry?) -> (value: String, source: String)? {
-        if let entry, entry.desktop != true, let on = LibraryPrefs.realSuspend(entry.windowsPath) {
+        if let entry, entry.desktop != true, let on = LibraryPrefs.realSuspend(entry.settingsWindowsPath) {
             return (on ? "1" : "0", "this game's switch")
         }
         if let v = MadeiraConfig.get("real-suspend")?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty {

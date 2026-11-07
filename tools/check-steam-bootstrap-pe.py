@@ -33,6 +33,7 @@ for i in range(32):
     names.add(data[start:end].lower())
 else: raise AssertionError('Unterminated import table')
 assert names == {b'kernel32.dll'}, names
-for path in ['C:\\Madeira\\Installers\\SteamSetup.exe', 'C:\\Program Files\\Steam Client\\Steam.exe']:
+for path in ['C:\\Madeira\\Installers\\SteamSetup.exe', 'C:\\Program Files\\Steam Client\\Steam.exe',
+             'C:\\Madeira\\Installers\\SteamLibraries.config.vdf', 'C:\\Madeira\\Installers\\SteamLibraries.steamapps.vdf']:
     assert path.encode('utf-16-le') in data
 print('PASS: generated i386 Steam session controller and fixed installer/client paths')

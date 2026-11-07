@@ -55,6 +55,7 @@ static void ios_steam_installer_poll(void)
     static __thread HWND blocked_page;
     static __thread int blocked_kind;
     static __thread uint64_t blocked_since;
+    static __thread HWND noted_blocked_dialog;
     HWND windows[32], children[128];
     ULONG count, i;
     uint64_t now;
@@ -143,12 +144,28 @@ static void ios_steam_installer_poll(void)
                 manual_note = 1;
                 dprintf(2, "[steam-autoinstall] unknown page or changed directory; leaving controls available for manual input\n");
             }
-            int reason = ready && role == STEAM_SETUP_NONE ? 1 : ready && role == STEAM_SETUP_INSTALL && !directory_ok ? 2 : 0;
+            /* Message boxes have no NSIS child page. Their OK button must not
+             * be mistaken for a wizard action or left hidden indefinitely. */
+            int modal = state.installing && !pages && button && NtUserIsWindowEnabled(button) && role == STEAM_SETUP_NONE;
+            int reason = modal ? 4 : ready && role == STEAM_SETUP_NONE ? 1 : ready && role == STEAM_SETUP_INSTALL && !directory_ok ? 2 : 0;
+            HWND blocked_target = modal ? dialog : page;
             if (!reason) { blocked_page = 0; blocked_kind = 0; }
-            else if (blocked_page != page || blocked_kind != reason) {
-                blocked_page = page; blocked_kind = reason; blocked_since = now;
+            else if (blocked_page != blocked_target || blocked_kind != reason) {
+                blocked_page = blocked_target; blocked_kind = reason; blocked_since = now;
             } else if (now >= blocked_since && now - blocked_since >= 3000) {
-                steam_setup_progress((int)state.next_count + 1, percent, reason);
+                steam_setup_progress(state.installing ? 4 : (int)state.next_count + 1, percent, reason);
+                if (modal && noted_blocked_dialog != dialog) {
+                    noted_blocked_dialog = dialog;
+                    dprintf(2, "[steam-autoinstall] blocking installer dialog; no automatic confirmation\n");
+                    for (j = 0; j + 1 < total && j < ARRAY_SIZE(children); j++) {
+                        WCHAR text[256];
+                        HWND child = children[j];
+                        int length;
+                        if (!is_window_visible(child) || get_window_thread(child, NULL) != GetCurrentThreadId() || !steam_setup_class(child, "Static")) continue;
+                        length = NtUserInternalGetWindowText(child, text, ARRAY_SIZE(text));
+                        if (length > 0) dprintf(2, "[steam-autoinstall] dialog text=%s\n", debugstr_wn(text, length));
+                    }
+                }
             }
             continue;
         }

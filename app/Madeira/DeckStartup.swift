@@ -228,6 +228,7 @@ struct DeckSteamSetupStatus {
         case 1: return L("Steam setup reached an unknown page. Check the log.")
         case 2: return L("Steam setup is not using the expected installation folder. Check the log.")
         case 3: return L("Steam setup controls could not be updated. Check the log.")
+        case 4: return L("Steam setup is waiting on a confirmation or error dialog. Export the log to read the message.")
         default: return nil
         }
     }
