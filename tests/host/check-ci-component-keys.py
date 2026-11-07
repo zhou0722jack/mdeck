@@ -29,6 +29,7 @@ cases = {
     'fex': ('pin:FEX', {'fex', 'ipa'}),
     'wine': ('pin:wine', {'wine-host', 'i386', 'dxmt', 'ipa'}),
     'wine-runtime-patch': ('build/windows-runtime/patches/0001-crt-invalid-parameter-callsite.patch', {'wine-host', 'ipa'}),
+    'wine-ios-unix-patch': ('build/ntdll-unix/patches/0001-opengl-wow64-teb-host-pointer.patch', {'ipa'}),
     'dxmt': ('pin:dxmt', {'i386', 'dxmt', 'ipa'}),
     'dxmt-patches': ('build/dxmt-patches/0001-d3d9-index-range-per-draw.patch', {'i386', 'dxmt', 'ipa'}),
     'llvm': ('tools/build/build-llvm-ios.sh', {'llvm', 'dxmt', 'ipa'}),

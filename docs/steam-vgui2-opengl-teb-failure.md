@@ -18,7 +18,8 @@ Wine 的 `TEB32.WowTebOffset` 正好位于 `0xfdc`。
 但 `get_teb64` 接收 `ULONG`，将完整地址截成 `0x302000`，再用 `ULongToPtr` 直接解引用。
 iOS 不在这个低地址放置 TEB32，所以这与日志的故障指令和地址一致。
 
-修正通过 `build/windows-runtime/patches/0002-opengl-wow64-teb-host-pointer.patch` 携带：
+修正通过 `build/ntdll-unix/patches/0001-opengl-wow64-teb-host-pointer.patch` 携带，
+仅在 iOS 原生 ntdll/unix 库构建前应用，不改变 Windows PE 运行库缓存：
 `get_teb64` 改用 `ULONG_PTR` 接收参数。iOS 的完整 host 指针直接使用；
 结构内嵌的 guest PTR32 则通过现有 `ios_wow_host_ptr` 加入当前进程窗口。
 随后按有符号 `WowTebOffset` 寻找 TEB64；非 iOS 保持原先的 `ULongToPtr` 分支。

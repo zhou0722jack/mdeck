@@ -9,6 +9,7 @@ SDK=$(xcrun --sdk iphoneos --show-sdk-path)
 OBJ_DIR="$BUILD_DIR/obj"
 APP_LIB="$REPO_ROOT/app/Madeira/libntdll_unix.a"
 
+bash "$BUILD_DIR/apply-patches.sh"
 mkdir -p "$OBJ_DIR"
 
 # Optional Vulkan route; do not change the normal native build.

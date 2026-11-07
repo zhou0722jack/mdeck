@@ -7,7 +7,9 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-patch = ROOT / 'build/windows-runtime/patches/0002-opengl-wow64-teb-host-pointer.patch'
+patch = ROOT / 'build/ntdll-unix/patches/0001-opengl-wow64-teb-host-pointer.patch'
+assert 'bash "$BUILD_DIR/apply-patches.sh"' in (ROOT / 'build/ntdll-unix/build.sh').read_text()
+assert 'ntdll-unix' not in (ROOT / 'build/windows-runtime/apply-patches.sh').read_text()
 subprocess.run(['git', '-C', str(ROOT / 'wine'), 'apply', '--check', str(patch)], check=True)
 source = subprocess.check_output(['git', '-C', str(ROOT / 'wine'), 'show',
                                   'HEAD:dlls/opengl32/unix_private.h'], text=True)
