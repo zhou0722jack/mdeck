@@ -12,7 +12,7 @@ enum SteamClient {
     static let clientPath = clientDirectory + "/steam.exe"
     static let windowsDirectory = "C:\\Program Files\\Steam Client"
     static let windowsExecutable = windowsDirectory + "\\Steam.exe"
-    static let clientArguments = "-no-cef-sandbox -cef-disable-gpu -console -nocrashmonitor -cef-disable-features=SegmentationPlatform,OptimizationTargetPrediction,OptimizationHints"
+    static let clientArguments = "-no-cef-sandbox -cef-disable-gpu -console -nocrashmonitor -cef-disable-features=SegmentationPlatform,OptimizationTargetPrediction,OptimizationHints -language schinese"
     static let installerSHA256 = "7d3654531c32d941b8cae81c4137fc542172bfa9635f169cb392f245a0a12bcb"
 
     static func owns(_ entry: LibraryEntry) -> Bool {
@@ -99,6 +99,10 @@ enum SteamClient {
         // The explicit preference owns the mode; the editable field cannot
         // silently override it or carry a stale game's launch request.
         arguments = removingLaunchRequests(arguments)
+        let tokens = argumentTokens(arguments).map { $0.replacingOccurrences(of: "\"", with: "").lowercased() }
+        if !tokens.contains("-language") && !tokens.contains(where: { $0.hasPrefix("-language=") }) {
+            arguments += " -language schinese"
+        }
         if bigPicture { arguments += " -gamepadui" }
         if let appID, appID > 0, UInt64(appID) < UInt64(UInt32.max) {
             arguments += " -applaunch \(appID)"
@@ -109,7 +113,7 @@ enum SteamClient {
         return arguments
     }
 
-    private static func removingLaunchRequests(_ value: String) -> String {
+    private static func argumentTokens(_ value: String) -> [String] {
         // Keep each token's original quotes and escapes. A quoted path with
         // spaces must survive, while stale launch selectors must not leak
         // from the previous game into a fresh client launch.
@@ -122,6 +126,11 @@ enum SteamClient {
             slashes = character == "\\" ? slashes + 1 : 0
         }
         if !token.isEmpty { tokens.append(token) }
+        return tokens
+    }
+
+    private static func removingLaunchRequests(_ value: String) -> String {
+        let tokens = argumentTokens(value)
         var kept: [String] = [], skip = false
         for token in tokens {
             if skip { skip = false; continue }
@@ -149,6 +158,9 @@ enum SteamClient {
     /// extra options while always supplying the required compatibility flags.
     static func configureSession(_ entry: LibraryEntry) {
         guard owns(entry) else { return }
+        // The initial controller remains a direct process, but this session
+        // will present Steam through explorer's desktop after setup completes.
+        setenv("MADEIRA_DESKTOP", "1", 1)
         // Rebuild from persistent global/game preferences each time. Reusing
         // the previous child rule can leak that game's flags to another game.
         let childArguments = launchArguments(appID: entry.steamClientAppID)
@@ -222,6 +234,7 @@ enum SteamClient {
             throw LibraryError.message(L("The Steam preparation controller is missing. Install a complete IPA."))
         }
         try Data(contentsOf: helper).write(to: destination(bootstrapPath), options: .atomic)
+        try stageClientLaunch(entry)
         try stageInstallationLibraries()
         try prepareInstallationDirectory()
         for name in ["SteamBootstrap.state", "SteamBootstrap.state.tmp", "SteamBootstrap.cancel"] {
@@ -234,6 +247,28 @@ enum SteamClient {
 
     static func stagedLibrariesPath(_ section: String) -> String {
         "Madeira/Installers/SteamLibraries." + section + ".vdf"
+    }
+
+    /// Reuse the regular client's desktop/services command, not a bare Steam
+    /// child of the non-GUI setup controller. All files stay outside NSIS's target.
+    static func stageClientLaunch(_ installing: LibraryEntry) throws {
+        var client = entry(install: false, appID: installing.steamClientAppID)
+        client.relativePath = clientDirectory + "/Steam.exe"
+        guard let script = client.servicesScript else {
+            throw LibraryError.message(L("The Steam desktop launch could not be prepared."))
+        }
+        let relative = String(client.servicesScriptPath.dropFirst(3)).replacingOccurrences(of: "\\", with: "/")
+        let scriptFile = try destination(relative)
+        try FileManager.default.createDirectory(at: scriptFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(script.utf8).write(to: scriptFile, options: .atomic)
+        let command = "\"C:\\windows\\system32\\explorer.exe\" " + client.launchArguments
+        guard command.utf16.count < 1023, !command.contains("\0"),
+              let data = (command + "\0").data(using: .utf16LittleEndian) else {
+            throw LibraryError.message(L("The Steam desktop launch could not be prepared."))
+        }
+        let staged = try destination("Madeira/Installers/SteamDesktop.command")
+        try FileManager.default.createDirectory(at: staged.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: staged, options: .atomic)
     }
 
     private static var libraryRoots: [String] {
@@ -341,6 +376,7 @@ struct SteamClientLaunchSettings: View {
             }
         } header: { Text("Steam startup") } footer: {
             Text("These global options apply to Start Steam and games launched from the library. Required compatibility options are always included. Changes apply to the next session.")
+            Text("The Steam interface defaults to Simplified Chinese. Game download language is configured separately under Account and Downloads.")
         }
     }
 }

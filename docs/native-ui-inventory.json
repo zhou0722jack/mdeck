@@ -720,8 +720,8 @@
       "reason": "User requested the Steam-only DroidDeck catalog. Its three layouts and five card sizes replace the legacy pinch-grid controls."
     },
     "app/Madeira/SettingsPages.swift": {
-      "controlLabels": ["New library grid", "Zoom haptics"],
-      "reason": "The Steam-only DroidDeck catalog now shares its layout, size and title controls with Appearance settings."
+      "controlLabels": ["New library grid", "Zoom haptics", "Extended logging"],
+      "reason": "The Steam-only DroidDeck catalog shares its layout, size and title controls with Appearance settings. At the user's request, Extended logging moved to LibraryDetail's Steam settings Advanced tab; Library.swift's control inventory still requires it."
     },
     "app/Madeira/SteamGames.swift": {
       "controlLabels": [

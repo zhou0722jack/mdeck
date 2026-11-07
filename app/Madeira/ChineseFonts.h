@@ -38,6 +38,14 @@ static BOOL madeira_font_registry_merge(NSString *path, NSString *section,
     }
     NSUInteger end = start + 1;
     while (end < lines.count && ![lines[end] hasPrefix:@"["]) end++;
+    /* Other Wine prefixes may share the 32-bit Fonts view through a registry
+     * link. Preserve that object; adding ordinary values would corrupt it. */
+    for (NSUInteger i = start + 1; i < end; i++) {
+        if ([[lines[i] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceCharacterSet] isEqualToString:@"#link"]) {
+            ws_log("[chinese-font] registry link preserved: %s", section.UTF8String);
+            return YES;
+        }
+    }
     for (NSString *name in [[values allKeys] sortedArrayUsingSelector:@selector(compare:)]) {
         NSString *key = [NSString stringWithFormat:@"\"%@\"=", madeira_font_reg_escape(name)];
         NSUInteger found = NSNotFound;
@@ -82,7 +90,7 @@ static BOOL madeira_chinese_fonts(NSString *prefix, NSString *resources)
         ws_log("[chinese-font] could not install Noto Sans SC"); return NO;
     }
     NSMutableDictionary<NSString *, NSString *> *aliases = [NSMutableDictionary dictionary];
-    for (NSString *alias in @[@"SimSun", @"NSimSun", @"SimHei", @"Microsoft YaHei", @"Microsoft YaHei UI",
+    for (NSString *alias in @[@"SimSun", @"NSimSun", @"SimHei", @"Microsoft YaHei", @"Microsoft YaHei UI", @"Noto Sans CJK SC",
                               @"\u5b8b\u4f53", @"\u65b0\u5b8b\u4f53", @"\u9ed1\u4f53", @"\u5fae\u8f6f\u96c5\u9ed1"])
         aliases[alias] = @"\"Noto Sans SC\"";
     BOOL replacements = madeira_font_registry_merge([prefix stringByAppendingPathComponent:@"user.reg"],
@@ -91,13 +99,18 @@ static BOOL madeira_chinese_fonts(NSString *prefix, NSString *resources)
     BOOL registered = madeira_font_registry_merge(system,
         @"Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts",
         @{@"Noto Sans SC (TrueType)": @"\"NotoSansSC-Regular.otf\""}, NO);
+    /* The shipped prefix has a separate WOW64 Fonts key. A 32-bit DirectWrite
+     * consumer enumerates that key and otherwise misses the font GDI loaded. */
+    BOOL registered32 = madeira_font_registry_merge(system,
+        @"Software\\\\Wow6432Node\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts",
+        @{@"Noto Sans SC (TrueType)": @"\"NotoSansSC-Regular.otf\""}, NO);
     NSMutableDictionary<NSString *, NSString *> *links = [NSMutableDictionary dictionary];
     for (NSString *face in @[@"Tahoma", @"Tahoma Bold", @"Arial", @"Microsoft Sans Serif", @"Segoe UI", @"System"])
         links[face] = @"str(7):\"NotoSansSC-Regular.otf,Noto Sans SC\\0\"";
     BOOL linked = madeira_font_registry_merge(system,
         @"Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\FontLink\\\\SystemLink", links, YES);
-    ws_log("[chinese-font] Noto Sans SC %s; aliases=%d registered=%d fallback=%d",
-           copied ? "installed" : "verified", replacements, registered, linked);
-    return replacements && registered && linked;
+    ws_log("[chinese-font] Noto Sans SC %s; aliases=%d registered64=%d registered32=%d fallback=%d",
+           copied ? "installed" : "verified", replacements, registered, registered32, linked);
+    return replacements && registered && registered32 && linked;
 }
 #endif

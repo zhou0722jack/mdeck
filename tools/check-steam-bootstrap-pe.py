@@ -36,4 +36,6 @@ assert names == {b'kernel32.dll'}, names
 for path in ['C:\\Madeira\\Installers\\SteamSetup.exe', 'C:\\Program Files\\Steam Client\\Steam.exe',
              'C:\\Madeira\\Installers\\SteamLibraries.config.vdf', 'C:\\Madeira\\Installers\\SteamLibraries.steamapps.vdf']:
     assert path.encode('utf-16-le') in data
+assert 'C:\\windows\\system32\\explorer.exe'.encode('utf-16-le') in data
+assert 'C:\\Madeira\\Installers\\SteamDesktop.command'.encode('utf-16-le') in data
 print('PASS: generated i386 Steam session controller and fixed installer/client paths')

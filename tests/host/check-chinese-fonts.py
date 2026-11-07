@@ -29,6 +29,12 @@ harness = r'''
 #include "ChineseFonts.h"
 void ws_log(const char *fmt, ...) { (void)fmt; }
 static NSString *read_registry(NSString *path) { return [NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil]; }
+static NSString *registry_section(NSString *text, NSString *name) {
+    NSRange start = [text rangeOfString:[NSString stringWithFormat:@"[%@]", name]];
+    assert(start.location != NSNotFound);
+    NSRange next = [text rangeOfString:@"\n[" options:0 range:NSMakeRange(NSMaxRange(start), text.length - NSMaxRange(start))];
+    return [text substringWithRange:NSMakeRange(start.location, (next.location == NSNotFound ? text.length : next.location) - start.location)];
+}
 int main(int argc, char **argv) {
     @autoreleasepool {
         assert(argc == 3);
@@ -40,13 +46,25 @@ int main(int argc, char **argv) {
         NSString *afterUser = read_registry(user), *afterSystem = read_registry(system);
         assert([afterUser containsString:@"\"SimSun\"=\"Custom Han\""]);
         assert([afterUser containsString:@"\"NSimSun\"=\"Noto Sans SC\""]);
+        assert([afterUser containsString:@"\"Noto Sans CJK SC\"=\"Noto Sans SC\""]);
         assert([afterUser containsString:@"\"\\x5b8b\\x4f53\"=\"Noto Sans SC\""]);
         assert([afterUser containsString:@"\"Unrelated\"=\"keep\""]);
         assert([afterSystem containsString:@"\"Tahoma\"=str(7):\"CUSTOM.TTF,Custom\\0NotoSansSC-Regular.otf,Noto Sans SC\\0\""]);
         assert([afterSystem containsString:@"\"Arial\"=hex(7):41,00,00,00"]);
         assert([afterSystem containsString:@"\"Noto Sans SC (TrueType)\"=\"NotoSansSC-Regular.otf\""]);
+        NSString *view32 = registry_section(afterSystem, @"Software\\\\Wow6432Node\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts");
+        NSString *view64 = registry_section(afterSystem, @"Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts");
+        assert([view32 containsString:@"\"Noto Sans SC (TrueType)\"=\"NotoSansSC-Regular.otf\""]);
+        assert([view64 containsString:@"\"Noto Sans SC (TrueType)\"=\"NotoSansSC-Regular.otf\""]);
+        assert([view32 containsString:@"\"Tahoma (TrueType)\"=\"tahoma.ttf\""]);
         assert([read_registry([user stringByAppendingString:@".madeira-fonts-bak"]) isEqualToString:beforeUser]);
         assert([read_registry([system stringByAppendingString:@".madeira-fonts-bak"]) isEqualToString:beforeSystem]);
+        NSString *linkFile = [prefix stringByAppendingPathComponent:@"linked.reg"];
+        NSString *linkText = @"WINE REGISTRY Version 2\n\n[Software\\\\Wow6432Node\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts]\n#link\n\"SymbolicLinkValue\"=str(6):\"keep\"\n";
+        assert([linkText writeToFile:linkFile atomically:YES encoding:NSUTF8StringEncoding error:nil]);
+        assert(madeira_font_registry_merge(linkFile, @"Software\\\\Wow6432Node\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Fonts",
+            @{@"Noto Sans SC (TrueType)": @"\"NotoSansSC-Regular.otf\""}, NO));
+        assert([read_registry(linkFile) isEqualToString:linkText]);
         NSString *installed = [prefix stringByAppendingPathComponent:@"drive_c/windows/Fonts/NotoSansSC-Regular.otf"];
         NSData *font = [NSData dataWithContentsOfFile:installed];
         assert(font.length > 8000000);
@@ -104,4 +122,5 @@ with tempfile.TemporaryDirectory(prefix='madeira-fonts-') as directory:
     subprocess.run([str(binary), str(prefix), str(APP)], check=True)
 print('PASS: pinned font hash, bundled licence, family and Simplified Chinese glyph coverage')
 print('PASS: existing-prefix install, custom aliases/link order, unknown encodings, backups and idempotence')
+print('PASS: 32/64-bit font registry views, DirectWrite CJK family alias and registry-link preservation')
 print('PASS: corrupt font repair, missing bundle, registration and seeding before wineserver')

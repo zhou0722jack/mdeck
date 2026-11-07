@@ -114,6 +114,7 @@ func winios_steam_setup_reset(){}
         let present=SteamClient.entry(install:!SteamClient.installed)
         precondition(present.id==SteamClient.clientID&&present.relativePath.hasSuffix("/Steam.exe"))
         precondition(present.arguments.contains("-no-cef-sandbox")&&present.arguments.contains("-cef-disable-gpu"))
+        precondition(present.arguments.contains("-language schinese"))
         precondition(present.arguments.contains("-gamepadui"))
         var original=LibraryEntry(title:"Fixture game",relativePath:"Games/Fixture",bits:64)
         original.steamAppID=570;original.arguments="-novid -language schinese"
@@ -133,6 +134,13 @@ func winios_steam_setup_reset(){}
         precondition(SteamClient.entry(install:false).resolution==shared.resolution)
         original.steamUseGlobalSettings=true
         LibraryModel.shared.entries=[original,shared]
+        try SteamClient.stageClientLaunch(SteamClient.entry(install:true,appID:570))
+        let desktopData=try Data(contentsOf:root.appendingPathComponent("Madeira/Installers/SteamDesktop.command"))
+        let desktopCommand=String(data:desktopData,encoding:.utf16LittleEndian)!
+        precondition(desktopCommand.hasPrefix("\"C:\\windows\\system32\\explorer.exe\" /desktop=shell,1600x900 cmd /c "))
+        precondition(desktopCommand.last=="\0")
+        let services=try String(contentsOf:root.appendingPathComponent("madeira-games/"+SteamClient.clientID.uuidString+".bat"),encoding:.utf8)
+        precondition(services.contains("services.exe")&&services.contains("Steam.exe")&&services.contains("-language schinese"))
         let session=SteamTuningFixture();session.entries=[original,shared];session.begin(game)
         session.saveCurrentProfile();precondition(session.saves.isEmpty)
         session.desiredResolution="1024x768";session.saveCurrentProfile()
@@ -153,6 +161,10 @@ func winios_steam_setup_reset(){}
         defaults.set(#"-language schinese "a path with -bigpicture inside" -applaunch 999 "-bigpicture""#,forKey:SteamClient.argumentsKey)
         let clean=SteamClient.entry(install:false).arguments
         precondition(clean.contains(#""a path with -bigpicture inside""#) && !clean.contains("999") && !clean.contains(#""-bigpicture""#))
+        defaults.removeObject(forKey:SteamClient.argumentsKey)
+        defaults.set("-console -language \"english\"",forKey:SteamClient.argumentsKey)
+        let english=SteamClient.entry(install:false).arguments
+        precondition(english.contains("-language \"english\"") && !english.contains("-language schinese"))
         defaults.removeObject(forKey:SteamClient.argumentsKey)
         LibraryModel.shared.entries=[]
         try SteamClient.registerLibraries()
@@ -212,6 +224,17 @@ with tempfile.TemporaryDirectory(prefix='mdeck-client-route-') as tmp:
     discovery+='}\n'
     writer=(ROOT/'app/Madeira/SwiftSteam/Install/AppManifestWriter.swift').read_text()
     library=(ROOT/'app/Madeira/Library.swift').read_text()
+    launch=r'''
+extension LibraryEntry {
+    var usesLaunchOptions:Bool{true}
+    var runsInDesktop:Bool{launchMode=="desktop"}
+    var isBatch:Bool{false}
+    var programArguments:String{arguments}
+    var launchWindowsPath:String{windowsPath}
+    var launchDirectory:String{"C:\\Program Files\\Steam Client"}
+    var launchArguments:String{launchCommand(parent:nil).args}
+    static func gogSetup(for id:UUID)->String?{nil}
+'''+block(library,'    var servicesScriptPath:')+'\n'+block(library,'    var servicesScript:')+'\n'+block(library,'    private func launchCommand(parent:')+'\n}\n'
     session=r'''
 final class SteamTuningFixture {
     var activeEntry:LibraryEntry?;var current:UUID?;var entries:[LibraryEntry]=[]
@@ -220,7 +243,7 @@ final class SteamTuningFixture {
     func save(_ entry:LibraryEntry){saves.append(entry)}
     func begin(_ entry:LibraryEntry){activeEntry=entry;current=entry.id;desiredResolution=entry.resolution;initialSteamSessionProfile=encodedSessionProfile(sessionProfile(entry))}
 '''+block(library,'    private func encodedSessionProfile(')+'\n'+block(library,'    func saveCurrentProfile()')+'\n}\n'
-    (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer+'\n'+session)
+    (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer+'\n'+session+'\n'+launch)
     (folder/'Check.swift').write_text(fixture)
     subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
     subprocess.run([str(folder/'check')],check=True)

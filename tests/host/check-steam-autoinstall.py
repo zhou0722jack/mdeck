@@ -244,7 +244,7 @@ final class LogStore { static let shared=LogStore(); func log(_ text:String) {} 
 enum SteamClient {
     static let installerID=1
     static let clientID=2
-    static let clientArguments="-no-cef-sandbox -cef-disable-gpu"
+    static let clientArguments="-no-cef-sandbox -cef-disable-gpu -language schinese"
     static func owns(_ entry:LibraryEntry)->Bool { entry.id==1 || entry.id==2 }
 ''' + preferences + method + r'''}
 @main struct Check {
@@ -259,6 +259,7 @@ enum SteamClient {
         SteamClient.configureSession(LibraryEntry(id:3))
         precondition(getenv("MADEIRA_CHILD_ARGS")==nil)
         SteamClient.configureSession(LibraryEntry(id:1))
+        precondition(String(cString:getenv("MADEIRA_DESKTOP"))=="1")
         precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="steam.exe "+SteamClient.clientArguments)
         precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="1")
         setenv("MADEIRA_CHILD_ARGS","custom.exe --user",1)

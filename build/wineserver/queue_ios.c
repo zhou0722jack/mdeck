@@ -3171,6 +3171,11 @@ DECL_HANDLER(set_queue_fd)
     struct file *file;
     int unix_fd;
 
+    if (!queue)
+    {
+        if (!get_error()) set_error( STATUS_NO_MEMORY );
+        return;
+    }
     if (queue->fd)  /* fd can only be set once */
     {
         set_error( STATUS_ACCESS_DENIED );
@@ -3614,12 +3619,26 @@ DECL_HANDLER(set_win_timer)
             return;
         }
         queue = thread->queue;
+        if (!queue)
+        {
+            release_object( thread );
+            set_error( STATUS_INVALID_HANDLE );
+            return;
+        }
         /* remove it if it existed already */
         if ((timer = find_timer( queue, win, req->msg, id ))) free_timer( queue, timer );
     }
     else
     {
-        queue = get_current_queue();
+        if (!(queue = get_current_queue()))
+        {
+            /* Desktop/input creation can fail during process handoff. Keep
+             * that status and return failure instead of dereferencing NULL. */
+            if (!get_error()) set_error( STATUS_NO_MEMORY );
+            fprintf( stderr, "[win-timer] message queue unavailable tid=%04x desktop=%04x status=%08x\n",
+                     current->id, (unsigned)current->desktop, get_error() );
+            return;
+        }
         /* look for a timer with this id */
         if (id && (timer = find_timer( queue, 0, req->msg, id )))
         {

@@ -130,7 +130,6 @@ struct SettingsPageView: View {
     var startDock: (DockGame, Bool) -> Void
     @State private var sheet: SettingsSheet?
     @State private var refresh = 0
-    @ObservedObject private var input = InputSettings.shared
     @ObservedObject private var liquidMetal = LiquidMetalSetting.shared
     @AppStorage(LibraryGridArm.key) private var zoomableGrid = false
     @AppStorage(GridZoomHapticPlayer.key) private var zoomHaptics = true
@@ -187,7 +186,6 @@ struct SettingsPageView: View {
         case .appearance: appearance
         case .advanced:
             Section {
-                Toggle("Extended logging", isOn: $input.diagnostics)
                 // ClaudeHelp.swift: the fixes guide, logs and madeira.cfg to a chat.
                 ClaudeHelpButton(entry: nil)
             } header: { Text("Diagnostics") } footer: {

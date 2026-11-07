@@ -24,6 +24,9 @@ typedef struct { HANDLE hProcess,hThread; } PROCESS_INFORMATION;
 #define FILE_ATTRIBUTE_NORMAL 0x80
 #define FILE_ATTRIBUTE_DIRECTORY 0x10
 #define GENERIC_WRITE 2
+#define GENERIC_READ 1
+#define FILE_SHARE_READ 1
+#define OPEN_EXISTING 3
 #define CREATE_ALWAYS 2
 #define MOVEFILE_REPLACE_EXISTING 1
 #define MOVEFILE_WRITE_THROUGH 8
@@ -33,6 +36,7 @@ typedef struct { HANDLE hProcess,hThread; } PROCESS_INFORMATION;
 #define ERROR_CANCELLED 1223
 #define ERROR_FILE_NOT_FOUND 2
 #define ERROR_ALREADY_EXISTS 183
+#define ERROR_INVALID_DATA 13
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258
 static DWORD GetLastError(void);
@@ -50,6 +54,7 @@ static BOOL TerminateProcess(HANDLE,DWORD);
 static BOOL CreateProcessW(const WCHAR *,WCHAR *,void *,void *,BOOL,DWORD,void *,const WCHAR *,STARTUPINFOW *,PROCESS_INFORMATION *);
 static BOOL CreateDirectoryW(const WCHAR *,void *);
 static BOOL CopyFileW(const WCHAR *,const WCHAR *,BOOL);
+static BOOL ReadFile(HANDLE,void *,DWORD,DWORD *,void *);
 '''
 HARNESS = r'''
 #include <assert.h>
@@ -58,12 +63,17 @@ HARNESS = r'''
 #define MADEIRA_BOOTSTRAP_HOST_TEST 1
 #include "BOOTSTRAP"
 enum { OK, SETUP_CREATE_FAIL, SETUP_EXIT_FAIL, CLIENT_MISSING, CLIENT_CREATE_FAIL,
-       CANCEL_BEFORE, CANCEL_DURING, WRITE_FAIL, MOVE_FAIL, DIRECTORY_FAIL, VDF_COPY_FAIL, EXISTING_DIRS, CANCEL_AFTER_REGISTER };
+       CANCEL_BEFORE, CANCEL_DURING, WRITE_FAIL, MOVE_FAIL, DIRECTORY_FAIL, VDF_COPY_FAIL, EXISTING_DIRS, CANCEL_AFTER_REGISTER,
+       COMMAND_MISSING, COMMAND_READ_FAIL, COMMAND_TRUNCATED };
 static int scenario, launches, installer_closed, cancelled_now, terminations, closes, copies;
 static char written_text[160],stages[512];
 static DWORD GetLastError(void){return scenario==EXISTING_DIRS?ERROR_ALREADY_EXISTS:5;}
 static void OutputDebugStringA(const char *s){(void)s;}
 static HANDLE CreateFileW(const WCHAR *p,DWORD a,DWORD b,void *c,DWORD d,DWORD e,HANDLE f){
+    if(p==desktop_command_path){
+        assert(installer_closed&&copies==2&&a==GENERIC_READ&&b==FILE_SHARE_READ&&!c&&d==OPEN_EXISTING&&e==FILE_ATTRIBUTE_NORMAL&&!f);
+        return scenario==COMMAND_MISSING?INVALID_HANDLE_VALUE:20;
+    }
     assert(p==temp_path);(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;
     return scenario==WRITE_FAIL?INVALID_HANDLE_VALUE:10;
 }
@@ -96,7 +106,7 @@ static BOOL CreateProcessW(const WCHAR *path,WCHAR *cmd,void *a,void *b,BOOL inh
         if(scenario==SETUP_CREATE_FAIL)return FALSE;
         p->hProcess=1;p->hThread=101;
     }else{
-        assert(path==client_path&&launches==1&&installer_closed&&dir==client_dir&&copies==2);
+        assert(path==desktop_path&&launches==1&&installer_closed&&dir==client_dir&&copies==2);
         if(scenario==CLIENT_CREATE_FAIL)return FALSE;
         p->hProcess=2;p->hThread=102;
     }
@@ -114,12 +124,19 @@ static BOOL CopyFileW(const WCHAR *from,const WCHAR *to,BOOL fail_exists){
     if(scenario==CANCEL_AFTER_REGISTER&&copies==2)cancelled_now=1;
     return TRUE;
 }
+static BOOL ReadFile(HANDLE file,void *out,DWORD capacity,DWORD *read,void *overlap){
+    static const WCHAR command[]=L"\"C:\\windows\\system32\\explorer.exe\" /desktop=shell,1280x720 cmd /c \"C:\\madeira-games\\fixture.bat\"";
+    assert(file==20&&capacity>=sizeof(command)&&!overlap);
+    if(scenario==COMMAND_READ_FAIL)return FALSE;
+    memcpy(out,command,sizeof(command));*read=sizeof(command)-(scenario==COMMAND_TRUNCATED?2:0);
+    return TRUE;
+}
 int main(void){
-    for(scenario=OK;scenario<=CANCEL_AFTER_REGISTER;scenario++){
+    for(scenario=OK;scenario<=COMMAND_TRUNCATED;scenario++){
         launches=installer_closed=cancelled_now=terminations=closes=copies=0;written_text[0]=stages[0]=0;
         DWORD code=bootstrap_run();
         if(scenario==OK||scenario==EXISTING_DIRS){
-            assert(!code&&launches==2&&installer_closed&&closes==8);
+            assert(!code&&launches==2&&installer_closed&&closes==9);
             const char *a=strstr(stages,"stage=installer"),*b=strstr(stages,"stage=checking"),*c=strstr(stages,"stage=starting"),*d=strstr(stages,"stage=waiting");
             assert(a&&b&&c&&d&&a<b&&b<c&&c<d);
         }else{

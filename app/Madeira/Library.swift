@@ -3454,7 +3454,6 @@ struct LibraryView: View {
     @State private var settingsSearch = ""
     @State private var focused: UUID?
     @ObservedObject private var controller = LibraryController.shared
-    @ObservedObject private var input = InputSettings.shared
     @State private var tab = 0
     // The interface the next start uses (FrontendChoice).
     @State private var developerUI = !FrontendChoice.preferNew
@@ -3682,7 +3681,6 @@ struct LibraryView: View {
             if SigningRefresh.enabled, settingsShow("signing", "expires", "refresh", "Apple", "sign-in", "7 days") { SigningSettingsSection() }
             if settingsShow("diagnostics", "extended logging", "logging", "log", "help", "Claude") {
                 Section {
-                    Toggle("Extended logging", isOn: $input.diagnostics)
                     // ClaudeHelp.swift: the fixes guide, logs and madeira.cfg to a chat.
                     ClaudeHelpButton(entry: nil)
                 } header: { Text("Diagnostics") } footer: {
@@ -4241,7 +4239,6 @@ private extension LibraryView {
         Form {
             Section { LibraryStatus() }
             Section("Diagnostics") {
-                Toggle("Extended logging", isOn: $input.diagnostics)
                 ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
                 ClaudeHelpButton(entry: nil)
             }
@@ -4423,6 +4420,7 @@ struct LibraryDetail: View {
     }
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var model = LibraryModel.shared
+    @ObservedObject private var input = InputSettings.shared
     @State private var importCover = false
     /// madeira-bcd: this game's own switches as the fork stores them (reloadBCD).
     @State private var bcd = BCDGameValues()
@@ -4574,7 +4572,7 @@ struct LibraryDetail: View {
             LibraryArtwork(entry: entry, backdrop: backdrop)
         }
     }
-    /// The pages the details page links to (iOS Settings style), each with its own Form.
+    /// The detail tabs share one Form; each tab supplies only its own sections.
     enum Page: Hashable {
         case display, controls, launch, compatibility, steam, cloud, achievements, gog, itch, library, iniFiles, advanced
         var title: String {
@@ -4615,7 +4613,7 @@ struct LibraryDetail: View {
         case workshop
     }
     @State private var path: [Page] = []
-    /// The rows of the details page, in groups. The Desktop entry has no launch options
+    /// The detail tabs, in groups. The Desktop entry has no launch options
     /// or library details; a Steam game has its Steam pages.
     private var pageGroups: [[Page]] {
         if isSteamGlobal { return [[.display, .controls, .launch, .compatibility], [.advanced]] }
@@ -4633,28 +4631,6 @@ struct LibraryDetail: View {
         guard let appID else { return false }
         return SteamOwnedLibrary.shared.game(appID)?.workshop != false
     }
-    /// The value a page's row shows, when one setting sums it up.
-    private func summary(_ page: Page) -> String? {
-        switch page {
-        case .display: return entry.metalFXUpscale.map { "\(entry.resolution) · MetalFX \($0 == 2 ? "2" : "1.5")×" } ?? entry.resolution
-        case .controls: return entry.controllerMode == "keys" ? "Keyboard and mouse" : entry.controllerMode == "dinput" ? "XInput and DirectInput" : nil
-        case .launch: return entry.usesLaunchOptions ? (entry.runsInDesktop ? L("Wine desktop") : L("Directly")) : nil
-        case .steam: return entry.startsSteamGameDirectly ? "The game" : "Steam"
-        case .advanced: return Self.configSummary(bcd.configText)   // madeira-bcd: the game's own config file
-        case .iniFiles:
-            let count = GameIniFiles.files(entry.windowsPath).count
-            return count == 0 ? nil : count == 1 ? "1 file" : "\(count) files"
-        default: return nil
-        }
-    }
-
-    @ViewBuilder private func page(_ page: Page) -> some View {
-        Form { pageSections(page) }
-            .modifier(DeckFormSkin())
-            .navigationTitle(page.title).navigationBarTitleDisplayMode(.inline)
-            .toolbar(.visible, for: .navigationBar)
-    }
-
     @ViewBuilder private func pageSections(_ page: Page) -> some View {
         Group {
             switch page {
@@ -4675,10 +4651,19 @@ struct LibraryDetail: View {
             case .iniFiles: GameIniFilesSection(windowsPath: entry.windowsPath, gameFolder: iniGameFolder)
             case .advanced: advancedPage
             }
-        }.disabled(inheritsSteamSettings && [.display, .controls, .compatibility, .advanced].contains(page))
+        }.disabled(inheritsSteamSettings && [.display, .controls, .compatibility].contains(page))
     }
 
     @ViewBuilder private var displayPage: some View {
+        if isSteamGlobal, GraphicsSettings.shown {
+            Section {
+                NavigationLink("Graphics") {
+                    Form { GraphicsSettings(refresh: 0) }
+                        .modifier(DeckFormSkin())
+                        .navigationTitle("Graphics")
+                }
+            }
+        }
         Section {
             // The Windows screen the game renders for (and the Desktop's size).
             // ml1172: this device's choices (ResolutionChoices), grouped.
@@ -4718,10 +4703,15 @@ struct LibraryDetail: View {
         } header: { Text("Display") } footer: {
             Text("MetalFX renders at the resolution above and upscales it (Direct3D 11 and 12).")
         }
+        Section {
+            FPSChoice(mode: $entry.fpsMode)
+            Toggle("Performance overlay", isOn: $entry.performance)
+        }
     }
 
     @ViewBuilder private var controlsPage: some View {
         Section("On screen") {
+            Toggle("Touch controls", isOn: $entry.touchControls)
             if GamepadInput.keyboardMouseAvailable {
                 ControllerModeChoice(mode: $entry.controllerMode)
                 if entry.controllerMode == "dinput" {
@@ -4906,6 +4896,13 @@ struct LibraryDetail: View {
     }
 
     @ViewBuilder private var libraryPage: some View {
+        if let appName = entry.epicAppName {
+            EpicEntrySection(entry: $entry) { leaving = true; dismiss() }
+            EpicCloudSection(appName: appName)
+        }
+        if entry.eaOfferID != nil {
+            EAEntrySection(entry: $entry) { leaving = true; dismiss() }
+        }
         if entry.desktop != true { Section("Library details") {
             TextField("Title", text: $entry.title)
             Button("Find on Steam", systemImage: "magnifyingglass") { findCover = true }
@@ -4931,7 +4928,6 @@ struct LibraryDetail: View {
             if model.entries.contains(where: { $0.id == entry.id }) { GameMoveSection(entry: $entry) }
             Section { Button("Remove from library", role: .destructive) { remove = true } }
         }
-        if let error { Section { Text(error).foregroundStyle(.red) } }
     }
 
     /// The game's folder under drive_c, where Settings files looks for .ini files.
@@ -4942,6 +4938,18 @@ struct LibraryDetail: View {
     }
 
     @ViewBuilder private var advancedPage: some View {
+        if !isSteamGlobal, entry.steamAppID != nil, !entry.startsSteamGameDirectly {
+            Section {
+                Toggle("Use global Steam game settings", isOn: Binding(get: { entry.steamUseGlobalSettings != false }, set: { entry.steamUseGlobalSettings = $0 }))
+            } footer: {
+                Text("Turn this off to edit this game's display, controls and compatibility settings. Its saved settings are kept while it follows the global profile.")
+            }
+        }
+        if isSteamGlobal {
+            Section("Diagnostics") {
+                Toggle("Extended logging", isOn: $input.diagnostics)
+            }
+        }
         Section {
             Toggle("Live logs", isOn: $entry.liveLogs)
             // madeira-bcd: this game's config is its own GameProfiles.swift file
@@ -4959,6 +4967,32 @@ struct LibraryDetail: View {
             }
         } header: { Text("Advanced") } footer: {
             Text(isSteamGlobal ? L("These runtime options apply to Steam and games using the global Steam profile.") : L("Per-game madeira.cfg lines; they override the global file."))
+        }
+        .disabled(inheritsSteamSettings)
+        setupActions
+    }
+
+    /// Shared actions live in Advanced for Steam, the Desktop and individual games.
+    @ViewBuilder private var setupActions: some View {
+        Section {
+            Button("Share Setup", systemImage: "square.and.arrow.up") { model.save(entry); shareSetup = true }
+            Button("Apply Shared Setup", systemImage: "square.and.arrow.down") { askSetupSource = true }
+                .confirmationDialog("Apply a shared setup", isPresented: $askSetupSource, titleVisibility: .visible) {
+                    Button("Choose a File") { importSetup = true }
+                    Button("Paste from Clipboard") { readSetup { try GameSetup(text: UIPasteboard.general.string ?? "") } }
+                }
+            Button("Copy Settings", systemImage: "doc.on.doc") {
+                let configText = bcd.configText
+                UIPasteboard.general.string = configText.isEmpty ? "# Default configuration" : configText
+            }
+            ClaudeHelpButton(entry: entry)
+            Button("Reset to Recommended", systemImage: "arrow.counterclockwise") { confirmReset = true }
+                .confirmationDialog(GameRecommendations.question(recommended, desktop: entry.desktop == true),
+                                    isPresented: $confirmReset, titleVisibility: .visible) {
+                    Button("Reset", role: .destructive) { resetToRecommended() }
+                }
+        } footer: {
+            Text(GameRecommendations.note(recommended, desktop: entry.desktop == true))
         }
     }
 
@@ -5025,83 +5059,17 @@ struct LibraryDetail: View {
                 deckDetailHeader
                 deckDetailTabs
                 Form {
-                    if !isSteamGlobal, entry.steamAppID != nil, !entry.startsSteamGameDirectly {
-                        Section {
-                            Toggle("Use global Steam game settings", isOn: Binding(get: { entry.steamUseGlobalSettings != false }, set: { entry.steamUseGlobalSettings = $0 }))
-                        } footer: {
-                            Text("Turn this off to edit this game's display, controls and compatibility settings. Its saved settings are kept while it follows the global profile.")
-                        }
-                    }
-                    if isSteamGlobal {
-                        Section {
-                            NavigationLink("Graphics") { Form { GraphicsSettings(refresh: 0) }.navigationTitle("Graphics") }
-                        }
-                    }
                     if let selection = deckSelectedPage { pageSections(selection) }
-                // A Play error sits under Play.
-                if let error { Section { Text(error).foregroundStyle(.red) } }
-                // A running update blocks Play: its progress shows here too.
-                if let appID = entry.steamAppID, let download = SteamOwnedLibrary.shared.downloads[appID] {
-                    Section { SteamDownloadStatus(download: download) }
-                }
-                if let appName = entry.epicAppName {
-                    EpicEntrySection(entry: $entry) { leaving = true; dismiss() }
-                    EpicCloudSection(appName: appName)
-                }
-                if entry.eaOfferID != nil {
-                    EAEntrySection(entry: $entry) { leaving = true; dismiss() }
-                }
-                Section {
-                    FPSChoice(mode: $entry.fpsMode)
-                    Toggle("Performance overlay", isOn: $entry.performance)
-                    Toggle("Touch controls", isOn: $entry.touchControls)
-                }.disabled(inheritsSteamSettings)
-                ForEach(Array(pageGroups.enumerated()), id: \.offset) { _, group in
-                    Section {
-                        ForEach(group, id: \.self) { item in
-                            NavigationLink(value: item) {
-                                if let value = summary(item) {
-                                    LabeledContent { Text(value).lineLimit(1) } label: { Label(item.title, systemImage: item.symbol) }
-                                } else {
-                                    Label(item.title, systemImage: item.symbol)
-                                }
-                            }
-                        }
+                    if let error { Section { Text(error).foregroundStyle(.red) } }
+                    if let appID = entry.steamAppID, let download = SteamOwnedLibrary.shared.downloads[appID] {
+                        Section { SteamDownloadStatus(download: download) }
                     }
                 }
-                // madeira-bcd: always last, for every entry, the Desktop too (GameRecommendationsApply.swift).
-                Section {
-                    Button("Share Setup", systemImage: "square.and.arrow.up") { model.save(entry); shareSetup = true }
-                    Button("Apply Shared Setup", systemImage: "square.and.arrow.down") { askSetupSource = true }
-                        .confirmationDialog("Apply a shared setup", isPresented: $askSetupSource, titleVisibility: .visible) {
-                            Button("Choose a File") { importSetup = true }
-                            Button("Paste from Clipboard") { readSetup { try GameSetup(text: UIPasteboard.general.string ?? "") } }
-                        }
-                    Button("Copy Settings", systemImage: "doc.on.doc") {
-                        let configText = entry.config ?? ""
-                        UIPasteboard.general.string = configText.isEmpty ? "# Default configuration" : configText
-                    }
-                    // ClaudeHelp.swift: the fixes guide, the logs and this game's config to a chat.
-                    ClaudeHelpButton(entry: entry)
-                    Button("Reset to Recommended", systemImage: "arrow.counterclockwise") { confirmReset = true }
-                        .confirmationDialog(GameRecommendations.question(recommended, desktop: entry.desktop == true),
-                                            isPresented: $confirmReset, titleVisibility: .visible) {
-                            Button("Reset", role: .destructive) { resetToRecommended() }
-                        }
-                } footer: {
-                    Text(GameRecommendations.note(recommended, desktop: entry.desktop == true))
-                }
-                .fileImporter(isPresented: $importSetup,
-                              allowedContentTypes: [GameSetup.contentType, .json, .plainText, .data]) { result in
-                    readSetup { try GameSetup.read(file: try result.get()) }
-                }
-            }
                 .modifier(DeckFormSkin())
             }
             .background(deckPalette.background)
             .onAppear { if deckSelectedPage == nil { deckSelectedPage = pageGroups.first?.first } }
             .navigationTitle(isSteamGlobal ? L("Steam settings") : L("Game details")).navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: Page.self) { item in page(item) }
             .toolbarBackground(.regularMaterial, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { model.save(entry); dismiss() } } }
@@ -5117,6 +5085,10 @@ struct LibraryDetail: View {
                 if !isSteamGlobal { prepareRecommendation() }
                 reloadBCD()
             }
+        }
+        .fileImporter(isPresented: $importSetup,
+                      allowedContentTypes: [GameSetup.contentType, .json, .plainText, .data]) { result in
+            readSetup { try GameSetup.read(file: try result.get()) }
         }
         .sheet(isPresented: $shareSetup) { GameSetupShareSheet(entry: entry) }
         .sheet(item: $setupToApply) { pending in

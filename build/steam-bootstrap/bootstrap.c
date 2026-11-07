@@ -25,6 +25,8 @@ static const WCHAR config_stage[] = L"C:\\Madeira\\Installers\\SteamLibraries.co
 static const WCHAR apps_stage[] = L"C:\\Madeira\\Installers\\SteamLibraries.steamapps.vdf";
 static const WCHAR config_vdf[] = L"C:\\Program Files\\Steam Client\\config\\libraryfolders.vdf";
 static const WCHAR apps_vdf[] = L"C:\\Program Files\\Steam Client\\steamapps\\libraryfolders.vdf";
+static const WCHAR desktop_path[] = L"C:\\windows\\system32\\explorer.exe";
+static const WCHAR desktop_command_path[] = L"C:\\Madeira\\Installers\\SteamDesktop.command";
 
 static void zero_bytes(void *data, SIZE_T length) {
     unsigned char *p = data;
@@ -92,13 +94,26 @@ static DWORD register_libraries(void) {
     return ERROR_SUCCESS;
 }
 
+static DWORD read_desktop_command(WCHAR *command, DWORD capacity) {
+    DWORD bytes = 0, error = 0;
+    HANDLE file = CreateFileW(desktop_command_path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return GetLastError();
+    BOOL ok = ReadFile(file, command, (capacity - 1) * sizeof(*command), &bytes, NULL);
+    if (!ok) error = GetLastError();
+    CloseHandle(file);
+    if (error) return error;
+    if (bytes < 2 * sizeof(*command) || bytes % sizeof(*command) ||
+        command[0] != '"' || command[bytes / sizeof(*command) - 1] != 0) return ERROR_INVALID_DATA;
+    return ERROR_SUCCESS;
+}
+
 static DWORD bootstrap_run(void) {
     PROCESS_INFORMATION process;
     DWORD error, code = 0, attributes;
     WCHAR setup_command[] = L"\"C:\\Madeira\\Installers\\SteamSetup.exe\" /D=C:\\Program Files\\Steam Client";
     /* The native steam.exe child rule appends SteamClient.clientArguments,
      * including sandbox/GPU compatibility, also on updater restarts. */
-    WCHAR client_command[] = L"\"C:\\Program Files\\Steam Client\\Steam.exe\"";
+    WCHAR client_command[1024];
     if (cancelled()) return failed(ERROR_CANCELLED);
     if (!report("installer", 0)) return failed(ERROR_WRITE_FAULT);
     if (!start_program(setup_path, setup_command, NULL, &process)) return failed(GetLastError());
@@ -114,9 +129,12 @@ static DWORD bootstrap_run(void) {
     if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) return failed(ERROR_FILE_NOT_FOUND);
     error = register_libraries();
     if (error) return failed(error);
+    error = read_desktop_command(client_command, sizeof(client_command) / sizeof(*client_command));
+    if (error) return failed(error);
     if (cancelled()) return failed(ERROR_CANCELLED);
     if (!report("starting", 0)) return failed(ERROR_WRITE_FAULT);
-    if (!start_program(client_path, client_command, client_dir, &process)) return failed(GetLastError());
+    OutputDebugStringA("[steam-bootstrap] starting Steam through prepared desktop/services route");
+    if (!start_program(desktop_path, client_command, client_dir, &process)) return failed(GetLastError());
     CloseHandle(process.hThread);
     if (!report("waiting", 0)) {
         TerminateProcess(process.hProcess, ERROR_WRITE_FAULT); CloseHandle(process.hProcess);
