@@ -349,6 +349,21 @@ import Foundation
         launch.observeSetup(status("installer",blocked:4))
         precondition(launch.phase == .failed && launch.presented && launch.error?.contains("dialog") == true)
         print("PASS: setup/desktop/early client frames stay covered; only post-exit launch plus Steam's actual image completes; failures do not reveal")
+        launch.sessionEnded(nil); launch.returnToLibrary()
+        let browserSession = UUID()
+        launch.runtimeFailure("synthetic CEF address failure", session: browserSession)
+        precondition(launch.presented && launch.phase == .failed && launch.error == "synthetic CEF address failure")
+        precondition(!launch.canRetry)
+        launch.observe([frame()], at: fast.addingTimeInterval(1000))
+        precondition(launch.phase == .failed)
+        launch.runtimeFailure("old-session message", session: UUID())
+        precondition(launch.error == "synthetic CEF address failure")
+        launch.closeRequested()
+        launch.runtimeFailure("late failure", session: browserSession)
+        precondition(launch.closing && launch.error == "Closing the Steam session…")
+        launch.sessionEnded(nil)
+        precondition(!launch.presented)
+        print("PASS: a post-reveal CEF failure opens an error layer, ignores other sessions/late frames and preserves explicit close")
     }
 }
 '''

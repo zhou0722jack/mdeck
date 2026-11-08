@@ -6,21 +6,36 @@ import SwiftUI
 @MainActor final class AppEntryJIT: ObservableObject {
     struct Services {
         var enable: (@escaping (Result<Void, Error>) -> Void) -> Void
+        var preparePool: (@escaping (Result<Void, Error>) -> Void) -> Void = { $0(.success(())) }
         var ready: () -> Bool
-        var attached: () -> Bool
+        var canProbe: () -> Bool
         var probe: (@escaping (Int64) -> Void) -> Void
+        var report: () -> [RegionResult] = { [] }
         var release: (@escaping (Int64) -> Void) -> Void
         var schedule: (TimeInterval, @escaping () -> Void) -> (() -> Void)
     }
     static let shared = AppEntryJIT(services: .live)
     static let interval: TimeInterval = 5
-    static let probeBytes = 16 * 1024
+    static let probeBytes = 8
+    struct RegionResult: Identifiable, Equatable {
+        let name: String
+        let available: Bool
+        let tested: Bool
+        let result: Int64
+        var id: String { name }
+        var description: String {
+            if !available { return L("Region not allocated") }
+            if !tested { return L("Not tested yet") }
+            return result == 42 ? L("Probe passed") : LF("Probe returned %@", String(result))
+        }
+    }
     enum State: Equatable { case idle, requesting, waiting, monitoring, paused, failed, stopped }
     @Published private(set) var state = State.idle
     @Published private(set) var error: String?
     @Published private(set) var successfulProbes = 0
     @Published private(set) var lastProbeResult: Int64?
     @Published private(set) var lastProbeFinishedAt: Date?
+    @Published private(set) var regionResults: [RegionResult] = []
     @Published private(set) var cycleStartedAt = Date()
     static func cycleProgress(at date: Date, since start: Date) -> Double {
         max(0, date.timeIntervalSince(start)).truncatingRemainder(dividingBy: interval) / interval
@@ -47,6 +62,15 @@ import SwiftUI
 
     init(services: Services) { self.services = services }
 
+    /// Called by App.init, before the startup movie or the root view exists.
+    /// Scene visibility controls only the periodic probe, never attachment.
+    func requestAtAppEntry() {
+        guard !entered else { return }
+        entered = true
+        LogStore.shared.log("[jit-entry] requesting selected JIT method immediately at app entry")
+        enable { _ in }
+    }
+
     func sceneChanged(active: Bool, allowed: Bool) {
         foreground = active
         self.allowed = allowed
@@ -56,9 +80,7 @@ import SwiftUI
             return
         }
         if !entered {
-            entered = true
-            LogStore.shared.log("[jit-entry] requesting selected JIT method at app entry")
-            enable { _ in }
+            requestAtAppEntry()
         } else {
             if nativeFailed { state = .failed; return }
             if enableInFlight { state = .requesting; return }
@@ -71,7 +93,7 @@ import SwiftUI
     /// prevents a cached-component Steam tap from launching a second helper.
     func enable(completion: @escaping (Result<Void, Error>) -> Void = { _ in }) {
         guard !cleanupFailed else {
-            let message = error ?? L("The JIT probe could not release its temporary memory. Close and reopen Madeira before starting Steam.")
+            let message = error ?? L("The JIT probe could not restore the borrowed code. Close and reopen mdeck before starting Steam.")
             state = .failed
             completion(.failure(NSError(domain: "MadeiraEntryJIT", code: -4,
                                         userInfo: [NSLocalizedDescriptionKey: message])))
@@ -85,25 +107,42 @@ import SwiftUI
         if !stoppedForLaunch { state = .requesting }
         services.enable { [weak self] result in
             guard let self else { return }
-            self.enableInFlight = false
-            switch result {
-            case .success:
-                self.error = nil
-                if !self.stoppedForLaunch { self.state = self.foreground ? .monitoring : .paused }
-            case .failure(let failure) where failure is CancellationError:
-                self.error = nil
-                if !self.stoppedForLaunch { self.state = self.foreground ? .waiting : .paused }
-            case .failure(let failure):
-                self.error = failure.localizedDescription
-                if !self.stoppedForLaunch { self.state = .failed }
-            }
-            let callbacks = self.enableWaiters
-            self.enableWaiters.removeAll()
-            // Waiters may start Wine and permanently stop entry probes.
-            callbacks.forEach { $0(result) }
-            self.armTimer()
-            self.tick()
+            if case .success = result {
+                LogStore.shared.log("[jit-entry] debugger ready; preparing A/B/C now, before Steam")
+                self.services.preparePool { [weak self] in self?.finishEnabling($0) }
+            } else { self.finishEnabling(result) }
         }
+    }
+
+    private func finishEnabling(_ result: Result<Void, Error>) {
+        enableInFlight = false
+        switch result {
+        case .success:
+            error = nil
+            if !stoppedForLaunch { state = foreground ? .monitoring : .paused }
+        case .failure(let failure) where failure is CancellationError:
+            error = nil
+            if !stoppedForLaunch { state = foreground ? .waiting : .paused }
+        case .failure(let failure):
+            nativeFailed = true
+            error = failure.localizedDescription
+            if !stoppedForLaunch { state = .failed }
+        }
+        let callbacks = enableWaiters
+        enableWaiters.removeAll()
+        // Success means the production pool exists, not just CS_DEBUGGED.
+        callbacks.forEach { $0(result) }
+        if pendingLaunch != nil {
+            if case .success = result { releaseBeforeLaunch() }
+            else {
+                let failed = pendingFailure
+                pendingLaunch = nil; pendingFailure = nil
+                state = .failed
+                failed?(error ?? L("The JIT memory pool could not be prepared. Close and reopen mdeck, then enable JIT again."))
+            }
+        }
+        armTimer()
+        tick()
     }
 
     private func armTimer() {
@@ -115,7 +154,7 @@ import SwiftUI
 
     func tick() {
         guard entered, foreground, allowed, !stoppedForLaunch, !nativeFailed, !probing, !releasing, !enableInFlight else { return }
-        guard services.ready(), services.attached() else {
+        guard services.ready(), services.canProbe() else {
             state = .waiting
             return
         }
@@ -128,23 +167,30 @@ import SwiftUI
             self.probing = false
             self.lastProbeResult = result
             self.lastProbeFinishedAt = Date()
+            self.regionResults = self.services.report()
+            let details = self.regionResults.map { "\($0.name)=\($0.available ? ($0.tested ? String($0.result) : "untested") : "not allocated")" }.joined(separator: " ")
+            if !details.isEmpty { LogStore.shared.log("[jit-entry-probe] \(details); original bytes restored=\(result != -4)") }
             if result == -4 {
                 self.cleanupFailed = true
-                self.error = L("The JIT probe could not release its temporary memory. Close and reopen Madeira before starting Steam.")
-                LogStore.shared.log("[jit-entry] temporary mapping cleanup failed; launch handoff refused")
+                self.error = L("The JIT probe could not restore the borrowed code. Close and reopen mdeck before starting Steam.")
+                LogStore.shared.log("[jit-entry] original-byte restoration failed; launch handoff refused")
+            }
+            if result < 0 && result != -2 {
+                self.nativeFailed = true
+                if result != -4 { self.error = LF("The A/B/C JIT probe failed (%@). Check the log before retrying JIT.", String(result)) }
             }
             if !self.stoppedForLaunch {
-                if result == 42 {
-                    self.successfulProbes += 1
+                if result == 42 || result == 1 {
+                    if result == 42 { self.successfulProbes += 1 }
                     self.error = nil
                     self.state = self.foreground ? .monitoring : .paused
-                    LogStore.shared.log("[jit-entry] probe \(self.successfulProbes): result=42; 16KiB code wiped; scratch reused without debugger request")
+                    LogStore.shared.log("[jit-entry] A/B/C probe result=\(result); borrowed bytes restored; no allocation or debugger request")
                 } else if result == -2 {
                     self.state = self.foreground ? .waiting : .paused
-                    LogStore.shared.log("[jit-entry] probe skipped: debugger no longer attached")
+                    LogStore.shared.log("[jit-entry] probe skipped: JIT signing status unavailable")
                 } else {
                     self.nativeFailed = true
-                    if result != -4 { self.error = LF("The independent JIT probe failed (%@). Check the log before retrying JIT.", String(result)) }
+                    if result != -4 { self.error = LF("The A/B/C JIT probe failed (%@). Check the log before retrying JIT.", String(result)) }
                     self.state = .failed
                     self.stopTimer()
                     LogStore.shared.log("[jit-entry] probe failed result=\(result); periodic execution stopped")
@@ -154,8 +200,8 @@ import SwiftUI
         }
     }
 
-    /// Release the retained scratch pair after the last probe and before the
-    /// production pool. The native release performs no debugger transaction.
+    /// Restore borrowed bytes and seal the probe before Wine consumes the pool.
+    /// No production mapping is released and no new probe may start afterwards.
     /// No new probe can start after this handoff, including late JIT callbacks.
     func deferLaunchUntilProbeFinishes(_ launch: @escaping () -> Void, failed: @escaping (String) -> Void) -> Bool {
         stoppedForLaunch = true
@@ -163,7 +209,7 @@ import SwiftUI
         state = .stopped
         if cleanupFailed {
             state = .failed
-            failed(error ?? L("The JIT probe could not release its temporary memory. Close and reopen Madeira before starting Steam."))
+            failed(error ?? L("The JIT probe could not restore the borrowed code. Close and reopen mdeck before starting Steam."))
             return true
         }
         if releasedForLaunch { return false }
@@ -173,7 +219,7 @@ import SwiftUI
     }
 
     private func releaseBeforeLaunch() {
-        guard !probing, !releasing, pendingLaunch != nil else { return }
+        guard !enableInFlight, !probing, !releasing, pendingLaunch != nil else { return }
         releasing = true
         services.release { [weak self] result in
             guard let self else { return }
@@ -185,12 +231,15 @@ import SwiftUI
             if result != 0 || self.cleanupFailed {
                 self.cleanupFailed = true
                 self.state = .failed
-                self.error = L("The JIT probe could not release its temporary memory. Close and reopen Madeira before starting Steam.")
-                LogStore.shared.log("[jit-entry] scratch release failed result=\(result); launch handoff refused")
+                self.error = L("The JIT probe could not restore the borrowed code. Close and reopen mdeck before starting Steam.")
+                LogStore.shared.log("[jit-entry] probe handoff failed result=\(result); Wine startup refused")
                 failed?(self.error!)
+            } else if self.nativeFailed {
+                self.state = .failed
+                failed?(self.error ?? L("The JIT memory pool could not be prepared. Close and reopen mdeck, then enable JIT again."))
             } else {
                 self.releasedForLaunch = true
-                LogStore.shared.log("[jit-entry] scratch mappings released; continuing Wine startup")
+                LogStore.shared.log("[jit-entry] A/B/C original bytes restored and probing sealed; continuing Wine startup")
                 launch?()
             }
         }
@@ -202,12 +251,45 @@ import SwiftUI
 extension AppEntryJIT.Services {
     @MainActor static var live: Self {
         Self(enable: { JITCoordinator.shared.enable(completion: $0) },
+             preparePool: { completion in
+                 // Attachment is requested synchronously by App.init. Defer only
+                 // the settings snapshot to the next main-queue turn, after that
+                 // initializer has installed the persisted Steam/global defaults.
+                 DispatchQueue.main.async {
+                     let values = MadeiraConfig.all().merging(GameProfile(windowsPath: SteamClient.windowsExecutable).values) { _, game in game }
+                     let mb = StikJITHelper.requestedPoolMB(in: values)
+                     LogStore.shared.log("[jit-entry-pool] allocating A/B/C immediately after attachment; target A+B=\(mb)MB")
+                     DispatchQueue.global(qos: .userInitiated).async {
+                         let pool = StikJITHelper.allocatePool(poolSize: mb * 1024 * 1024, configuration: values)
+                         let binding = pool == nil ? -6 : StikJITHelper.bindEntryProbe()
+                         let reason: String?
+                         if pool == nil {
+                             reason = StikJITHelper.poolFailure ?? L("The JIT memory pool could not be prepared. Close and reopen mdeck, then enable JIT again.")
+                         } else if binding != 0 {
+                             reason = LF("The A/B/C JIT probe failed (%@). Check the log before retrying JIT.", String(binding))
+                         } else { reason = nil }
+                         DispatchQueue.main.async {
+                             if let reason {
+                                 completion(.failure(NSError(domain: "MadeiraEntryJIT", code: -6,
+                                                             userInfo: [NSLocalizedDescriptionKey: reason])))
+                             } else { completion(.success(())) }
+                         }
+                     }
+                 }
+             },
              ready: { StikJITHelper.ready && wine_process_is_running() == 0 && wineserver_is_running() == 0 },
-             attached: { isDebuggerAttached() },
+             canProbe: { StikJITHelper.poolTaken },
              probe: { completion in
                  DispatchQueue.global(qos: .utility).async {
                      let result = jit_entry_probe_once()
                      DispatchQueue.main.async { completion(result) }
+                 }
+             }, report: {
+                 var report = JITEntryProbeReport()
+                 jit_entry_probe_copy_report(&report)
+                 return zip(["A", "B", "C"], [report.a, report.b, report.c]).enumerated().map { index, item in
+                     AppEntryJIT.RegionResult(name: item.0, available: report.available_mask & (1 << index) != 0,
+                         tested: report.tested_mask & (1 << index) != 0, result: item.1)
                  }
              }, release: { completion in
                  DispatchQueue.global(qos: .utility).async {
@@ -232,7 +314,7 @@ struct AppEntryJITStatus: View {
         case .idle, .stopped: return nil
         case .requesting: return L("JIT requested at app entry. Waiting for the selected method…")
         case .waiting: return L("Waiting for JIT. Run Madeira's script in StikDebug if using external mode.")
-        case .monitoring: return L("JIT is ready. A separate 16 KiB probe runs every 5 seconds until Steam starts.")
+        case .monitoring: return L("JIT is ready. Existing A/B/C memory is probed every 5 seconds until Steam starts.")
         case .paused: return L("The entry JIT probe is paused while the app is inactive.")
         case .failed: return L("The entry JIT probe stopped. Check JIT settings and the log.")
         }
@@ -341,7 +423,10 @@ struct AppEntryJITIndicators: View {
                     } else {
                         Section {
                             LabeledContent(L("Probe interval"), value: L("5 seconds"))
-                            LabeledContent(L("Probe buffer"), value: "16 KiB")
+                            LabeledContent(L("Code per region"), value: L("8 bytes"))
+                            ForEach(model.regionResults) { region in
+                                LabeledContent(LF("JIT region %@", region.name), value: region.description)
+                            }
                             LabeledContent(L("Successful probes"), value: String(model.successfulProbes))
                             LabeledContent(L("Last probe result"), value: model.lastProbeResult.map(String.init) ?? L("Not tested yet"))
                             if let date = model.lastProbeFinishedAt {
@@ -350,7 +435,8 @@ struct AppEntryJITIndicators: View {
                         }
                         Section {
                             Text("The ring completes one cycle every 5 seconds. Green means the latest probe returned 42; red means untested, unavailable, failed or stale. Animation alone does not prove JIT is working.")
-                            Text("The probe reuses a separate 16 KiB buffer, wipes its code each round and releases its mappings before Steam starts.")
+                            Text("Each round borrows 8 bytes in existing A/B/C memory, executes code and restores the original bytes. No probe memory is allocated or reserved; probing stops before Steam starts.")
+                            Text("Unallocated regions remain untested. Green requires A, B and C to return 42.")
                         }
                     }
                     if let error = model.error { Section { Text(error).foregroundStyle(.red).textSelection(.enabled) } }
@@ -371,6 +457,7 @@ struct AppEntryJITIndicators: View {
         case .stopped: return L("Probe stopped before Steam startup")
         case .monitoring:
             guard let result = model.lastProbeResult else { return L("Not tested yet") }
+            if result == 1 { return L("Allocated regions passed; some regions are unavailable") }
             return result == 42 && model.probeIsHealthy(at: .now) ? L("Probe passed") : L("Probe failed or result expired")
         }
     }

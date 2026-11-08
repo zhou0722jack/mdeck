@@ -76,6 +76,10 @@
 #include "ddk/ntddk.h"
 #include "unix_private.h"
 #include "ios_wow.h"
+#ifdef WINE_IOS
+#include "steam_cef_guard.h"
+#include "steam_cef_pools.h"
+#endif
 #include "wine/condrv.h"
 #include "wine/server.h"
 #include "wine/debug.h"
@@ -2732,6 +2736,14 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
     }
 #endif
 #ifdef WINE_IOS
+    if (ios_steam_cef_spawn_blocked(getenv("MADEIRA_STEAM_RUN_ID"),
+            params->ImagePathName.Buffer, params->ImagePathName.Length / sizeof(WCHAR), machine,
+            ios_webhelper_crashpad_allowed(params->CommandLine.Buffer, params->CommandLine.Length / sizeof(WCHAR))))
+    {
+        dprintf(2, "[steam-cef] refused repeated Win64 browser startup after its address-space initialization failed\n");
+        status = STATUS_NO_MEMORY;
+        goto done;
+    }
     /* a 32-bit child is about to need a guest window (see ios_wow_session_arm) */
     if (machine == IMAGE_FILE_MACHINE_I386 && !(pe_info.image_flags & IMAGE_FLAGS_ComPlusNativeReady))
         ios_wow_session_arm();
@@ -3926,6 +3938,16 @@ NTSTATUS WINAPI NtTerminateProcess( HANDLE handle, LONG exit_code )
     BOOL self;
 
 #ifdef WINE_IOS
+    if (handle == NtCurrentProcess() || !handle)
+    {
+        TEB *teb = NtCurrentTeb();
+        RTL_USER_PROCESS_PARAMETERS *pp = teb && teb->Peb ? teb->Peb->ProcessParameters : NULL;
+        extern const SECTION_IMAGE_INFORMATION *ios_cur_image_info(void);
+        if (pp) ios_steam_cef_process_exit(getenv("MADEIRA_STEAM_RUN_ID"), (uintptr_t)teb->Peb,
+            pp->ImagePathName.Buffer, pp->ImagePathName.Length / sizeof(WCHAR), ios_cur_image_info()->Machine,
+            (unsigned int)exit_code);
+        if (teb) ios_steam_cef_pool_forget(getenv("MADEIRA_STEAM_RUN_ID"),(uintptr_t)teb->Peb);
+    }
     if ((unsigned int)exit_code == 0xE0000008u && handle == NtCurrentProcess())
         ios_term_oom_record( NtCurrentTeb() );
     {

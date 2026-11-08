@@ -74,6 +74,8 @@ compile_one() {
 # load_builtin_unixlib. GnuTLS-backed libs add ios_gnutls_shim.h to
 # route dlopen/dlsym at the static symtab (gnutls_symtab_ios.c).
 CRYPTO_DIR="$REPO_ROOT/build/crypto-unix"
+compile_one "$BUILD_DIR/steam_cef_guard.c" "steam_cef_guard"
+compile_one "$BUILD_DIR/steam_cef_pools.c" "steam_cef_pools"
 GNUTLS_PREFIX="$REPO_ROOT/toolchains/gnutls-ios"
 compile_unixlib() {
     local src=$1 name=$2 prefix=$3

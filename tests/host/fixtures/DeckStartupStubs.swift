@@ -50,6 +50,7 @@ struct DeckLocalCoverEntry { var coverFile: String? }
     var logURL: URL { URL(fileURLWithPath: "/tmp/mdeck-test-log.txt") }
 }
 enum TouchControlsHost { @MainActor static func attach() {} }
+enum SteamClient { static let windowsExecutable = "C:\\Program Files\\Steam Client\\Steam.exe" }
 enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
 @MainActor final class WineMonoModel {
     static let shared = WineMonoModel()
@@ -109,7 +110,16 @@ enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
     var method: JITMethod = .externalScript
     func enable(completion: @escaping (Result<Void, Error>) -> Void) { completion(.success(())) }
 }
-enum StikJITHelper { static var scriptURL: URL? { nil }; static var ready: Bool { true } }
+enum StikJITHelper {
+    static var scriptURL: URL? { nil }; static var ready: Bool { true }
+    static var poolTaken: Bool { true }
+    static var poolFailure: String? { nil }
+    static func requestedPoolMB(in values: [String: String]) -> Int { 896 }
+    static func allocatePool(poolSize: Int, configuration: [String: String]) -> Int? { 1 }
+    static func bindEntryProbe() -> Int64 { 0 }
+}
+enum MadeiraConfig { static func all() -> [String: String] { [:] } }
+struct GameProfile { let windowsPath: String; var values: [String: String] { [:] } }
 struct EntitlementStatus {
     var increasedMemory = true
     static func check() -> Self { Self() }

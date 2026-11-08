@@ -4,6 +4,9 @@ import SwiftUI
 @main
 struct MadeiraApp: App {
     init() {
+        // Request attachment immediately, alongside startup initialization and
+        // the movie. Do not wait for a scene, component downloads or a Play tap.
+        AppEntryJIT.shared.requestAtAppEntry()
         // Opt-in iPhone pointer experiments (PhonePointer.m): before any scene exists.
         madeira_phone_pointer_setup()
         // madeira-bcd: the Metal Performance HUD's performance insights (the

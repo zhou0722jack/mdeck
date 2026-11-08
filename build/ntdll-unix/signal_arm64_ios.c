@@ -10788,6 +10788,15 @@ __ASM_GLOBAL_FUNC( user_mode_abort_thread,
  */
 NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_ptr, ULONG *ret_len )
 {
+    TEB *teb = NtCurrentTeb();
+    /* PE child creation clears inherited callbacks. An early GUI request
+     * must fail before touching its dispatcher until its own USER32 attaches. */
+    if (!teb || !teb->Peb || !teb->Peb->KernelCallbackTable)
+    {
+        if (ret_ptr) *ret_ptr = NULL;
+        if (ret_len) *ret_len = 0;
+        return STATUS_DLL_INIT_FAILED;
+    }
     struct syscall_frame *frame = get_syscall_frame();
     ULONG64 sp = (frame->sp - offsetof( struct callback_stack_layout, args_data[len] ) - 16) & ~15;
     struct callback_stack_layout *stack = (struct callback_stack_layout *)sp;
@@ -10803,15 +10812,11 @@ NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_p
     stack->pc   = frame->pc;
     memcpy( stack->args_data, args, len );
     {
-        /* Thing B (#16) diag: which dispatcher does this thread's callback
-         * resolve to? A SESSION-peb thread resolving to a child's EC
-         * dispatcher is the wedge precursor (explorer executing the child
-         * EC ntdll's exit thunks → blr x16=1). Log the first few callbacks
-         * per boot for context plus EVERY session-thread/child-dispatcher
-         * cross-resolution (should never happen). */
-        extern PEB *peb;
+        /* The global `peb` drifts as pseudo-processes boot; it cannot
+         * identify a session thread. A private EC dispatcher is expected
+         * for an AMD64 child and is selected by the current TEB's PEB. */
         void *disp = IOS_PFUNC(KiUserCallbackDispatcher);
-        int cross = (disp != pKiUserCallbackDispatcher) && (NtCurrentTeb()->Peb == peb);
+        int cross = disp != pKiUserCallbackDispatcher;
         static volatile int kcb_logged = 0;
         if ((kcb_logged < 5 || cross) && kcb_logged < 40)
         {
@@ -10820,7 +10825,7 @@ NTSTATUS KeUserModeCallback( ULONG id, const void *args, ULONG len, void **ret_p
                     (unsigned)(ULONG_PTR)NtCurrentTeb()->ClientId.UniqueThread,
                     (void *)NtCurrentTeb(), (void *)NtCurrentTeb()->Peb, id,
                     disp, pKiUserCallbackDispatcher,
-                    cross ? "  <-- SESSION THREAD, CHILD DISPATCHER (BUG)" : "");
+                    cross ? " (process-specific dispatcher)" : "");
         }
         return call_user_mode_callback( sp, ret_ptr, ret_len, disp, NtCurrentTeb() );
     }

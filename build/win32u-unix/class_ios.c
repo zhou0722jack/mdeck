@@ -1431,7 +1431,7 @@ static void register_builtin( const struct builtin_class_descr *descr )
     WCHAR nameW[64];
     WNDCLASSEXW class = {
         .cbSize = sizeof(class),
-        .hInstance = user32_module,
+        .hInstance = ios_cur_user32_module(),
         .style = descr->style,
         .cbWndExtra = descr->extra,
         .hbrBackground = descr->brush,
@@ -1494,6 +1494,19 @@ void register_builtin_classes(void)
     DWORD pid = HandleToULong( NtCurrentTeb()->ClientId.UniqueProcess );
     void *peb = NtCurrentTeb()->Peb;
     unsigned int i;
+
+    /* A dependency's DllMain (dinput8, for example) may register a class
+     * before this process's USER32 has attached. LoadImageW below calls
+     * back into USER32: never borrow the launcher's callback/proc tables.
+     * Do not record this process as done; its next GUI call after USER32's
+     * NtUserInitializeClientPfnArrays must register the builtins normally. */
+    if (!NtCurrentTeb()->Peb->KernelCallbackTable || !ios_client_procs_for_peb())
+    {
+        static unsigned int deferred;
+        if (__atomic_fetch_add( &deferred, 1, __ATOMIC_RELAXED ) < 16)
+            dprintf(2, "[builtin-classes] deferred until this process's USER32 callbacks are ready\n");
+        return;
+    }
 
     pthread_mutex_lock( &builtin_lock );
     for (i = 0; i < done_count; i++)

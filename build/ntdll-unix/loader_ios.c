@@ -4059,6 +4059,10 @@ DECLSPEC_EXPORT void wine_ios_child_main( int argc, char *argv[], int child_fd_s
     child_peb->LdrData = NULL;            /* child builds fresh module list */
     child_peb->ImageBaseAddress = NULL;    /* set by init_startup_info */
     child_peb->ProcessParameters = NULL;   /* set by init_startup_info */
+    /* A new process must install its own USER32/WoW64 callbacks. Inheriting
+     * the initial process's table sends an AMD64 child of a WoW64 installer
+     * into wow64win before this child has any 32-bit CPU context. */
+    child_peb->KernelCallbackTable = NULL;
     /* Clear locks/bitmaps that reference the parent's CRITICAL_SECTIONs.
      * The child's LdrInitializeThunk (running against its own ntdll .data
      * copy) creates fresh ones. Without clearing, child and parent would

@@ -139,7 +139,7 @@ assert '(bad.advised & 2) ? 0' in poisoned, 'a salvaged run found poisoned again
 assert 'ios_pool_freelist[ios_pool_free_count].advised = bad.advised | 2;' in poisoned
 print('PASS: bump, warmer, tail carve, BIG cap, pool init and the POISONED branch use the helpers')
 
-assert 'MadeiraConfig.gameValue("pool-split") ?? MadeiraConfig.get("pool-split")' in swift
+assert 'configurationValue("pool-split")' in swift
 assert 'if poolSize >= requestedPoolSize {' in swift, 'no split when the pool got its full size'
 assert 'poolHole = bOff > aSize ? (off: aSize, end: bOff) : nil' in swift
 assert swift.count('splitHoles(aSize: poolSize, bOff: holeEnd, rxBase: rxAddrV)') == 2
@@ -159,7 +159,7 @@ def swift_func(signature):
 
 take = swift_func('private static func takeSecondRegion(')
 mid_take = take[take.index('poolMid = nil'):take.index('// PROT_NONE placeholders over the free gaps between the regions.')]
-assert 'MadeiraConfig.gameValue("pool-mid") ?? MadeiraConfig.get("pool-mid")' in mid_take
+assert 'configurationValue("pool-mid")' in mid_take
 assert '["1", "on", "true", "yes"].contains(midText)' in mid_take, 'pool-mid is opt-in (GTA never gets it)'
 assert 'let midBudget = want - Int(size)' in mid_take and 'midBudget >= 64 << 20' in mid_take, \
     'M only from what A and B left of the requested size'
@@ -196,7 +196,8 @@ print('PASS: pool-mid takes the largest free run between the regions as region M
 
 # pool-pair (GTA build 364, 21:00 / 23:47): two runs above the window instead of the 464 MB hole below it
 pair = swift[swift.index('let pairOff = '):swift.index('if pairA == nil && largest < vm_address_t(poolSize) {')]
-assert 'MadeiraConfig.gameValue("pool-pair")' in pair and 'MadeiraConfig.get("pool-pair")' in pair
+assert 'configurationValue("pool-pair")' in pair
+assert 'return MadeiraConfig.gameValue(key) ?? MadeiraConfig.get(key)' in swift
 assert '.contains(splitValue) && windowHeld && !pairOff' in pair, 'pool-pair needs pool-split and the held window'
 assert 's.base + s.size <= exeWinBase' in pair, 'only when the single-region pool would land below the window'
 assert 'aFit + bFit > best' in pair, 'only when the pair beats the single run'

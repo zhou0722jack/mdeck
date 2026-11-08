@@ -14,7 +14,9 @@ import tempfile
 root = Path(__file__).resolve().parents[2]
 source = (root / "build/ntdll-unix/virtual_ios.c").read_text()
 start = source.index("            if (!ios_steered)\n")
-end = source.index("        if (is_jumbo) ios_jumbo_census", start)
+# Stop before the independent Steam error-observer tail. The production
+# allocation/retry branch under test remains unchanged.
+end = source.index("steam_cef_allocated:", start)
 tail = source[start:end]
 
 prefix = r'''

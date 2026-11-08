@@ -927,6 +927,94 @@ void madeira_early_pool_intruder(unsigned long *base, unsigned long *size, unsig
     if (tag)  *tag  = madeira_early_intruder_tag;
 }
 
+/* Entry A/B/C holds. No allocation uses OVERWRITE, and no page is touched.
+ * The slot is cleared only after our mapping has been successfully released. */
+struct madeira_early_region { vm_address_t base; vm_size_t size; };
+static struct madeira_early_region madeira_early_regions[2];
+static pthread_mutex_t madeira_early_regions_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void madeira_early_region_placeholder(int region, unsigned long *base, unsigned long *size)
+{
+    if (base) *base = 0;
+    if (size) *size = 0;
+    if (region < MADEIRA_EARLY_REGION_B || region > MADEIRA_EARLY_REGION_C) return;
+    pthread_mutex_lock(&madeira_early_regions_lock);
+    struct madeira_early_region held = madeira_early_regions[region - 1];
+    if (base) *base = held.base;
+    if (size) *size = held.size;
+    pthread_mutex_unlock(&madeira_early_regions_lock);
+}
+
+int madeira_early_region_release(int region, unsigned long *base, unsigned long *size)
+{
+    if (base) *base = 0;
+    if (size) *size = 0;
+    if (region < MADEIRA_EARLY_REGION_B || region > MADEIRA_EARLY_REGION_C) return KERN_INVALID_ARGUMENT;
+    pthread_mutex_lock(&madeira_early_regions_lock);
+    struct madeira_early_region *held = &madeira_early_regions[region - 1];
+    kern_return_t result = KERN_SUCCESS;
+    if (held->size) {
+        if (base) *base = held->base;
+        if (size) *size = held->size;
+        result = vm_deallocate(mach_task_self(), held->base, held->size);
+        if (result == KERN_SUCCESS) memset(held, 0, sizeof(*held));
+    }
+    pthread_mutex_unlock(&madeira_early_regions_lock);
+    return result;
+}
+
+/* Find the largest eligible run, reserving a loading margin at its bottom.
+ * As in takeLowRegion, a separate lower run can provide that margin. */
+static struct madeira_early_region madeira_early_region_pick(vm_address_t lo, vm_address_t hi,
+                                                             vm_size_t margin)
+{
+    struct madeira_early_region best = {0, 0};
+    vm_address_t cursor = lo;
+    int lower_holds_margin = 0;
+    while (cursor < hi) {
+        vm_address_t at = cursor;
+        vm_size_t length = 0;
+        vm_region_basic_info_data_64_t info;
+        mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+        mach_port_t object = MACH_PORT_NULL;
+        kern_return_t kr = vm_region_64(mach_task_self(), &at, &length, VM_REGION_BASIC_INFO_64,
+                                        (vm_region_info_t)&info, &count, &object);
+        if (object != MACH_PORT_NULL) mach_port_deallocate(mach_task_self(), object);
+        if (kr != KERN_SUCCESS) break; /* A failed census never invents a free run. */
+        vm_address_t end = at < hi ? at : hi;
+        vm_address_t start = (cursor + JIT_PAGE_SIZE - 1) & ~(vm_address_t)(JIT_PAGE_SIZE - 1);
+        end &= ~(vm_address_t)(JIT_PAGE_SIZE - 1);
+        if (end > start && end - start >= (64ul << 20)) {
+            vm_size_t gap = end - start;
+            vm_size_t keep = lower_holds_margin ? 0 : margin;
+            vm_size_t size = gap > keep ? (gap - keep) & ~(vm_size_t)(JIT_PAGE_SIZE - 1) : 0;
+            if (size >= (64ul << 20) && size > best.size) {
+                best.base = end - size;
+                best.size = size;
+            }
+            if (gap >= margin) lower_holds_margin = 1;
+        }
+        if (at >= hi || !length || at + length < at || at + length <= cursor) break;
+        cursor = at + length;
+    }
+    return best;
+}
+
+static void madeira_early_region_claim(int region, vm_address_t lo, vm_address_t hi, vm_size_t margin)
+{
+    struct madeira_early_region candidate = madeira_early_region_pick(lo, hi, margin);
+    if (!candidate.size) return;
+    vm_address_t at = candidate.base;
+    if (vm_allocate(mach_task_self(), &at, candidate.size, VM_FLAGS_FIXED) != KERN_SUCCESS) return;
+    if (at != candidate.base ||
+        vm_protect(mach_task_self(), at, candidate.size, FALSE, VM_PROT_NONE) != KERN_SUCCESS) {
+        vm_deallocate(mach_task_self(), at, candidate.size);
+        return;
+    }
+    madeira_early_regions[region - 1] = candidate;
+}
+/* End entry A/B/C hold helpers. */
+
 __attribute__((constructor(101), used)) static void madeira_early_va_claim(void)
 {
     const vm_address_t win = 0x140000000ul, winsz = 0x8000000ul;       /* 128MB, see ml1037 */
@@ -967,6 +1055,19 @@ __attribute__((constructor(101), used)) static void madeira_early_va_claim(void)
             madeira_early_intruder_tag = info.user_tag; madeira_early_intruder_prot = (unsigned)info.protection;
         }
     }
+    /* Protect B while UIKit/Metal start, keeping the main stack intact. */
+    if (madeira_early_pool_size) {
+        madeira_early_region_claim(MADEIRA_EARLY_REGION_B,
+            madeira_early_pool_base + madeira_early_pool_size, 0x180000000ul, 0);
+    }
+    /* Per-game overrides are not known before the app opens. Protect a
+     * provisional C using the global margin; Swift rechecks the actual launch
+     * settings and releases this hold when C is disabled or cannot be used. */
+    long long margin_mb = madeira_cfg_int("pool-low-margin", 128);
+    if (margin_mb < 0) margin_mb = 0;
+    if (margin_mb > 4096) margin_mb = 4096;
+    madeira_early_region_claim(MADEIRA_EARLY_REGION_C,
+        0x119000000ul, win, (vm_size_t)margin_mb << 20);
 }
 
 /* ml1249: METAL API VALIDATION ON DEMAND.

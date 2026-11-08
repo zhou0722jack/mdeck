@@ -273,6 +273,7 @@ struct DeckSteamSetupStatus {
     private var waitingVisibleSince: Date?
     private var firstFrameSeenAt: Date?
     var revealID: UUID? { phase == .revealing ? requestID : nil }
+    var canRetry: Bool { launch != nil && session == nil }
     // Keep the waiting stage visible after both its view and a real target
     // frame arrive. The main JIT pool can suspend the whole process, so elapsed
     // time since session startup cannot establish that this stage was painted.
@@ -424,6 +425,27 @@ struct DeckSteamSetupStatus {
         phase = .failed
     }
 
+    /// A browser can fail after Steam's updater supplied the first frame and
+    /// the startup overlay faded. Reopen an error layer for this running
+    /// session; this path neither launches Wine nor claims a rendered frame.
+    func runtimeFailure(_ message: String, session id: UUID) {
+        if presented {
+            guard session == id, !closing else { return }
+            fail(message)
+            return
+        }
+        requestID = UUID()
+        session = id
+        target = SteamClient.windowsExecutable
+        installer = false
+        closing = false
+        slow = false
+        setupMessage = nil; setupFraction = nil
+        error = message
+        phase = .failed
+        presented = true
+    }
+
     func sessionEnded(_ message: String?) {
         guard presented, session != nil else { return }
         if closing { finish(); return }
@@ -499,6 +521,9 @@ struct DeckStartupRoot<Content: View>: View {
         }
         .onChange(of: startup.phase) { _, phase in
             AppEntryJIT.shared.sceneChanged(active: entryScenePhase == .active, allowed: phase == .ready)
+            // The immediate entry request uses the saved/default method. A
+            // first-run choice may cancel that route and select another one.
+            if phase == .ready { AppEntryJIT.shared.enable() }
         }
     }
 }
@@ -626,7 +651,7 @@ struct DeckSteamPreparationView: View {
             }
             if launch.phase == .failed {
                 HStack(spacing: 14) {
-                    if library.current == nil && !preparation.running {
+                    if launch.canRetry && library.current == nil && !preparation.running {
                         Button(preparation.complete ? L("Try again") : L("Retry downloads")) {
                             clearLaunchAlerts(); launch.retry()
                         }.buttonStyle(DeckButtonStyle(primary: true))

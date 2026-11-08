@@ -228,8 +228,8 @@ int main(void)
 # These contracts cover the callers, placement bounds and byte-length protocol.
 page_option = swift[swift.index('let pageFit = '):swift.index('var pairA:')]
 assert '.contains(splitValue)' in page_option
-assert 'MadeiraConfig.gameValue("pool-page-fit")' in page_option
-assert 'MadeiraConfig.get("pool-page-fit")' in page_option
+assert 'configurationValue("pool-page-fit")' in page_option
+assert 'return MadeiraConfig.gameValue(key) ?? MadeiraConfig.get(key)' in swift
 assert swift.count('private static func takeSecondRegion(') == 1
 assert swift.count('want: requestedPoolSize - poolSize, pageFit: pageFit,') == 2
 take = function(swift, 'private static func takeSecondRegion(', '\n    }')

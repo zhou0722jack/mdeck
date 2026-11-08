@@ -39,6 +39,8 @@ jobs:
           python3 tests/host/check-deck-startup.py
           python3 tests/host/check-steam-loading-artwork.py
           python3 tests/host/check-app-entry-jit.py
+          python3 tests/host/check-abc-jit-probe.py
+          python3 tests/host/check-entry-jit-pool.py
           python3 tests/host/check-wine-diagnostic-startup.py
           python3 tests/host/check-crt-callsite-diagnostics.py
           python3 tests/host/check-opengl-wow64-teb.py
@@ -47,6 +49,9 @@ jobs:
           python3 tests/host/check-win-timer-queue.py
           python3 tests/host/check-steam-client-routing.py
           python3 tests/host/check-steam-client64.py
+          python3 tests/host/check-user-callback-ownership.py
+          python3 tests/host/check-steam-cef-guard.py
+          python3 tests/host/check-steam-cef-pools.py
           python3 tests/host/check-steam-signin-sync.py
           python3 tests/host/check-steam-catalog.py
           python3 tests/host/check-steam-library-preview.py

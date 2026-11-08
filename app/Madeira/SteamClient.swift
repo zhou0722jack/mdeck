@@ -164,6 +164,7 @@ enum SteamClient {
     static func configureSession(_ entry: LibraryEntry) {
         unsetenv("MADEIRA_CHILD_ARGS_FIRST")
         guard owns(entry) || entry.desktop == true else { return }
+        SteamClientRuntimeFailure.beginRun()
         // The initial controller remains a direct process, but this session
         // will present Steam through explorer's desktop after setup completes.
         setenv("MADEIRA_DESKTOP", "1", 1)

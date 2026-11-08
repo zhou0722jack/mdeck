@@ -138,8 +138,9 @@ print('PASS: x18 restore, guest-fault claim, native resume, store/CAS/STP/backpa
       'foreign-thread test, sub-floor gate and SIGBUS paths all treat region C as pool code')
 
 # --- the app ------------------------------------------------------------------
-assert 'MadeiraConfig.gameValue("pool-low") ?? MadeiraConfig.get("pool-low")' in swift
-assert 'MadeiraConfig.gameValue("pool-low-margin") ?? MadeiraConfig.get("pool-low-margin")' in swift
+assert 'configurationValue("pool-low")' in swift
+assert 'configurationValue("pool-low-margin")' in swift
+assert 'return MadeiraConfig.gameValue(key) ?? MadeiraConfig.get(key)' in swift
 take = function(swift, 'private static func takeLowRegion(')
 assert 'Int(marginText) ?? 128' in take, 'the margin defaults to 128 MB'
 assert 'guard poolRx >= exeWindow.base + exeWindow.size else {' in take, 'C only with the pool above the window'

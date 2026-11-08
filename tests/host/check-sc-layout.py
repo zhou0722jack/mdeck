@@ -161,7 +161,8 @@ swift_code = re.sub(r'//[^\n]*', '', swift)
 assert swift_code.count('rwAliasHint()') == 5 and swift_code.count('!rwAliasKeep(') == 3, \
     'hold before pool setup, then protect the ordinary, low and split RW aliases'
 assert '_ = rwAliasHint()' in swift_code
-assert 'MadeiraConfig.gameValue("env.MADEIRA_SC_PA_POOLS") ?? MadeiraConfig.get("env.MADEIRA_SC_PA_POOLS")' in swift
+assert 'configurationValue("env.MADEIRA_SC_PA_POOLS")' in swift
+assert 'return MadeiraConfig.gameValue(key) ?? MadeiraConfig.get(key)' in swift
 assert 'guard v.hasPrefix("2") else { return 0x7000000000 }' in swift
 print('PASS: the app moves the RW alias and holds 0x7000000000 only for env.MADEIRA_SC_PA_POOLS = 2')
 

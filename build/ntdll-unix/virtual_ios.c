@@ -120,6 +120,10 @@ extern kern_return_t vm_protect(mach_port_t target_task, vm_address_t address,
 #include "wine/rbtree.h"
 #include "unix_private.h"
 #include "ios_wow.h"
+#ifdef WINE_IOS
+#include "steam_cef_guard.h"
+#include "steam_cef_pools.h"
+#endif
 #include "ios_mixed.h"   /* ios_cur_ntdll_funcs (MADEIRA_NTDLL_DATA_SYNC_RANGE) */
 #include "wine/debug.h"
 
@@ -27085,6 +27089,15 @@ static NTSTATUS virtual_map_image( HANDLE mapping, void **addr_ptr, SIZE_T *size
     status = map_image_into_view( view, nt_name, unix_fd, image_info, machine, shared_fd, needs_close );
     if (status == STATUS_SUCCESS)
     {
+#ifdef WINE_IOS
+        TEB *teb=NtCurrentTeb();
+        RTL_USER_PROCESS_PARAMETERS *pp=teb&&teb->Peb?teb->Peb->ProcessParameters:NULL;
+        extern const SECTION_IMAGE_INFORMATION *ios_cur_image_info(void);
+        if (pp && !offset && !strcasecmp(ios_pe_module_name(view->base,view->size),"chrome_elf.dll"))
+            ios_steam_cef_pool_image(getenv("MADEIRA_STEAM_RUN_ID"),(uintptr_t)teb->Peb,
+            pp->ImagePathName.Buffer,pp->ImagePathName.Length/sizeof(WCHAR),ios_cur_image_info()->Machine,
+            view->base,view->size);
+#endif
         if (offset)
         {
             free_pages( view, view->base, offset );
@@ -32614,6 +32627,26 @@ static void ios_oversize_commit_failed( const void *addr, SIZE_T size, NTSTATUS 
 }
 #endif
 
+#ifdef WINE_IOS
+/* This calls Wine's fixed-address backend: it must own the whole requested
+ * range. It neither overwrites existing views nor grants a shortened pool. */
+static unsigned int ios_steam_cef_reserve_full(void *context, uint64_t base, uint64_t wanted)
+{
+    void *placed=(void *)(uintptr_t)base;
+    SIZE_T size=(SIZE_T)wanted;
+    NTSTATUS status;
+    (void)context;
+    status=allocate_virtual_memory(&placed,&size,MEM_RESERVE,PAGE_NOACCESS,0,0,0,0);
+    if (!status && ((uintptr_t)placed!=base || size!=wanted))
+    {
+        SIZE_T released=0;
+        NtFreeVirtualMemory(NtCurrentProcess(),&placed,&released,MEM_RELEASE);
+        return STATUS_NO_MEMORY;
+    }
+    return (unsigned int)status;
+}
+#endif
+
 NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR zero_bits,
                                          SIZE_T *size_ptr, ULONG type, ULONG protect )
 {
@@ -32755,6 +32788,22 @@ NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR z
         void  *jumbo_hint = *ret;
         size_t jumbo_size = *size_ptr;
         int    is_jumbo   = (jumbo_size >= 0x40000000 && (type & MEM_RESERVE));
+        if (is_jumbo && !zero_bits && *ret && type==MEM_RESERVE && protect==PAGE_NOACCESS)
+        {
+            TEB *teb=NtCurrentTeb();
+            RTL_USER_PROCESS_PARAMETERS *pp=teb&&teb->Peb?teb->Peb->ProcessParameters:NULL;
+            extern const SECTION_IMAGE_INFORMATION *ios_cur_image_info(void);
+            uint64_t placed;
+            if (pp && ios_steam_cef_pool_reserve(getenv("MADEIRA_STEAM_RUN_ID"),(uintptr_t)teb->Peb,
+                pp->ImagePathName.Buffer,pp->ImagePathName.Length/sizeof(WCHAR),ios_cur_image_info()->Machine,
+                (uintptr_t)*ret,*size_ptr,type,protect,(uintptr_t)host_addr_space_limit,
+                ios_steam_cef_reserve_full,NULL,&placed))
+            {
+                *ret=(void *)(uintptr_t)placed;
+                st=STATUS_SUCCESS;
+                goto steam_cef_allocated;
+            }
+        }
         /* ml125 [bigres]: settle the furniture attribution WITHOUT an FEX build.
          * The [window] probe found ~30 runs of ~511MB and I inferred FEXCore's
          * per-thread LookupCache (TotalCacheSize = VirtualMemSize/4096*8 +
@@ -33566,7 +33615,17 @@ NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR z
             }
         }
 
+steam_cef_allocated:
         if (st && (type & MEM_COMMIT) && jumbo_hint) ios_oversize_commit_failed( jumbo_hint, jumbo_size, st );   /* ml1298 */
+        if (is_jumbo)
+        {
+            TEB *teb = NtCurrentTeb();
+            RTL_USER_PROCESS_PARAMETERS *pp = teb && teb->Peb ? teb->Peb->ProcessParameters : NULL;
+            extern const SECTION_IMAGE_INFORMATION *ios_cur_image_info(void);
+            if (pp) ios_steam_cef_allocation_result(getenv("MADEIRA_STEAM_RUN_ID"), (uintptr_t)teb->Peb,
+                pp->ImagePathName.Buffer, pp->ImagePathName.Length / sizeof(WCHAR), ios_cur_image_info()->Machine,
+                jumbo_size, type, (unsigned int)st);
+        }
         if (is_jumbo) ios_jumbo_census( jumbo_hint, jumbo_size, st ? NULL : *ret, (unsigned)st );
         /* madeira-bcd: remember a helper's large reservation for ios_sc_reap_dead */
         if (is_jumbo && !st && ios_sc_cef_enabled() && ios_sc_current_is_helper()) ios_sc_grant_note( *ret, *size_ptr );
@@ -35103,6 +35162,15 @@ retry_code_carve_reuse:
             st = STATUS_SUCCESS;
         if (st && (type & MEM_COMMIT) && jumbo_hint) ios_oversize_commit_failed( jumbo_hint, jumbo_size, st );
 
+        if (is_jumbo)
+        {
+            TEB *teb = NtCurrentTeb();
+            RTL_USER_PROCESS_PARAMETERS *pp = teb && teb->Peb ? teb->Peb->ProcessParameters : NULL;
+            extern const SECTION_IMAGE_INFORMATION *ios_cur_image_info(void);
+            if (pp) ios_steam_cef_allocation_result(getenv("MADEIRA_STEAM_RUN_ID"), (uintptr_t)teb->Peb,
+                pp->ImagePathName.Buffer, pp->ImagePathName.Length / sizeof(WCHAR), ios_cur_image_info()->Machine,
+                jumbo_size, type, (unsigned int)st);
+        }
         if (is_jumbo) ios_jumbo_census( jumbo_hint, jumbo_size, st ? NULL : *ret, (unsigned)st );
         if (!st && *size_ptr >= 0x10000000 && *size_ptr < 0x40000000 && (type & MEM_RESERVE))
             ios_bigres_note( *ret, *size_ptr );

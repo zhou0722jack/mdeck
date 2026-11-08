@@ -39,6 +39,7 @@ struct LibraryEntry: Codable {
 }
 final class LibraryModel {
     static let shared=LibraryModel();var entries:[LibraryEntry]=[]
+    var current:UUID?;var activeEntry:LibraryEntry?;var error:String?
     static var drive=URL(fileURLWithPath:"/tmp")
     static func inspect(_ url:URL)throws->(bits:Int,other:Int){(try SteamClient64Bootstrap.is64BitExecutable(at:url) ? 64 : 32,0)}
 }
@@ -46,6 +47,10 @@ enum LibraryError:Error{case message(String)}
 // RUNTIME_UNPACKER
 enum ExternalDrives { static var steamLibraries:[String]{[]} }
 final class LogStore{static let shared=LogStore();func log(_ value:String){}}
+@MainActor final class DeckSteamLaunchPreparation {
+    static let shared=DeckSteamLaunchPreparation()
+    func runtimeFailure(_ message:String,session:UUID){}
+}
 func wine_process_is_running()->Int32{0}
 func wineserver_is_running()->Int32{0}
 struct winios_steam_setup_progress{var step:Int32=4;var percent:Int32=63;var blocked:Int32=0}
@@ -59,7 +64,7 @@ func winios_steam_setup_reset(){}
         defer{try? fm.removeItem(at:root)}
         LibraryModel.drive=root
         let defaults=UserDefaults.standard
-        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey]
+        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClientRuntimeFailure.runKey]
         let savedDefaults=keys.map{defaults.object(forKey:$0)}
         keys.forEach{defaults.removeObject(forKey:$0)}
         defer{for (key,value) in zip(keys,savedDefaults){defaults.set(value,forKey:key)}}
@@ -274,8 +279,9 @@ final class SteamTuningFixture {
     (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer+'\n'+session+'\n'+launch)
     (folder/'Check.swift').write_text(fixture)
     bootstrap=ROOT/'app/Madeira/SteamClient64Bootstrap.swift'
-    subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(bootstrap),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
+    runtime_failure=ROOT/'app/Madeira/SteamClientRuntimeFailure.swift'
+    subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(bootstrap),str(runtime_failure),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
     subprocess.run([str(folder/'check')],check=True)
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
-    subprocess.run(['xcrun','swiftc','-typecheck','-sdk',sdk,'-target','arm64-apple-ios18.0',str(folder/'Client.swift'),str(bootstrap),str(folder/'Check.swift')],check=True)
+    subprocess.run(['xcrun','swiftc','-typecheck','-sdk',sdk,'-target','arm64-apple-ios18.0',str(folder/'Client.swift'),str(bootstrap),str(runtime_failure),str(folder/'Check.swift')],check=True)
 print('No Steam/installer execution or IPA build.')

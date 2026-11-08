@@ -3214,12 +3214,12 @@ struct ContentView: View {
             }
 
             winios_phase("pool-alloc-begin")
-            logStore.log("Allocating \(poolSizeMB)MB JIT pool (BRK will suspend process)...")
+            logStore.log("Preparing \(poolSizeMB)MB JIT pool (reuse the entry pool when available)...")
             let t0 = CFAbsoluteTimeGetCurrent()
             let pool = StikJITHelper.allocatePool(poolSize: poolSizeMB * 1024 * 1024)
             let elapsed = CFAbsoluteTimeGetCurrent() - t0
             winios_phase("pool-ready")
-            logStore.log("BRK suspension lasted \(String(format: "%.2f", elapsed))s")
+            logStore.log("JIT pool preparation/reuse took \(String(format: "%.2f", elapsed))s")
 
             // Arena carver self-test. Documents/madeira-arena-test.txt holds
             // "churn:N", "ramp:N" or "random:N". Deliberately a SEPARATE file

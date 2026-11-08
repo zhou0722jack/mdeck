@@ -122,9 +122,103 @@ enum StikJITHelper {
         L("JIT is enabled, but the debugger is not attached and Madeira's JIT memory is not ready. Run madeira-jit.js for this app in StikDebug, or use an in-app JIT method, then try again.")
     }
 
-    /// This app run's pool exists. The debugger detaches right after the pool is
-    /// made, by design, so from then on "no debugger attached" is the normal state.
+    /// This app run's pool exists. It remains usable if the debugger leaves
+    /// Home; the normal explicit detach happens before Wine starts.
     private(set) static var poolTaken = false
+
+    // The entry request and a fast Play tap can reach the allocator together.
+    // One owner prepares the pool; every later caller reuses the same mappings.
+    private static let allocationLock = NSRecursiveLock()
+    private static var preparedPool: (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)?
+    private static var preparedRequest = 0
+    private static var preparedValues: [String: String] = [:]
+    private static var preparedWindowMB = 128
+    private static var terminalPoolFailure: String?
+    private static var allocationValues: [String: String]?
+    private static var probeBBase: vm_address_t?
+    private static var entryProbeBound = false
+
+    private static func configurationValue(_ key: String) -> String? {
+        if let allocationValues { return allocationValues[key] }
+        return MadeiraConfig.gameValue(key) ?? MadeiraConfig.get(key)
+    }
+
+    static func requestedPoolMB(in values: [String: String]) -> Int {
+        guard let raw = values["pool"], let mb = Int(raw.trimmingCharacters(in: .whitespacesAndNewlines)),
+              (256...1152).contains(mb) else { return 896 }
+        return mb
+    }
+
+    /// Describe existing pool memory; these windows allocate/reserve nothing.
+    /// Only eight bytes per window are borrowed before the Wine handoff.
+    static func bindEntryProbe() -> Int64 {
+        allocationLock.lock()
+        defer { allocationLock.unlock() }
+        guard let pool = preparedPool else { return -6 }
+        if entryProbeBound { return 0 } // Never race an active round just to bind the same immutable pool again.
+        let page = 0x4000
+        let firstRun = poolHole?.off ?? pool.size
+        guard firstRun >= page * 2 else { return -6 }
+        let rx = UInt(bitPattern: pool.rx), rw = UInt(bitPattern: pool.rw)
+        var regions = [JITEntryProbeRegion](repeating: JITEntryProbeRegion(), count: 3)
+        // Leave the pool's existing first-page trampoline untouched.
+        regions[0] = JITEntryProbeRegion(rx: rx + UInt(page), rw: rw + UInt(page), size: page)
+        if let bBase = probeBBase, bBase >= rx, bBase <= rx + UInt(pool.size - page) {
+            let offset = UInt(pool.size - page)
+            regions[1] = JITEntryProbeRegion(rx: rx + offset, rw: rw + offset, size: page)
+        }
+        if let low = poolLow, low.size >= page {
+            let lowRX = UInt(low.rx + low.size - page)
+            let lowRW = rw - (rx - UInt(low.rx)) + UInt(low.size - page)
+            regions[2] = JITEntryProbeRegion(rx: lowRX, rw: lowRW, size: page)
+        }
+        let result = regions.withUnsafeBufferPointer { jit_entry_probe_bind($0.baseAddress, $0.count) }
+        if result == 0 {
+            entryProbeBound = true
+            for (index, region) in regions.enumerated() {
+                let label = ["A", "B", "C"][index]
+                if region.size == 0 { LogStore.shared.log("[jit-entry-probe] \(label): not allocated") }
+                else {
+                    LogStore.shared.log(String(format: "[jit-entry-probe] %@ borrows existing RX=0x%lx RW=0x%lx, 8 bytes; no reservation",
+                        label, region.rx + UInt(region.size) - 8, region.rw + UInt(region.size) - 8))
+                }
+            }
+        }
+        return result
+    }
+
+    private static func releaseEarlyRegion(_ region: Int32, reason: String) -> Bool {
+        var base: UInt = 0, size: UInt = 0
+        let result = madeira_early_region_release(region, &base, &size)
+        if size != 0 {
+            LogStore.shared.log(String(format: "[jit-entry-hold] %@ 0x%lx+%luKB release=%d (%@)",
+                region == MADEIRA_EARLY_REGION_B ? "B" : "C", base, size >> 10, result, reason),
+                level: result == KERN_SUCCESS ? .info : .error)
+        }
+        return result == KERN_SUCCESS
+    }
+
+    private static func logEarlyRegions() {
+        for (region, label) in [(Int32(MADEIRA_EARLY_REGION_B), "B"), (Int32(MADEIRA_EARLY_REGION_C), "C")] {
+            var base: UInt = 0, size: UInt = 0
+            madeira_early_region_placeholder(region, &base, &size)
+            guard size != 0 else {
+                LogStore.shared.log("[jit-entry-hold] \(label) not reserved at image load: no suitable free range")
+                continue
+            }
+            LogStore.shared.log(String(format: "[jit-entry-hold] %@ protected at image load: 0x%lx+%luKB (address reservation)",
+                                       label, base, size >> 10))
+        }
+    }
+
+    private static func logPreparedPool(_ pool: (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)) {
+        let holes = (poolHole.map { $0.end - $0.off } ?? 0) + (poolHole2.map { $0.end - $0.off } ?? 0)
+        let usable = max(0, pool.size - holes)
+        let low = poolLow?.size ?? 0
+        LogStore.shared.log("[jit-entry-pool] ready: requested A+B=\(preparedRequest >> 20)MB; "
+            + "A+B span=\(pool.size >> 10)KB usable=\(usable >> 10)KB; C=\(low >> 10)KB; "
+            + "total usable=\((usable + low) >> 10)KB", level: .success)
+    }
 
     /// madeira-bcd split pool (`pool-split = 1`): the pool offsets [off, end) that
     /// lie between its two debugger regions (the main thread's stack and our
@@ -163,7 +257,7 @@ enum StikJITHelper {
     /// usual 0x7000000000.
     private static func rwAliasHint() -> vm_address_t {
         if scHoldTaken { return scLayout2Alias }
-        let v = (MadeiraConfig.gameValue("env.MADEIRA_SC_PA_POOLS") ?? MadeiraConfig.get("env.MADEIRA_SC_PA_POOLS") ?? "")
+        let v = (configurationValue("env.MADEIRA_SC_PA_POOLS") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard v.hasPrefix("2") else { return 0x7000000000 }
         var a = scLayout2Hold
@@ -289,9 +383,62 @@ enum StikJITHelper {
 
     /// Allocate a JIT memory pool via BRK #0xf00d WITHOUT detaching the debugger.
     /// The debugger stays attached so Wine can use BRK to prepare PE code pages.
-    static func allocatePool(poolSize requestedPoolSize: Int = 128 * 1024 * 1024) -> (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)? {
+    static func allocatePool(poolSize requestedPoolSize: Int = 128 * 1024 * 1024,
+                             configuration: [String: String]? = nil) -> (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)? {
+        allocationLock.lock()
+        defer { allocationLock.unlock() }
+        allocationValues = configuration
+        defer { allocationValues = nil }
+        if let pool = preparedPool {
+            poolFailure = nil
+            let text = (configurationValue("exe-window-mb") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let wanted = text.isEmpty ? exeWindowAutoMB : (Int(text) ?? 0)
+            exeWindowAutoMB = 0
+            let skipsWindow = ProcessInfo.processInfo.environment["MADEIRA_NO_EXE_WINDOW"].map { $0 != "0" } ?? false
+            guard (skipsWindow ? 0 : min(max(wanted, 128), 960)) <= preparedWindowMB else {
+                poolFailure = LF("The JIT pool was prepared at app entry with a %@ MB executable window. Set the required exe-window-mb in Steam runtime config and reopen mdeck before starting this program.", String(preparedWindowMB))
+                return nil
+            }
+            let keys = ["pool-split", "pool-page-fit", "pool-pair", "pool-mid", "pool-low", "pool-low-margin", "env.MADEIRA_SC_PA_POOLS"]
+            let changed = keys.filter { (configurationValue($0) ?? "") != (preparedValues[$0] ?? "") }
+            if requestedPoolSize != preparedRequest || !changed.isEmpty {
+                LogStore.shared.log("[jit-entry-pool] using the existing process pool; pool/layout changes apply after reopening mdeck (\(changed.joined(separator: ", ")))")
+            }
+            LogStore.shared.log("[jit-entry-pool] reusing A/B/C prepared at app entry; no debugger allocation")
+            return pool
+        }
+        if let terminalPoolFailure {
+            poolFailure = terminalPoolFailure
+            return nil
+        }
+        guard isDebuggerAttached() else {
+            poolFailure = noDebuggerMessage
+            return nil
+        }
+        let keys = ["pool-split", "pool-page-fit", "pool-pair", "pool-mid", "pool-low", "pool-low-margin", "env.MADEIRA_SC_PA_POOLS"]
+        let values = Dictionary(uniqueKeysWithValues: keys.compactMap { key in configurationValue(key).map { (key, $0) } })
+        let pool = allocateFreshPool(poolSize: requestedPoolSize)
+        if let pool {
+            preparedPool = pool
+            preparedRequest = requestedPoolSize
+            preparedValues = values
+            logPreparedPool(pool)
+        } else {
+            terminalPoolFailure = poolFailure ?? L("The JIT memory pool could not be prepared. Close and reopen mdeck, then enable JIT again.")
+            poolFailure = terminalPoolFailure
+        }
+        return pool
+    }
+
+    private static func allocateFreshPool(poolSize requestedPoolSize: Int) -> (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)? {
         var poolSize = requestedPoolSize      // ml1036: may shrink to fit, see the hole census below
         poolFailure = nil
+        probeBBase = nil
+        logEarlyRegions()
+        defer {
+            _ = releaseEarlyRegion(MADEIRA_EARLY_REGION_B, reason: "pool preparation ended")
+            _ = releaseEarlyRegion(MADEIRA_EARLY_REGION_C, reason: "pool preparation ended")
+        }
         LogStore.shared.log("Allocating \(poolSize / 1024 / 1024)MB JIT pool via debugger...")
         // madeira-bcd Social Club layout 2: take the [0x7000000000, +4 GB) hold
         // FIRST. Taken at alias time it lost the race on build 348 (GTA log
@@ -437,7 +584,7 @@ enum StikJITHelper {
         let exeWinWantedMB: Int = {
             let autoMB = exeWindowAutoMB
             exeWindowAutoMB = 0
-            let text = (MadeiraConfig.gameValue("exe-window-mb") ?? MadeiraConfig.get("exe-window-mb") ?? "")
+            let text = (configurationValue("exe-window-mb") ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let mb = text.isEmpty ? autoMB : (Int(text) ?? 0)
             guard mb > 128 else { return 0 }
@@ -521,13 +668,12 @@ enum StikJITHelper {
         // next allocation of this size is the debugger's.
         var plugs: [(vm_address_t, vm_size_t)] = []
         // madeira-bcd split pool switch (see SPLIT POOL below); the census reads it too.
-        let splitValue = (MadeiraConfig.gameValue("pool-split") ?? MadeiraConfig.get("pool-split") ?? "")
+        let splitValue = (configurationValue("pool-split") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         // Opt-in: keep page-sized remainders in A/B instead of discarding up to
         // 16MB from each free run. The requested A+B budget and region C stay unchanged.
         let pageFit = ["1", "on", "true", "yes"].contains(splitValue)
-            && ["1", "on", "true", "yes"].contains((MadeiraConfig.gameValue("pool-page-fit")
-                ?? MadeiraConfig.get("pool-page-fit") ?? "")
+            && ["1", "on", "true", "yes"].contains((configurationValue("pool-page-fit") ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
         if pageFit {
             LogStore.shared.log("[pool-split] page-fit=1: A/B requests fit 16KB pages within the requested \(requestedPoolSize >> 20)MB budget; C retains pool-low-margin")
@@ -563,6 +709,14 @@ enum StikJITHelper {
                                            madeira_early_intruder_tag, madeira_early_intruder_prot), level: .error)
             }
         }
+        // Release B only at the pool census. C remains protected through A/B's
+        // debugger requests, unless this launch has disabled it.
+        _ = releaseEarlyRegion(MADEIRA_EARLY_REGION_B, reason: "A/B allocation begins")
+        let wantsLow = ["1", "on", "true", "yes"].contains((configurationValue("pool-low") ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+        if !wantsLow || earlyPoolBase == 0 || !windowHeld {
+            _ = releaseEarlyRegion(MADEIRA_EARLY_REGION_C, reason: "C disabled or no early pool above the window")
+        }
         // madeira-bcd exe-window-mb (see above): the placeholder above the window was
         // just released, so the run directly above it is free; take the extension
         // before the census and the pool request see it. Fails visibly, never fatally:
@@ -588,6 +742,7 @@ enum StikJITHelper {
         } else if exeWinWantedMB > 0 {
             LogStore.shared.log("[exe-window] exe-window-mb = \(exeWinWantedMB) ignored: the executable window is not held", level: .error)
         }
+        preparedWindowMB = windowHeld ? Int(exeWinSize >> 20) : 0
         do {
             var holes: [(base: vm_address_t, size: vm_address_t)] = []
             var addr = vm_address_t(goodLow)
@@ -628,8 +783,8 @@ enum StikJITHelper {
             // 288MB pool at 0x16d848000+295MB while 0x15e000000+240MB sat unused below
             // it, and FEX rebuilt its code cache 2,329 times in five minutes. Region A
             // may now be any run of 128MB or more: B continues the same pool span.
-            let pairOff = ["0", "off", "false", "no"].contains((MadeiraConfig.gameValue("pool-pair")
-                ?? MadeiraConfig.get("pool-pair") ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            let pairOff = ["0", "off", "false", "no"].contains((configurationValue("pool-pair") ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
             let ceiling: vm_address_t = 0x180000000           // SHARED_REGION_BASE_ARM64, as takeSecondRegion
             let singleFit = largest < vm_address_t(poolSize)
                 ? poolRunSize(available: largest, wanted: vm_address_t(poolSize), pageFit: pageFit)
@@ -987,7 +1142,7 @@ enum StikJITHelper {
         // copies. `pool-low-margin` MB (128 by default) of the run stay free for the
         // children's relocatable main exes. Costs C's size in footprint, like region B.
         poolLow = nil
-        let lowValue = (MadeiraConfig.gameValue("pool-low") ?? MadeiraConfig.get("pool-low") ?? "")
+        let lowValue = (configurationValue("pool-low") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         var lowRegion: (base: vm_address_t, size: vm_address_t)? = nil
         if ["1", "on", "true", "yes"].contains(lowValue) {
@@ -1125,6 +1280,7 @@ enum StikJITHelper {
                     return (rx: rxPtr, rw: rwPtr, size: span)
                 }
                 let dkr = vm_deallocate(mach_task_self_, second.base, vm_size_t(second.size))
+                probeBBase = nil
                 LogStore.shared.log("[pool-split] no RW alias for the split pool — second region released (kr=\(dkr)); "
                     + "the pool stays \(poolSize >> 20)MB in one region", level: .error)
                 if let mid = poolMid {   // pool-mid: the third region goes with it
@@ -1405,11 +1561,12 @@ enum StikJITHelper {
                 + "released (kr=%d); the pool stays one region", Int(b), Int(best.base), dkr), level: .error)
             return nil
         }
+        probeBBase = b
         // madeira-bcd pool-mid: the largest free run between the regions, when the
         // budget leaves 64MB for it, as a third debugger region M (see poolHole2).
         // Placed first-fit like B, every lower run that could take it plugged.
         poolMid = nil
-        let midText = (MadeiraConfig.gameValue("pool-mid") ?? MadeiraConfig.get("pool-mid") ?? "")
+        let midText = (configurationValue("pool-mid") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let midBudget = want - Int(size)
         if ["1", "on", "true", "yes"].contains(midText) && midBudget >= 64 << 20,
@@ -1480,10 +1637,14 @@ enum StikJITHelper {
                                       pageFit: Bool)
         -> (base: vm_address_t, size: vm_address_t)? {
         let lowFloor: vm_address_t = 0x119000000            // the pool's own low bound (mode A, see above)
-        let marginText = (MadeiraConfig.gameValue("pool-low-margin") ?? MadeiraConfig.get("pool-low-margin") ?? "")
+        let marginText = (configurationValue("pool-low-margin") ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         let marginMB = max(0, min(Int(marginText) ?? 128, 4096))
         let margin = vm_address_t(marginMB) << 20
+        guard releaseEarlyRegion(MADEIRA_EARLY_REGION_C, reason: "C allocation begins; recheck loading margin") else {
+            LogStore.shared.log("[pool-low] early C hold could not be released; keeping it protected and using the main pool", level: .error)
+            return nil
+        }
         guard poolRx >= exeWindow.base + exeWindow.size else {
             LogStore.shared.log(String(format: "[pool-low] the pool starts at 0x%lx, not above the executable window -- "
                 + "no region C (the free run below the window is the pool's own)", Int(poolRx)), level: .error)
@@ -1661,8 +1822,14 @@ enum StikJITHelper {
         return rw
     }
 
-    /// Detach the debugger. Call this after Wine is done loading PE DLLs.
+    /// The prepared pool survives debugger departure. Never send a detach BRK
+    /// when an entry helper has already left while the user stayed on Home.
     static func detachDebugger() {
+        guard isDebuggerAttached() else {
+            setenv("MADEIRA_DETACHED", "1", 1)
+            LogStore.shared.log("[jit-entry-pool] debugger already detached; keeping the prepared pool without a detach request")
+            return
+        }
         LogStore.shared.log("Detaching debugger...")
         jit26_detach()
         // task #34: signal in-process waiters (share-probe poller). CS_DEBUGGED

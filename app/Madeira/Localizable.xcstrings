@@ -1,6 +1,10 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The 64-bit Steam web interface could not reserve its required continuous address space. Automatic restarts have stopped for this session. Close the session and share the log.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "64 位 Steam 网页组件无法预留所需的连续地址空间，本次会话已停止自动重启。请关闭会话并分享日志。" } } }
+    },
     "Downloading and verifying 64-bit Steam…": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在下载并校验 64 位 Steam…" } } }
@@ -56382,6 +56386,66 @@
       "localizations": {
         "zh-Hans": {
           "stringUnit": { "state": "translated", "value": "已在进入 App 时请求 JIT，正在等待所选方式就绪…" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Region not allocated": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "该区域未分配" } } }
+    },
+    "Probe returned %@": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "探测返回 %@" } } }
+    },
+    "JIT region %@": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "JIT %@ 区" } } }
+    },
+    "Code per region": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "每区探测代码" } } }
+    },
+    "8 bytes": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "8 字节" } } }
+    },
+    "JIT is ready. Existing A/B/C memory is probed every 5 seconds until Steam starts.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "JIT 已就绪。启动 Steam 前，每 5 秒直接探测现有 A、B、C 区。" } } }
+    },
+    "Each round borrows 8 bytes in existing A/B/C memory, executes code and restores the original bytes. No probe memory is allocated or reserved; probing stops before Steam starts.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "每轮在现有 A、B、C 区各借用 8 字节执行代码，随后恢复原始内容。不新增或预留探测内存；启动 Steam 前停止探测。" } } }
+    },
+    "Unallocated regions remain untested. Green requires A, B and C to return 42.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "未分配的区域不参与执行。只有 A、B、C 三区均返回 42，活性状态才显示绿色。" } } }
+    },
+    "Allocated regions passed; some regions are unavailable": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已分配区域探测通过，部分区域尚未分配" } } }
+    },
+    "The A/B/C JIT probe failed (%@). Check the log before retrying JIT.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "A、B、C 区 JIT 探测失败（%@），请查看日志后再重试 JIT。" } } }
+    },
+    "The JIT probe could not restore the borrowed code. Close and reopen mdeck before starting Steam.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "JIT 探测未能恢复借用位置的原始内容，请彻底关闭并重新打开 mdeck 后再启动 Steam。" } } }
+    },
+    "The JIT memory pool could not be prepared. Close and reopen mdeck, then enable JIT again.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 内存池准备失败，请彻底关闭并重新打开 mdeck，然后重新启用 JIT。" }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "The JIT pool was prepared at app entry with a %@ MB executable window. Set the required exe-window-mb in Steam runtime config and reopen mdeck before starting this program.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": { "state": "translated", "value": "JIT 池已在进入 App 时按 %@ MB 的程序加载窗口准备。请在 Steam 运行配置中设置所需的 exe-window-mb，彻底关闭并重新打开 mdeck 后再启动此程序。" }
         }
       },
       "extractionState": "manual"

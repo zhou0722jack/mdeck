@@ -64,3 +64,11 @@ IPA 按用户要求另行构建，构建结果与真机验收分别记录。
 配置与游戏保留、已是 64 位时不覆盖、路径与取消检查；可用 `--official-archive` 验证真实种子包。
 安装控制器覆盖 64 位源/副本检查、备份、复制和启用失败；加载状态机覆盖下载失败重试和取消后的旧任务不得启动。
 这些组件检查和官方包静态检查不等于 iPad 上 Win64 Steam/CEF 更新、登录和渲染已验收，仍需新 IPA 真机验证。
+
+Build 26 首装后的实际回调故障与后续源码修正见
+[64 位 Steam 首帧前回调故障](steam64-first-frame-callback.md)。
+随后普通启动的 CEF 对齐预留故障、完整范围放置修正与重复启动限制见
+[Steam Win64 CEF 地址布局](steam64-cef-address-layout.md)。
+
+App 初始化立即请求 JIT、早期保护 A/B/C、附加后建立并在 Steam 启动时复用的流程见
+[App 入口 JIT 与 A/B/C 内存池](entry-jit-pool.md)。
