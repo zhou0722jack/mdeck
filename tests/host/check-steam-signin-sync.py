@@ -240,20 +240,29 @@ func SecItemCopyMatching(_ query:CFDictionary,_ result:UnsafeMutablePointer<AnyO
     # This is a synthetic JWT with no cryptographic signature or real account.
     def encoded(value):
         return base64.urlsafe_b64encode(json.dumps(value, separators=(',', ':')).encode()).decode().rstrip('=')
-    jwt = encoded({'alg': 'RS256', 'typ': 'JWT'}) + '.' + encoded({'iss': 'steam', 'sub': str(0x0110000100000001), 'aud': ['client', 'derive'], 'exp': 4102444800}) + '.synthetic_signature'
-    bridge_fixture = (ROOT / 'tests/host/fixtures/SteamSignInBridgeCheck.c').read_text()
-    for marker, production in [('PRODUCTION_DEFINITIONS', definitions), ('PRODUCTION_NATIVE', bridge),
-                                ('PRODUCTION_HANDLERS', handlers), ('PRODUCTION_WOW64', wow),
-                                ('SYNTHETIC_TOKEN', 'static const char jwt[] = ' + json.dumps(jwt) + ';')]:
-        assert bridge_fixture.count('// ' + marker) == 1
-        bridge_fixture = bridge_fixture.replace('// ' + marker, production)
+    body = encoded({'iss': 'steam', 'sub': str(0x0110000100000001), 'aud': ['client', 'derive'], 'exp': 4102444800})
+    header_variants = [
+        ('compact JSON', '{"alg":"RS256","typ":"JWT"}'),
+        ('space after opening brace', '{ "typ": "JWT", "alg": "RS256" }'),
+        ('leading whitespace', '  {"typ":"JWT","alg":"RS256"}'),
+        ('leading newline and reordered fields', '\n{\n"kid":"fixture", "alg":"RS256", "typ":"JWT"\n}'),
+    ]
     c = temp / 'bridge.c'
-    c.write_text(bridge_fixture)
     cbinary = temp / 'bridge'
-    subprocess.run(['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
-                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', str(c), '-o', str(cbinary)], check=True)
-    subprocess.run([str(cbinary)], check=True)
-    print('PASS: raw/wrapped UTF-8 and UTF-16 JWT slices, process scope, size/grammar limits, four-candidate cap, metadata and WOW64 pointer conversion (ASan/UBSan)')
+    for label, header in header_variants:
+        jwt = base64.urlsafe_b64encode(header.encode()).decode().rstrip('=') + '.' + body + '.synthetic_signature'
+        bridge_fixture = (ROOT / 'tests/host/fixtures/SteamSignInBridgeCheck.c').read_text()
+        for marker, production in [('PRODUCTION_DEFINITIONS', definitions), ('PRODUCTION_NATIVE', bridge),
+                                    ('PRODUCTION_HANDLERS', handlers), ('PRODUCTION_WOW64', wow),
+                                    ('SYNTHETIC_TOKEN', 'static const char jwt[] = ' + json.dumps(jwt) + ';')]:
+            assert bridge_fixture.count('// ' + marker) == 1
+            bridge_fixture = bridge_fixture.replace('// ' + marker, production)
+        c.write_text(bridge_fixture)
+        print('Checking production Windows bridge with synthetic header format: ' + label, flush=True)
+        subprocess.run(['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                        '-fsanitize=address,undefined', '-fno-omit-frame-pointer', str(c), '-o', str(cbinary)], check=True)
+        subprocess.run([str(cbinary)], check=True)
+    print('PASS: JWT header whitespace/order variants, raw/wrapped UTF-8 and UTF-16 slices, process scope, bounds, grammar, candidate cap and metadata/WOW64 conversion (ASan/UBSan)')
     event_names = re.findall(r'^    (MDECK_STEAM_[A-Z_]+)(?: = 1)?,?$', block(private, 'enum mdeck_steam_auth_event'), re.M)
     assert len(event_names) == 12
     assert [int(value) for value in re.findall(r'^    case \w+ = (\d+)$', block(sync, 'enum SteamClientAuthProbe'), re.M)] == list(range(1, len(event_names) + 1))

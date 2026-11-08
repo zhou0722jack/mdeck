@@ -46,6 +46,7 @@ jobs:
           python3 tests/host/check-steam-preparation.py
           python3 tests/host/check-win-timer-queue.py
           python3 tests/host/check-steam-client-routing.py
+          python3 tests/host/check-steam-client64.py
           python3 tests/host/check-steam-signin-sync.py
           python3 tests/host/check-steam-catalog.py
           python3 tests/host/check-steam-library-preview.py

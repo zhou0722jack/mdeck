@@ -34,11 +34,12 @@ for i in range(32):
 else: raise AssertionError('Unterminated import table')
 assert names == {b'kernel32.dll'}, names
 for path in ['C:\\Madeira\\Installers\\SteamSetup.exe', 'C:\\Program Files\\Steam Client\\Steam.exe',
+             'C:\\Madeira\\Installers\\Steam64.exe', 'C:\\Program Files\\Steam Client\\Steam64.tmp.exe',
              'C:\\Madeira\\Installers\\SteamLibraries.config.vdf', 'C:\\Madeira\\Installers\\SteamLibraries.steamapps.vdf']:
     assert path.encode('utf-16-le') in data
 assert 'C:\\windows\\system32\\explorer.exe'.encode('utf-16-le') in data
 assert 'C:\\Madeira\\Installers\\SteamDesktop.command'.encode('utf-16-le') in data
-for function in [b'LoadLibraryW', b'GetProcAddress', b'Wow64DisableWow64FsRedirection', b'Wow64RevertWow64FsRedirection']:
+for function in [b'LoadLibraryW', b'GetProcAddress', b'GetBinaryTypeW', b'Wow64DisableWow64FsRedirection', b'Wow64RevertWow64FsRedirection']:
     assert function in data, function
 assert 'user32.dll'.encode('utf-16-le') in data
 assert b'controller GUI station and desktop retained' in data

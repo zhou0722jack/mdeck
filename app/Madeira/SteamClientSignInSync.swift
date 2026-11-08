@@ -18,11 +18,20 @@ enum SteamClientSignInRules {
     static func claims(_ token: String) -> [String: Any]? {
         guard token.utf8.count <= 8192 else { return nil }
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
-        guard parts.count == 3, parts.allSatisfy({ !$0.isEmpty }), parts[1].count <= 8192 else { return nil }
-        var body = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        body += String(repeating: "=", count: (4 - body.count % 4) % 4)
-        guard let data = Data(base64Encoded: body) else { return nil }
-        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard parts.count == 3, parts.allSatisfy({ part in
+            !part.isEmpty && part.utf8.allSatisfy { byte in
+                (65...90).contains(byte) || (97...122).contains(byte) || (48...57).contains(byte) || byte == 45 || byte == 95
+            }
+        }) else { return nil }
+        func object(_ part: Substring) -> [String: Any]? {
+            var base64 = String(part).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+            base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+            guard let data = Data(base64Encoded: base64) else { return nil }
+            return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        }
+        guard let header = object(parts[0]), let algorithm = header["alg"] as? String,
+              !algorithm.isEmpty, algorithm.caseInsensitiveCompare("none") != .orderedSame else { return nil }
+        return object(parts[1])
     }
     static func clientRefreshIdentity(_ token: String, now: Date) -> (UInt64, Date)? {
         guard let json = claims(token), json["iss"] as? String == "steam",
@@ -37,7 +46,8 @@ enum SteamClientSignInRules {
     static func candidate(_ data: Data, now: Date = Date()) -> Candidate? {
         guard !data.isEmpty, data.count <= 16386 else { return nil }
         var bytes = Data(data)
-        let utf16 = bytes.count >= 6 && bytes[0] == 101 && bytes[1] == 0 && bytes[2] == 121 && bytes[3] == 0
+        // Base64url is ASCII. Do not assume any particular encoded JSON prefix.
+        let utf16 = bytes.count >= 4 && bytes[0] != 0 && bytes[1] == 0 && bytes[2] != 0 && bytes[3] == 0
         if utf16 {
             if bytes.count >= 2 && bytes.suffix(2) == Data([0, 0]) { bytes.removeLast(2) }
         } else if bytes.last == 0 { bytes.removeLast() }

@@ -48,11 +48,10 @@ enum SteamClient { static let clientDirectory = "Program Files/Steam Client" }
         guard writable else { return false }; Self.values = values; return true
     }
 }
-func token(subject: UInt64 = 0x0110000100000001, audiences: [String] = ["client", "derive"], expires: Date = Date().addingTimeInterval(86400), label: String = "fixture") -> String {
+func token(subject: UInt64 = 0x0110000100000001, audiences: [String] = ["client", "derive"], expires: Date = Date().addingTimeInterval(86400), label: String = "fixture", header: String = #"{"alg":"RS256","typ":"JWT"}"#) -> String {
     func encode(_ data: Data) -> String { data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
-    let header = Data(#"{"alg":"RS256","typ":"JWT"}"#.utf8)
     let body = try! JSONSerialization.data(withJSONObject: ["iss":"steam", "sub":String(subject), "aud":audiences, "exp":expires.timeIntervalSince1970, "jti":label], options: .sortedKeys)
-    return encode(header) + "." + encode(body) + ".synthetic_signature"
+    return encode(Data(header.utf8)) + "." + encode(body) + ".synthetic_signature"
 }
 @MainActor enum CMVerifierFixture {
     enum Mode { case success, denied, offline, hold, wrongAccount }
@@ -138,7 +137,7 @@ extension SteamClientSignInSync {
             LibraryModel.shared.current = nil
             let next = SteamClientSignInSync(); sync = next; next.beginSteamSession(); return next
         }
-        let refresh = token(), data = Data(refresh.utf8)
+        let refresh = token(header: #"{ "typ": "JWT", "alg": "RS256" }"#), data = Data(refresh.utf8)
         let candidate = SteamClientSignInRules.candidate(data)!
         precondition(SteamClientSignInRules.candidate(Data("password fixture".utf8)) == nil)
         precondition(SteamClientSignInRules.candidate(Data(token(audiences: ["web", "derive"]).utf8)) == nil)
@@ -149,6 +148,15 @@ extension SteamClientSignInSync {
         precondition(SteamClientSignInRules.candidate(Data(repeating: 65, count: 20000)) == nil)
         precondition(SteamClientSignInRules.candidate(Data((refresh + "\0").utf8))?.refresh == refresh)
         precondition(SteamClientSignInRules.candidate((refresh + "\0").data(using: .utf16LittleEndian)!)?.refresh == refresh)
+        for header in [#"{"alg":"RS256","typ":"JWT"}"#, #"{ "typ": "JWT", "alg": "RS256" }"#,
+                       "  {\"typ\":\"JWT\",\"alg\":\"RS256\"}", "\n{\n\"kid\":\"fixture\", \"alg\":\"RS256\", \"typ\":\"JWT\"\n}"] {
+            let value = token(header: header)
+            precondition(SteamClientSignInRules.candidate(Data(value.utf8))?.refresh == value)
+            precondition(SteamClientSignInRules.candidate(value.data(using: .utf16LittleEndian)!)?.refresh == value)
+        }
+        for header in ["not a JSON header", "[]", #"{"typ":"JWT"}"#, #"{"alg":"none","typ":"JWT"}"#, #"{"alg":42}"#] {
+            precondition(SteamClientSignInRules.candidate(Data(token(header: header).utf8)) == nil)
+        }
         precondition(!SteamClientSignInRules.acceptsCMSubject(candidate.subject + 1, candidate: candidate))
         precondition(!SteamClientSignInRules.acceptsCMSubject(0, candidate: candidate))
         print("PASS: only bounded, unexpired refresh JWT candidates survive; UTF-8/UTF-16 and response account binding checked")

@@ -22,6 +22,7 @@ startup=(ROOT/'app/Madeira/DeckStartup.swift').read_text()
 status=startup[startup.index('struct DeckSteamSetupStatus {'):startup.index('/// One continuous loading layer:')]
 fixture=r'''
 import Foundation
+import zlib
 func L(_ value:String)->String{value}
 func LF(_ value:String,_ args:CVarArg...)->String{String(format:value,arguments:args)}
 struct LibraryEntry: Codable {
@@ -39,10 +40,10 @@ struct LibraryEntry: Codable {
 final class LibraryModel {
     static let shared=LibraryModel();var entries:[LibraryEntry]=[]
     static var drive=URL(fileURLWithPath:"/tmp")
-    static func inspect(_ url:URL)throws->(bits:Int,other:Int){(32,0)}
+    static func inspect(_ url:URL)throws->(bits:Int,other:Int){(try SteamClient64Bootstrap.is64BitExecutable(at:url) ? 64 : 32,0)}
 }
 enum LibraryError:Error{case message(String)}
-enum SteamRuntimeFiles { static let relativeRoot="Program Files (x86)/Steam" }
+// RUNTIME_UNPACKER
 enum ExternalDrives { static var steamLibraries:[String]{[]} }
 final class LogStore{static let shared=LogStore();func log(_ value:String){}}
 func wine_process_is_running()->Int32{0}
@@ -184,6 +185,9 @@ func winios_steam_setup_reset(){}
         let english=SteamClient.entry(install:false).arguments
         precondition(english.contains("-language \"english\"") && !english.contains("-language schinese"))
         defaults.removeObject(forKey:SteamClient.argumentsKey)
+        defaults.set("-console -cef-force-32bit",forKey:SteamClient.argumentsKey)
+        precondition(!SteamClient.entry(install:false).arguments.contains("-cef-force-32bit"))
+        defaults.removeObject(forKey:SteamClient.argumentsKey)
         LibraryModel.shared.entries=[]
         try SteamClient.registerLibraries()
         let vdf=try Data(contentsOf:folder.appendingPathComponent("config/libraryfolders.vdf"))
@@ -230,6 +234,12 @@ func winios_steam_setup_reset(){}
 '''
 with tempfile.TemporaryDirectory(prefix='mdeck-client-route-') as tmp:
     folder=Path(tmp)
+    runtime=(ROOT/'app/Madeira/SteamRuntime.swift').read_text()
+    runtime_fixture='enum SteamRuntimeFiles { static let relativeRoot="Program Files (x86)/Steam"\n'
+    for signature in ['enum Failure:', 'static func validPath(', 'static func destination(', 'static func unpack(']:
+        runtime_fixture+=block(runtime,signature)+'\n'
+    runtime_fixture+='}\n'
+    fixture=fixture.replace('// RUNTIME_UNPACKER',runtime_fixture)
     storage=(ROOT/'app/Madeira/ExternalStorage.swift').read_text()
     storage=storage[storage.index('enum ExternalStorageError:'):storage.index('enum ExternalInstallTarget')]
     # Real path/VDF implementation, not a fake success for registration.
@@ -263,8 +273,9 @@ final class SteamTuningFixture {
 '''+block(library,'    private func encodedSessionProfile(')+'\n'+block(library,'    func saveCurrentProfile()')+'\n}\n'
     (folder/'Client.swift').write_text(client+'\n'+status+'\n'+storage+'\n'+keyvalues+'\n'+discovery+'\n'+writer+'\n'+session+'\n'+launch)
     (folder/'Check.swift').write_text(fixture)
-    subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
+    bootstrap=ROOT/'app/Madeira/SteamClient64Bootstrap.swift'
+    subprocess.run(['xcrun','swiftc','-parse-as-library',str(folder/'Client.swift'),str(bootstrap),str(folder/'Check.swift'),'-o',str(folder/'check')],check=True)
     subprocess.run([str(folder/'check')],check=True)
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
-    subprocess.run(['xcrun','swiftc','-typecheck','-sdk',sdk,'-target','arm64-apple-ios18.0',str(folder/'Client.swift'),str(folder/'Check.swift')],check=True)
+    subprocess.run(['xcrun','swiftc','-typecheck','-sdk',sdk,'-target','arm64-apple-ios18.0',str(folder/'Client.swift'),str(bootstrap),str(folder/'Check.swift')],check=True)
 print('No Steam/installer execution or IPA build.')

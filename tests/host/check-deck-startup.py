@@ -192,6 +192,41 @@ import Foundation
         precondition(launch.presented && launch.phase == .failed && !launch.permitsLaunch(requests[0]))
         print("PASS: failed component retry, duplicate request suppression and abandoned/failed JIT continuations")
 
+        launch.returnToLibrary()
+        preparation = fresh()
+        launch = DeckSteamLaunchPreparation(preparation: preparation)
+        requests = []
+        var clientAttempts = 0
+        launch.request(target: target, installer: false, prepareClient: {
+            clientAttempts += 1
+            if clientAttempts == 1 { throw NSError(domain:"synthetic-client64",code:1) }
+        }) { requests.append($0) }
+        launch.beginPreparation(); await wait(preparation)
+        try? await Task.sleep(nanoseconds: 40_000_000)
+        precondition(launch.phase == .failed && requests.isEmpty && clientAttempts == 1)
+        launch.retry(); await wait(preparation)
+        try? await Task.sleep(nanoseconds: 40_000_000)
+        precondition(launch.phase == .starting && requests.count == 1 && clientAttempts == 2)
+        launch.returnToLibrary()
+        var heldClient: CheckedContinuation<Void,Never>?
+        requests = []
+        launch.request(target: target, installer: false, prepareClient: {
+            await withCheckedContinuation { heldClient = $0 }
+            try Task.checkCancellation()
+        }) { requests.append($0) }
+        launch.beginPreparation(); await wait(preparation)
+        try? await Task.sleep(nanoseconds: 40_000_000)
+        precondition(launch.phase == .components && launch.setupMessage != nil && requests.isEmpty && heldClient != nil)
+        launch.returnToLibrary()
+        launch.request(target: target, installer: false) { requests.append($0) }
+        launch.beginPreparation(); await wait(preparation)
+        precondition(requests.count == 1)
+        heldClient?.resume(); heldClient = nil
+        try? await Task.sleep(nanoseconds: 40_000_000)
+        precondition(requests.count == 1 && launch.phase == .starting)
+        launch.returnToLibrary()
+        print("PASS: Win64 client preparation stays under the download overlay; failure retries and cancelled/stale downloads cannot launch Wine")
+
         preparation = fresh()
         WineMonoModel.available = true; WineGeckoModel.available = true
         var joined = 0

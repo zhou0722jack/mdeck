@@ -166,7 +166,7 @@ struct DeckSteamLoadingArtwork<Details: View>: View {
     private var active: Int { phase == .components ? 0 : phase == .starting || phase == .installing ? 1 : 2 }
     private var message: String {
         switch phase {
-        case .components: return L("Downloading and verifying components…")
+        case .components: return setupMessage ?? L("Downloading and verifying components…")
         case .starting: return L("Preparing JIT and starting Steam…")
         case .installing: return setupMessage ?? L("Preparing the Steam installation…")
         case .waitingForFrame, .revealing:

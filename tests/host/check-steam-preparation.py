@@ -44,6 +44,8 @@ typedef struct { HANDLE hProcess,hThread; } PROCESS_INFORMATION;
 #define ERROR_INVALID_DATA 13
 #define ERROR_INVALID_HANDLE 6
 #define ERROR_PROC_NOT_FOUND 127
+#define ERROR_BAD_EXE_FORMAT 193
+#define SCS_64BIT_BINARY 6
 #define WAIT_OBJECT_0 0
 #define WAIT_TIMEOUT 258
 static DWORD GetLastError(void);
@@ -67,6 +69,7 @@ static FARPROC GetProcAddress(HMODULE,const char *);
 static DWORD GetCurrentThreadId(void);
 static BOOL Wow64DisableWow64FsRedirection(void **);
 static BOOL Wow64RevertWow64FsRedirection(void *);
+static BOOL GetBinaryTypeW(const WCHAR *,DWORD *);
 '''
 HARNESS = r'''
 #include <assert.h>
@@ -78,15 +81,18 @@ enum { OK, SETUP_CREATE_FAIL, SETUP_EXIT_FAIL, CLIENT_MISSING, CLIENT_CREATE_FAI
        CANCEL_BEFORE, CANCEL_DURING, WRITE_FAIL, MOVE_FAIL, DIRECTORY_FAIL, VDF_COPY_FAIL, EXISTING_DIRS, CANCEL_AFTER_REGISTER,
        COMMAND_MISSING, COMMAND_READ_FAIL, COMMAND_TRUNCATED,
        USER_LOAD_FAIL, GUI_API_MISSING, STATION_MISSING, DESKTOP_MISSING,
-       REDIRECT_DISABLE_FAIL, REDIRECT_RESTORE_FAIL, DESKTOP_EXIT_FAIL };
+       REDIRECT_DISABLE_FAIL, REDIRECT_RESTORE_FAIL, DESKTOP_EXIT_FAIL,
+       CLIENT64_MISSING, CLIENT64_WRONG_ARCH, CLIENT64_BACKUP_FAIL, CLIENT64_COPY_FAIL,
+       CLIENT64_COPIED_WRONG_ARCH, CLIENT64_ACTIVATE_FAIL };
 static int scenario, launches, installer_closed, cancelled_now, terminations, closes, copies;
+static int binary_copies,client64_activated;
 static int gui_loaded,station_retained,desktop_retained,redirection_disabled,redirect_calls,restore_calls;
 static char written_text[160],stages[512];
 static DWORD GetLastError(void){return scenario==EXISTING_DIRS?ERROR_ALREADY_EXISTS:redirection_disabled?87:5;}
 static void OutputDebugStringA(const char *s){(void)s;}
 static HANDLE CreateFileW(const WCHAR *p,DWORD a,DWORD b,void *c,DWORD d,DWORD e,HANDLE f){
     if(p==desktop_command_path){
-        assert(installer_closed&&copies==2&&a==GENERIC_READ&&b==FILE_SHARE_READ&&!c&&d==OPEN_EXISTING&&e==FILE_ATTRIBUTE_NORMAL&&!f);
+        assert(installer_closed&&client64_activated&&copies==2&&a==GENERIC_READ&&b==FILE_SHARE_READ&&!c&&d==OPEN_EXISTING&&e==FILE_ATTRIBUTE_NORMAL&&!f);
         return scenario==COMMAND_MISSING?INVALID_HANDLE_VALUE:20;
     }
     assert(p==temp_path);(void)a;(void)b;(void)c;(void)d;(void)e;(void)f;
@@ -99,6 +105,11 @@ static BOOL FlushFileBuffers(HANDLE h){assert(h==10);return TRUE;}
 static BOOL CloseHandle(HANDLE h){assert(h);if(h==1)installer_closed=1;closes++;return TRUE;}
 static BOOL DeleteFileW(const WCHAR *p){assert(p==temp_path);return TRUE;}
 static BOOL MoveFileExW(const WCHAR *from,const WCHAR *to,DWORD flags){
+    if(from==client64_temp){
+        assert(to==client_path&&binary_copies==2&&!client64_activated&&flags==(MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH));
+        if(scenario==CLIENT64_ACTIVATE_FAIL)return FALSE;
+        client64_activated=1;return TRUE;
+    }
     assert(from==temp_path&&to==state_path&&flags==(MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH));
     if(scenario==MOVE_FAIL)return FALSE;
     strcat(stages,written_text);return TRUE;
@@ -121,7 +132,7 @@ static BOOL CreateProcessW(const WCHAR *path,WCHAR *cmd,void *a,void *b,BOOL inh
         if(scenario==SETUP_CREATE_FAIL)return FALSE;
         p->hProcess=1;p->hThread=101;
     }else{
-        assert(path==desktop_path&&launches==1&&installer_closed&&dir==client_dir&&copies==2&&redirection_disabled);
+        assert(path==desktop_path&&launches==1&&installer_closed&&client64_activated&&dir==client_dir&&copies==2&&redirection_disabled);
         if(scenario==CLIENT_CREATE_FAIL)return FALSE;
         p->hProcess=2;p->hThread=102;
     }
@@ -133,10 +144,29 @@ static BOOL CreateDirectoryW(const WCHAR *path,void *security){
 }
 static BOOL CopyFileW(const WCHAR *from,const WCHAR *to,BOOL fail_exists){
     assert(installer_closed&&launches==1&&!fail_exists);
+    if(from==client_path){
+        assert(to==client32_backup&&binary_copies==0&&!client64_activated);
+        if(scenario==CLIENT64_BACKUP_FAIL)return FALSE;
+        binary_copies++;return TRUE;
+    }
+    if(from==client64_stage){
+        assert(to==client64_temp&&binary_copies==1&&!client64_activated);
+        if(scenario==CLIENT64_COPY_FAIL)return FALSE;
+        binary_copies++;return TRUE;
+    }
+    assert(client64_activated);
     assert((copies==0&&from==config_stage&&to==config_vdf)||(copies==1&&from==apps_stage&&to==apps_vdf));
     if(scenario==VDF_COPY_FAIL)return FALSE;
     copies++;
     if(scenario==CANCEL_AFTER_REGISTER&&copies==2)cancelled_now=1;
+    return TRUE;
+}
+static BOOL GetBinaryTypeW(const WCHAR *path,DWORD *type){
+    assert(installer_closed&&launches==1&&(path==client64_stage||path==client64_temp));
+    if(path==client64_stage&&scenario==CLIENT64_MISSING)return FALSE;
+    if(path==client64_temp)assert(binary_copies==2);
+    *type=(scenario==CLIENT64_WRONG_ARCH&&path==client64_stage)||
+          (scenario==CLIENT64_COPIED_WRONG_ARCH&&path==client64_temp)?0:SCS_64BIT_BINARY;
     return TRUE;
 }
 static BOOL ReadFile(HANDLE file,void *out,DWORD capacity,DWORD *read,void *overlap){
@@ -172,12 +202,14 @@ static BOOL Wow64RevertWow64FsRedirection(void *previous){
     redirection_disabled=0;return TRUE;
 }
 int main(void){
-    for(scenario=OK;scenario<=DESKTOP_EXIT_FAIL;scenario++){
+    for(scenario=OK;scenario<=CLIENT64_ACTIVATE_FAIL;scenario++){
         launches=installer_closed=cancelled_now=terminations=closes=copies=0;written_text[0]=stages[0]=0;
         gui_loaded=station_retained=desktop_retained=redirection_disabled=redirect_calls=restore_calls=0;
+        binary_copies=client64_activated=0;
         DWORD code=bootstrap_run();
         if(scenario==OK||scenario==EXISTING_DIRS){
             assert(!code&&launches==2&&installer_closed&&closes==9&&!redirection_disabled);
+            assert(binary_copies==2&&client64_activated);
             assert(redirect_calls==1&&restore_calls==1);
             const char *a=strstr(stages,"stage=installer"),*b=strstr(stages,"stage=checking"),*c=strstr(stages,"stage=starting"),*d=strstr(stages,"stage=waiting");
             assert(a&&b&&c&&d&&a<b&&b<c&&c<d);
@@ -189,6 +221,8 @@ int main(void){
             if(scenario==REDIRECT_DISABLE_FAIL)assert(redirect_calls==1&&!restore_calls);
             if(scenario==REDIRECT_RESTORE_FAIL)assert(terminations==1&&restore_calls==1&&code==87);
             if(scenario==DESKTOP_EXIT_FAIL)assert(code==1&&!redirection_disabled);
+            if(scenario>=CLIENT64_MISSING){assert(!client64_activated&&!copies&&!redirect_calls);}
+            if(scenario==CLIENT64_WRONG_ARCH||scenario==CLIENT64_COPIED_WRONG_ARCH)assert(code==ERROR_BAD_EXE_FORMAT);
             if(scenario==USER_LOAD_FAIL||scenario==GUI_API_MISSING||scenario==STATION_MISSING||scenario==DESKTOP_MISSING)assert(!launches&&!redirect_calls);
             if(scenario==CANCEL_DURING)assert(terminations==1&&installer_closed);
             if(scenario!=WRITE_FAIL&&scenario!=MOVE_FAIL)assert(strstr(stages,"stage=failed"));

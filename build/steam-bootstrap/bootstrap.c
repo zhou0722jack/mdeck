@@ -16,6 +16,9 @@ void *__cdecl memcpy(void *out, const void *in, size_t length) {
 static const WCHAR setup_path[] = L"C:\\Madeira\\Installers\\SteamSetup.exe";
 static const WCHAR client_path[] = L"C:\\Program Files\\Steam Client\\Steam.exe";
 static const WCHAR client_dir[] = L"C:\\Program Files\\Steam Client";
+static const WCHAR client64_stage[] = L"C:\\Madeira\\Installers\\Steam64.exe";
+static const WCHAR client64_temp[] = L"C:\\Program Files\\Steam Client\\Steam64.tmp.exe";
+static const WCHAR client32_backup[] = L"C:\\Madeira\\Installers\\Steam-before-win64-installed.exe";
 static const WCHAR state_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.state";
 static const WCHAR temp_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.state.tmp";
 static const WCHAR cancel_path[] = L"C:\\Madeira\\Installers\\SteamBootstrap.cancel";
@@ -143,6 +146,21 @@ static DWORD read_desktop_command(WCHAR *command, DWORD capacity) {
     return ERROR_SUCCESS;
 }
 
+/* The app verifies the staged image's pinned SHA-256 before this session.
+ * Recheck its PE architecture and the copied image before atomic activation. */
+static DWORD activate_client64(void) {
+    DWORD type;
+    if (!GetBinaryTypeW(client64_stage, &type)) return GetLastError();
+    if (type != SCS_64BIT_BINARY) return ERROR_BAD_EXE_FORMAT;
+    if (!CopyFileW(client_path, client32_backup, FALSE)) return GetLastError();
+    if (!CopyFileW(client64_stage, client64_temp, FALSE)) return GetLastError();
+    if (!GetBinaryTypeW(client64_temp, &type)) return GetLastError();
+    if (type != SCS_64BIT_BINARY) return ERROR_BAD_EXE_FORMAT;
+    if (!MoveFileExW(client64_temp, client_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) return GetLastError();
+    OutputDebugStringA("[steam-client64] verified x86_64 bootstrap activated after setup");
+    return ERROR_SUCCESS;
+}
+
 static DWORD bootstrap_run(void) {
     PROCESS_INFORMATION process;
     DWORD error, code = 0, attributes;
@@ -165,6 +183,8 @@ static DWORD bootstrap_run(void) {
     if (cancelled()) return failed(ERROR_CANCELLED);
     attributes = GetFileAttributesW(client_path);
     if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY)) return failed(ERROR_FILE_NOT_FOUND);
+    error = activate_client64();
+    if (error) return failed(error);
     error = register_libraries();
     if (error) return failed(error);
     error = read_desktop_command(client_command, sizeof(client_command) / sizeof(*client_command));

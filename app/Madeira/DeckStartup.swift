@@ -263,6 +263,8 @@ struct DeckSteamSetupStatus {
     @Published private(set) var setupFraction: Double?
     private let preparation: DeckComponentPreparation
     private var launch: ((UUID) -> Void)?
+    private var prepareClient: (@MainActor () async throws -> Void)?
+    private var clientPreparationTask: Task<Void, Never>?
     private var requestID: UUID?
     private var preparationStarted = false
     private var target = ""
@@ -282,12 +284,14 @@ struct DeckSteamSetupStatus {
         self.preparation = preparation ?? .shared
     }
 
-    func request(target: String, installer: Bool, launch: @escaping (UUID) -> Void) {
+    func request(target: String, installer: Bool, prepareClient: (@MainActor () async throws -> Void)? = nil,
+                 launch: @escaping (UUID) -> Void) {
         guard !presented else { return }
         requestID = UUID()
         self.target = target
         self.installer = installer
         self.launch = launch
+        self.prepareClient = prepareClient
         error = nil
         closing = false
         slow = false
@@ -313,6 +317,7 @@ struct DeckSteamSetupStatus {
         error = nil
         slow = false
         closing = false
+        setupMessage = nil; setupFraction = nil
         phase = .components
         prepare()
     }
@@ -322,13 +327,33 @@ struct DeckSteamSetupStatus {
         preparation.prepare { [weak self] success in
             guard let self, self.presented, self.phase == .components, self.requestID == id else { return }
             if success {
-                self.phase = .starting
-                LogStore.shared.log("[steam-loading] components ready; starting Steam")
-                if let id { self.launch?(id) }
+                if let prepareClient = self.prepareClient {
+                    self.setupMessage = L("Downloading and verifying 64-bit Steam…")
+                    self.clientPreparationTask = Task { @MainActor [weak self] in
+                        guard let self else { return }
+                        defer { if self.requestID == id { self.clientPreparationTask = nil } }
+                        do {
+                            try await prepareClient()
+                            try Task.checkCancellation()
+                            guard self.presented, self.phase == .components, self.requestID == id else { return }
+                            self.setupMessage = nil
+                            self.startAfterPreparation(id)
+                        } catch {
+                            guard self.presented, self.phase == .components, self.requestID == id else { return }
+                            self.fail(error.localizedDescription)
+                        }
+                    }
+                } else { self.startAfterPreparation(id) }
             } else {
                 self.fail(L("Some components could not be prepared. Retry the missing downloads."))
             }
         }
+    }
+
+    private func startAfterPreparation(_ id: UUID?) {
+        phase = .starting
+        LogStore.shared.log("[steam-loading] components ready; starting Steam")
+        if let id { launch?(id) }
     }
 
     func permitsLaunch(_ id: UUID) -> Bool {
@@ -394,6 +419,7 @@ struct DeckSteamSetupStatus {
 
     func fail(_ message: String) {
         guard presented else { return }
+        clientPreparationTask?.cancel(); clientPreparationTask = nil
         error = message
         phase = .failed
     }
@@ -416,6 +442,8 @@ struct DeckSteamSetupStatus {
     }
 
     private func finish() {
+        clientPreparationTask?.cancel(); clientPreparationTask = nil
+        prepareClient = nil
         requestID = nil
         launch = nil
         preparationStarted = false
@@ -588,7 +616,8 @@ struct DeckSteamPreparationView: View {
     @State private var layerOpacity = 1.0
     var body: some View {
         DeckSteamLoadingArtwork(phase: launch.phase, installer: launch.installer, error: launch.error,
-                               startedAt: launch.startedAt, fraction: launch.phase == .installing ? launch.setupFraction : preparation.loadingFraction,
+                               startedAt: launch.startedAt, fraction: launch.phase == .installing ? launch.setupFraction :
+                                   (launch.phase == .components && launch.setupMessage != nil ? nil : preparation.loadingFraction),
                                setupMessage: launch.setupMessage,
                                motionEnabled: appearance.animations, covers: covers) {
             if launch.phase == .components || (launch.phase == .failed && !preparation.complete) {

@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Downloading and verifying 64-bit Steam…": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在下载并校验 64 位 Steam…" } } }
+    },
+    "The 64-bit Steam client could not be verified. Retry the download.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法校验 64 位 Steam 客户端，请重新下载。" } } }
+    },
+    "The Steam client is still 32-bit. Retry preparing the 64-bit client.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 客户端仍为 32 位，请重新准备 64 位客户端。" } } }
+    },
     "The Steam desktop launch could not be prepared.": {
       "extractionState": "manual",
       "localizations": {

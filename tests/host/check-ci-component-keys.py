@@ -32,6 +32,8 @@ cases = {
     'desktop-runtime-patch': ('build/windows-runtime/patches/0002-desktop-applications.patch', {'wine-host', 'i386', 'ipa'}),
     'steam-signin-runtime-patch': ('build/windows-runtime/patches/0003-steam-signin-sync.patch', {'wine-host', 'i386', 'ipa'}),
     'steam-signin-unix': ('build/crypto-unix/crypt32_unixlib_ios.c', {'ipa'}),
+    'steam-client64': ('app/Madeira/SteamClient64Bootstrap.swift', {'ipa'}),
+    'steam-setup-controller': ('build/steam-bootstrap/bootstrap.c', {'ipa'}),
     'wine-ios-unix-patch': ('build/ntdll-unix/patches/0001-opengl-wow64-teb-host-pointer.patch', {'ipa'}),
     'dxmt': ('pin:dxmt', {'i386', 'dxmt', 'ipa'}),
     'dxmt-patches': ('build/dxmt-patches/0001-d3d9-index-range-per-draw.patch', {'i386', 'dxmt', 'ipa'}),

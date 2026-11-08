@@ -140,6 +140,7 @@ enum SteamClient {
             if skip { skip = false; continue }
             let key = token.replacingOccurrences(of: "\"", with: "").lowercased()
             if key == "-applaunch" { skip = true; continue }
+            if key == "-cef-force-32bit" { continue }
             if ["-bigpicture", "-gamepadui"].contains(key) || key.hasPrefix("steam://") { continue }
             kept.append(token)
         }
@@ -205,6 +206,28 @@ enum SteamClient {
         try? Data("cancel\n".utf8).write(to: url, options: .atomic)
     }
 
+    @MainActor static func prepare64BitBootstrap() async throws {
+        guard wine_process_is_running() == 0, wineserver_is_running() == 0 else {
+            throw LibraryError.message(L("A session is already running."))
+        }
+        if let executable = executableURL, try SteamClient64Bootstrap.is64BitExecutable(at: executable) {
+            LogStore.shared.log("[steam-client64] installed bootstrap verified as x86_64")
+            return
+        }
+        LogStore.shared.log("[steam-client64] preparing verified Valve win64 bootstrap")
+        try await SteamClient64Bootstrap.stage(drive: LibraryModel.drive)
+        try Task.checkCancellation()
+        guard wine_process_is_running() == 0, wineserver_is_running() == 0 else {
+            throw LibraryError.message(L("A session is already running."))
+        }
+        if let executable = executableURL {
+            try SteamClient64Bootstrap.activate(drive: LibraryModel.drive, executable: executable)
+            LogStore.shared.log("[steam-client64] migrated bootstrap to x86_64; existing account and game files preserved")
+        } else {
+            LogStore.shared.log("[steam-client64] win64 bootstrap staged for installer handoff")
+        }
+    }
+
     static func preparationStatus() -> DeckSteamSetupStatus? {
         guard let url = try? destination("Madeira/Installers/SteamBootstrap.state"),
               let data = try? Data(contentsOf: url), data.count < 1024,
@@ -224,6 +247,9 @@ enum SteamClient {
             guard entry.relativePath.caseInsensitiveCompare(clientPath) == .orderedSame, installed else {
                 throw LibraryError.message(L("Install Steam first, then use Start Steam."))
             }
+            guard let executable = executableURL, try SteamClient64Bootstrap.is64BitExecutable(at: executable) else {
+                throw LibraryError.message(L("The Steam client is still 32-bit. Retry preparing the 64-bit client."))
+            }
             try registerLibraries()
             return
         }
@@ -231,6 +257,7 @@ enum SteamClient {
               let resource = Bundle.main.url(forResource: "SteamSetup", withExtension: "exe", subdirectory: "BundledInstallers") else {
             throw LibraryError.message(L("The bundled Steam installer is missing or damaged."))
         }
+        _ = try SteamClient64Bootstrap.stagedImage(drive: LibraryModel.drive)
         let data = try Data(contentsOf: resource)
         guard SHA256.hash(data: data).map({ String(format: "%02x", $0) }).joined() == installerSHA256 else {
             throw LibraryError.message(L("The bundled Steam installer is missing or damaged."))
@@ -262,6 +289,7 @@ enum SteamClient {
     static func stageClientLaunch(_ installing: LibraryEntry) throws {
         var client = entry(install: false, appID: installing.steamClientAppID)
         client.relativePath = clientDirectory + "/Steam.exe"
+        client.bits = 64 // the controller activates the verified Win64 image first
         guard let script = client.servicesScript else {
             throw LibraryError.message(L("The Steam desktop launch could not be prepared."))
         }
