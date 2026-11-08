@@ -297,6 +297,7 @@ fi
 echo ""
 echo "=== Building libntdll_unix.a ==="
 ar rcs "$OBJ_DIR/libntdll_unix.a" \
+    "$OBJ_DIR/steam_cef_guard.o" "$OBJ_DIR/steam_cef_pools.o" \
     "$OBJ_DIR/audio_null_ios.o" "$OBJ_DIR/madsync.o" "$OBJ_DIR/nsi_unixlib_ios.o" \
     "$OBJ_DIR/nsi_network_ios.o" "$OBJ_DIR/nsi_ndis.o" "$OBJ_DIR/nsi_ip.o" \
     "$OBJ_DIR/gnutls_symtab_ios.o" "$OBJ_DIR/ws2_32_unixlib.o" \
@@ -310,6 +311,17 @@ ar rcs "$OBJ_DIR/libntdll_unix.a" \
     "$OBJ_DIR/signal_arm.o" "$OBJ_DIR/signal_arm64.o" "$OBJ_DIR/signal_i386.o" "$OBJ_DIR/signal_x86_64.o" \
     "$OBJ_DIR/socket.o" "$OBJ_DIR/sync.o" "$OBJ_DIR/syscall.o" "$OBJ_DIR/system.o" \
     "$OBJ_DIR/tape.o" "$OBJ_DIR/thread.o" "$OBJ_DIR/virtual.o"
+
+# Verify CEF APIs in the archive, not only their standalone object files.
+cef_symbols=$(xcrun nm -gU "$OBJ_DIR/libntdll_unix.a")
+for symbol in ios_steam_cef_allocation_result ios_steam_cef_process_exit ios_steam_cef_spawn_blocked \
+              ios_steam_cef_pool_forget ios_steam_cef_pool_image ios_steam_cef_pool_reserve; do
+    if ! grep -Eq "[[:space:]]_${symbol}$" <<<"$cef_symbols"; then
+        echo "ERROR: libntdll_unix.a is missing $symbol" >&2
+        exit 1
+    fi
+done
+# End CEF export check.
 
 echo "Copying to app..."
 cp "$OBJ_DIR/libntdll_unix.a" "$APP_LIB"

@@ -4,6 +4,7 @@ from pathlib import Path
 import collections
 import plistlib
 import re
+import shutil
 import subprocess
 import tempfile
 
@@ -69,6 +70,55 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
                              'tls-probe', str(folder)], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     print('PASS real TLS objects require all six defined backend tables; disabled GnuTLS skips the check')
+
+    # Compile the actual CEF owners, execute the production ar command, and
+    # link all six APIs. Other archive members are placeholders: this gate
+    # specifically catches compiled-but-not-archived CEF translation units.
+    cef = folder / 'cef-archive'
+    cef.mkdir()
+    archive_head = 'ar rcs "$OBJ_DIR/libntdll_unix.a"'
+    archive_command = archive_head + native_build.split(archive_head, 1)[1].split('\n\n', 1)[0]
+    members = re.findall(r'"\$OBJ_DIR/([^"/]+\.o)"', archive_command)
+    for member in ['steam_cef_guard.o', 'steam_cef_pools.o']:
+        assert members.count(member) == 1, (member, 'required once in production archive')
+    export_check = native_build.split('# Verify CEF APIs in the archive,', 1)[1]
+    export_check = export_check[export_check.index('cef_symbols='):export_check.index('# End CEF export check.')]
+    archive_probe = 'set -euo pipefail\nOBJ_DIR=$1\n' + archive_command + '\n' + export_check
+    export_probe = 'set -euo pipefail\nOBJ_DIR=$1\n' + export_check
+    empty = cef / 'empty.o'
+    subprocess.run(['xcrun', 'clang', '-x', 'c', '-c', '-', '-o', str(empty)],
+                   input='void fixture_unused_archive_member(void) {}\n', text=True, check=True)
+    for member in members:
+        shutil.copyfile(empty, cef / member)
+    for module in ['steam_cef_guard', 'steam_cef_pools']:
+        subprocess.run(['xcrun', 'clang', '-O2', '-fvisibility=hidden', '-c',
+                        str(root / 'build/ntdll-unix' / (module + '.c')), '-o', str(cef / (module + '.o'))], check=True)
+    subprocess.run(['bash', '-c', archive_probe, 'cef-archive', str(cef)], check=True)
+    link_source = cef / 'Link.c'
+    link_source.write_text('''#include <stdint.h>
+#include <assert.h>
+#include "steam_cef_guard.h"
+#include "steam_cef_pools.h"
+void madeira_steam_cef_address_failure(const char *run) { (void)run; }
+static volatile const uintptr_t required[] = {
+    (uintptr_t)ios_steam_cef_allocation_result, (uintptr_t)ios_steam_cef_process_exit,
+    (uintptr_t)ios_steam_cef_spawn_blocked, (uintptr_t)ios_steam_cef_pool_forget,
+    (uintptr_t)ios_steam_cef_pool_image, (uintptr_t)ios_steam_cef_pool_reserve
+};
+int main(void) { for (unsigned i=0;i<6;i++) assert(required[i]); return 0; }
+''')
+    link_command = ['xcrun', 'clang', '-I', str(root / 'build/ntdll-unix'), str(link_source),
+                    str(cef / 'libntdll_unix.a'), '-o', str(cef / 'linked')]
+    subprocess.run(link_command, check=True)
+    subprocess.run([str(cef / 'linked')], check=True)
+    for missing in ['steam_cef_guard.o', 'steam_cef_pools.o']:
+        subprocess.run(['xcrun', 'ar', '-d', str(cef / 'libntdll_unix.a'), missing], check=True)
+        absent = subprocess.run(['bash', '-c', export_probe, 'cef-export', str(cef)], capture_output=True, text=True)
+        assert absent.returncode != 0 and 'is missing ios_steam_cef_' in absent.stderr, absent.stderr
+        absent = subprocess.run(link_command, capture_output=True, text=True)
+        assert absent.returncode != 0 and 'Undefined symbols' in absent.stderr, absent.stderr
+        subprocess.run(['bash', '-c', archive_probe, 'cef-archive', str(cef)], check=True)
+    print('PASS real production archive contains both CEF objects and links all six APIs; omitting either fails export and link checks')
 
     def run_probe(name, source, flags=()):
         path = folder / name
