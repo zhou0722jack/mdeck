@@ -49,6 +49,7 @@ enum ExternalDrives { static var steamLibraries:[String]{[]} }
 final class LogStore{static let shared=LogStore();func log(_ value:String){}}
 @MainActor final class DeckSteamLaunchPreparation {
     static let shared=DeckSteamLaunchPreparation()
+    var awaitingClientImage = false
     func runtimeFailure(_ message:String,session:UUID){}
 }
 func wine_process_is_running()->Int32{0}
