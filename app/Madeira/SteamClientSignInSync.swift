@@ -60,6 +60,40 @@ enum SteamClientSignInRules {
     }
 }
 
+/// Private crypt32 ABI: NULL data carries one of these fixed stage codes.
+/// No code contains a path, account identifier, data size or credential.
+enum SteamClientAuthProbe: UInt32, CaseIterable {
+    case monitorAttached = 1
+    case interactiveSteam = 2
+    case otherSteam = 3
+    case webHelper = 4
+    case otherProcess = 5
+    case unknownProcess = 6
+    case protectEntered = 7
+    case unprotectEntered = 8
+    case protectSucceeded = 9
+    case unprotectSucceeded = 10
+    case noJWT = 11
+    case blobSkipped = 12
+
+    var message: String {
+        switch self {
+        case .monitorAttached: return "[steam-signin-sync] Windows crypt32 monitor attached"
+        case .interactiveSteam: return "[steam-signin-sync] Windows credential scope matched interactive Steam"
+        case .otherSteam: return "[steam-signin-sync] Windows Steam is outside the supported installation path; transfer disabled"
+        case .webHelper: return "[steam-signin-sync] Windows crypt32 attached to Steam webhelper; transfer disabled"
+        case .otherProcess: return "[steam-signin-sync] Windows crypt32 attached to another process; transfer disabled"
+        case .unknownProcess: return "[steam-signin-sync] Windows process identity unavailable; transfer disabled"
+        case .protectEntered: return "[steam-signin-sync] Windows Steam entered CryptProtectData"
+        case .unprotectEntered: return "[steam-signin-sync] Windows Steam entered CryptUnprotectData"
+        case .protectSucceeded: return "[steam-signin-sync] Windows Steam CryptProtectData succeeded"
+        case .unprotectSucceeded: return "[steam-signin-sync] Windows Steam CryptUnprotectData succeeded"
+        case .noJWT: return "[steam-signin-sync] Windows Steam DPAPI data contained no complete JWT candidate"
+        case .blobSkipped: return "[steam-signin-sync] Windows Steam DPAPI data skipped by buffer bounds"
+        }
+    }
+}
+
 #if canImport(UIKit)
 import UIKit
 import Security
@@ -112,6 +146,7 @@ private enum SteamClientPendingStore {
     private var started = false
     private var importedFingerprint: String?
     private var reportedInvalidCandidate = false
+    private var reportedProbeCodes: Set<UInt32> = []
     private var observers: [NSObjectProtocol] = []
     private var loginURL: URL { LibraryModel.drive.appendingPathComponent(SteamClient.clientDirectory + "/config/loginusers.vdf") }
     private var windowsRunning: Bool {
@@ -144,10 +179,15 @@ private enum SteamClientPendingStore {
         _ = closeVerifier()
         UserDefaults.standard.removeObject(forKey: suppressedKey)
         reportedInvalidCandidate = false
+        reportedProbeCodes.removeAll()
         phase = pending.isEmpty ? .waitingForToken : .waitingForWindows
         SteamLog.event("[steam-signin-sync] waiting for Windows credential event")
         retryAt = .distantPast
         wake()
+    }
+    func receiveProbe(_ code: UInt32) {
+        guard let probe = SteamClientAuthProbe(rawValue: code), reportedProbeCodes.insert(code).inserted else { return }
+        SteamLog.event(probe.message)
     }
     func receive(_ data: Data) {
         start()
@@ -328,7 +368,12 @@ private enum SteamClientPendingStore {
 
 @_cdecl("madeira_steam_token_received")
 func madeiraSteamTokenReceived(_ bytes: UnsafeRawPointer?, _ count: UInt32) {
-    guard let bytes, count > 0, count <= 16386 else { return }
+    guard let bytes else {
+        guard SteamClientAuthProbe(rawValue: count) != nil else { return }
+        Task { @MainActor in SteamClientSignInSync.shared.receiveProbe(count) }
+        return
+    }
+    guard count >= 128, count <= 16386 else { return }
     let data = Data(bytes: bytes, count: Int(count))
     Task { @MainActor in SteamClientSignInSync.shared.receive(data) }
 }

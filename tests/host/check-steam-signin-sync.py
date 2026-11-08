@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Synthetic Windows-to-App authorization tests. Never reads a real Steam cache or token."""
 from pathlib import Path
+import base64
+import json
 import re
 import subprocess
 import tempfile
@@ -210,79 +212,51 @@ func SecItemCopyMatching(_ query:CFDictionary,_ result:UnsafeMutablePointer<AnyO
     wine = temp / 'wine'; wine.mkdir()
     subprocess.run(['git', 'init', '-q', str(wine)], check=True)
     originals = {}
-    for name in ['dlls/crypt32/crypt32_private.h', 'dlls/crypt32/protectdata.c', 'dlls/crypt32/unixlib.c']:
+    for name in ['dlls/crypt32/crypt32_private.h', 'dlls/crypt32/main.c', 'dlls/crypt32/protectdata.c', 'dlls/crypt32/unixlib.c']:
         text = subprocess.check_output(['git', '-C', str(ROOT / 'wine'), 'show', 'HEAD:' + name], text=True)
         originals[name] = text
         target = wine / name; target.parent.mkdir(parents=True, exist_ok=True); target.write_text(text)
     subprocess.run(['git', '-C', str(wine), 'apply', '--check', str(patch)], check=True)
     subprocess.run(['git', '-C', str(wine), 'apply', str(patch)], check=True)
     protect = (wine / 'dlls/crypt32/protectdata.c').read_text()
-    for signature, blob in [('BOOL WINAPI CryptProtectData(', 'pDataIn'), ('BOOL WINAPI CryptUnprotectData(', 'pDataOut')]:
+    dllmain = block((wine / 'dlls/crypt32/main.c').read_text(), 'BOOL WINAPI DllMain(')
+    assert dllmain.index('__wine_init_unix_call()') < dllmain.index('mdeck_steam_auth_probe();')
+    assert dllmain.index('CRYPT32_CALL( process_attach, NULL );') < dllmain.index('mdeck_steam_auth_probe();')
+    for signature, blob, event in [('BOOL WINAPI CryptProtectData(', 'pDataIn', 'PROTECT'), ('BOOL WINAPI CryptUnprotectData(', 'pDataOut', 'UNPROTECT')]:
         method = block(protect, signature)
-        assert f'if (mdeck_steam_process()) mdeck_publish_token( {blob} );' in method
+        success = block(method, '    if (rc)')
+        scoped = block(success, 'if (mdeck_steam_process())')
+        assert f'mdeck_publish_token( {blob} );' in scoped
+        assert f'mdeck_steam_event( MDECK_STEAM_{event}_SUCCEEDED );' in scoped
+        assert f'if (mdeck_steam_process()) mdeck_steam_event( MDECK_STEAM_{event}_ENTERED );' in method
         assert method.index(f'mdeck_publish_token( {blob} );') < method.rindex('SetLastError(ERROR_SUCCESS)')
         assert 'if (!mdeck_steam_process()) report(' in method
         assert 'if (!mdeck_steam_process()) TRACE_DATA_BLOB(pDataOut)' in method
     bridge = block(native, 'static NTSTATUS mdeck_steam_token(')
     wow = block(native, 'static NTSTATUS wow64_mdeck_steam_token(')
-    handlers = '\n'.join([block(protect, 'static BOOL mdeck_steam_process('), block(protect, 'static void mdeck_publish_token(')])
+    private = (wine / 'dlls/crypt32/crypt32_private.h').read_text()
+    definitions = block(private, 'enum mdeck_steam_auth_event') + ';\n' + block(private, 'struct mdeck_steam_token_params') + ';\n'
+    handlers = protect[protect.index("/* Only the user's interactive Steam client participates."):protect.index('#define CRYPT32_PROTECTDATA_PROV')]
+    # This is a synthetic JWT with no cryptographic signature or real account.
+    def encoded(value):
+        return base64.urlsafe_b64encode(json.dumps(value, separators=(',', ':')).encode()).decode().rstrip('=')
+    jwt = encoded({'alg': 'RS256', 'typ': 'JWT'}) + '.' + encoded({'iss': 'steam', 'sub': str(0x0110000100000001), 'aud': ['client', 'derive'], 'exp': 4102444800}) + '.synthetic_signature'
+    bridge_fixture = (ROOT / 'tests/host/fixtures/SteamSignInBridgeCheck.c').read_text()
+    for marker, production in [('PRODUCTION_DEFINITIONS', definitions), ('PRODUCTION_NATIVE', bridge),
+                                ('PRODUCTION_HANDLERS', handlers), ('PRODUCTION_WOW64', wow),
+                                ('SYNTHETIC_TOKEN', 'static const char jwt[] = ' + json.dumps(jwt) + ';')]:
+        assert bridge_fixture.count('// ' + marker) == 1
+        bridge_fixture = bridge_fixture.replace('// ' + marker, production)
     c = temp / 'bridge.c'
-    c.write_text(r'''
-#include <assert.h>
-#include <stdint.h>
-#include <string.h>
-#include <wchar.h>
-#include <wctype.h>
-typedef int BOOL, NTSTATUS;
-typedef unsigned int DWORD, PTR32;
-typedef unsigned char BYTE;
-typedef wchar_t WCHAR;
-typedef struct { DWORD cbData; BYTE *pbData; } DATA_BLOB;
-struct mdeck_steam_token_params { const void *data; unsigned int size; };
-#define MAX_PATH 260
-#define STATUS_SUCCESS 0
-#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
-static const WCHAR *image=L"C:\\Program Files\\Steam Client\\Steam.exe";
-static DWORD last_error=7;
-static DWORD GetLastError(void){return last_error;}
-static void SetLastError(DWORD error){last_error=error;}
-static DWORD GetModuleFileNameW(void *module,WCHAR *path,DWORD size) {
-    last_error=123;
-    assert(!module); size_t len=wcslen(image); if(len>=size)return size;wcscpy(path,image);return len;
-}
-static int lstrcmpiW(const WCHAR *a,const WCHAR *b) {
-    while(*a && towlower(*a)==towlower(*b)){a++;b++;}return towlower(*a)-towlower(*b);
-}
-static unsigned calls;
-extern void madeira_steam_token_received(const void *,unsigned int) __attribute__((weak));
-void madeira_steam_token_received(const void *bytes,unsigned int size) { assert(bytes&&size>=128&&size<=16386);calls++; }
-''' + bridge + r'''
-#define CRYPT32_CALL(name,args) mdeck_steam_token(args)
-''' + handlers + r'''
-static unsigned char region[1024];
-static void *ios_wow_host_ptr(PTR32 address) { assert(address<sizeof(region));return address?region+address:NULL; }
-''' + wow + r'''
-int main(void) {
-    BYTE data[256]={ 'e','y','J' };DATA_BLOB blob={sizeof(data),data};
-    assert(mdeck_steam_process() && last_error==7);mdeck_publish_token(&blob);assert(calls==1);
-    image=L"C:\\Program Files (x86)\\Steam\\steam.exe";assert(!mdeck_steam_process());
-    image=L"C:\\Other\\Steam.exe";assert(!mdeck_steam_process());
-    image=L"C:\\Program Files\\Steam Client\\steamwebhelper.exe";assert(!mdeck_steam_process());
-    image=L"c:\\program files\\steam client\\STEAM.EXE";assert(mdeck_steam_process());
-    data[0]='P';mdeck_publish_token(&blob);assert(calls==1);
-    data[0]='e';blob.cbData=4;mdeck_publish_token(&blob);assert(calls==1);
-    blob.cbData=sizeof(data);data[1]=0;data[2]='y';data[3]=0;data[4]='J';data[5]=0;mdeck_publish_token(&blob);assert(calls==2);
-    struct { PTR32 data;unsigned int size; } p={128,256};
-    wow64_mdeck_steam_token(&p);assert(calls==3);
-    p.data=0;wow64_mdeck_steam_token(&p);assert(calls==3);
-    p.data=128;p.size=20000;wow64_mdeck_steam_token(&p);assert(calls==3);
-    return 0;
-}
-''')
+    c.write_text(bridge_fixture)
     cbinary = temp / 'bridge'
-    subprocess.run(['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror', str(c), '-o', str(cbinary)], check=True)
+    subprocess.run(['xcrun', 'clang', '-std=c11', '-Wall', '-Wextra', '-Werror',
+                    '-fsanitize=address,undefined', '-fno-omit-frame-pointer', str(c), '-o', str(cbinary)], check=True)
     subprocess.run([str(cbinary)], check=True)
-    print('PASS: exact Steam executable scope, JWT byte gate, bounded callback and WOW64 embedded-pointer conversion')
+    print('PASS: raw/wrapped UTF-8 and UTF-16 JWT slices, process scope, size/grammar limits, four-candidate cap, metadata and WOW64 pointer conversion (ASan/UBSan)')
+    event_names = re.findall(r'^    (MDECK_STEAM_[A-Z_]+)(?: = 1)?,?$', block(private, 'enum mdeck_steam_auth_event'), re.M)
+    assert len(event_names) == 12
+    assert [int(value) for value in re.findall(r'^    case \w+ = (\d+)$', block(sync, 'enum SteamClientAuthProbe'), re.M)] == list(range(1, len(event_names) + 1))
     for table in ['__wine_unix_call_funcs', '__wine_unix_call_wow64_funcs']:
         name = 'mdeck_steam_token' if table.endswith('call_funcs') else 'wow64_mdeck_steam_token'
         assert name in block(native, 'const unixlib_entry_t ' + table + '[] =')
@@ -297,13 +271,14 @@ int main(void) {
                             '-fsyntax-only', '-D__WINESRC__', '-D_CRYPT32_',
                             '-I' + str(wine / 'dlls/crypt32'), '-I' + str(ROOT / 'wine/include'),
                             '-I' + str(ROOT / 'wine/include/msvcrt'),
-                            str(wine / 'dlls/crypt32/protectdata.c')], check=True)
+                            '-I' + str(ROOT / 'wine/dlls/crypt32'),
+                            str(wine / 'dlls/crypt32/protectdata.c'), str(wine / 'dlls/crypt32/main.c')], check=True)
             checked_arches.append(arch)
-    print('PASS: full patched DPAPI source syntax-checked for ' + ', '.join(checked_arches) if checked_arches else 'SKIP: full PE syntax check requires the pinned cross compilers')
+    print('PASS: full patched DPAPI and DLL attach sources syntax-checked for ' + ', '.join(checked_arches) if checked_arches else 'SKIP: full PE syntax check requires the pinned cross compilers')
     # Source drift is a build failure rather than silently omitting the hook.
     target = wine / 'dlls/crypt32/protectdata.c'
     target.write_text(originals['dlls/crypt32/protectdata.c'].replace('WINE_DEFAULT_DEBUG_CHANNEL(crypt);', 'SOURCE_DRIFT;'))
-    for name in ['dlls/crypt32/crypt32_private.h', 'dlls/crypt32/unixlib.c']:
+    for name in ['dlls/crypt32/crypt32_private.h', 'dlls/crypt32/main.c', 'dlls/crypt32/unixlib.c']:
         (wine / name).write_text(originals[name])
     assert subprocess.run(['git', '-C', str(wine), 'apply', '--check', str(patch)], capture_output=True).returncode != 0
 print('PASS: real UIKit/Security importer and CM verification typecheck for iOS; privacy, ABI tables and fail-on-drift wiring checked')

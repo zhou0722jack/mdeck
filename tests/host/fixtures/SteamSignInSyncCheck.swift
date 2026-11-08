@@ -16,7 +16,10 @@ import CryptoKit
 func wine_process_is_running() -> Int32 { 0 }
 func wineserver_is_running() -> Int32 { 0 }
 enum SteamClient { static let clientDirectory = "Program Files/Steam Client" }
-enum SteamLog { static func event(_ value: String) {} }
+@MainActor enum SteamLog {
+    static var events: [String] = []
+    static func event(_ value: String) { events.append(value) }
+}
 @MainActor enum SteamSignIn {
     static let didChange = Notification.Name("FixtureSignInChanged")
     static let didSignOut = Notification.Name("FixtureSignOut")
@@ -149,6 +152,21 @@ extension SteamClientSignInSync {
         precondition(!SteamClientSignInRules.acceptsCMSubject(candidate.subject + 1, candidate: candidate))
         precondition(!SteamClientSignInRules.acceptsCMSubject(0, candidate: candidate))
         print("PASS: only bounded, unexpired refresh JWT candidates survive; UTF-8/UTF-16 and response account binding checked")
+
+        let probes = fresh(), initialEvents = SteamLog.events.count, initialPhase = probes.phase
+        precondition(SteamClientAuthProbe.allCases.map(\.rawValue) == Array(1...12))
+        for probe in SteamClientAuthProbe.allCases {
+            probes.receiveProbe(probe.rawValue); probes.receiveProbe(probe.rawValue)
+        }
+        probes.receiveProbe(0); probes.receiveProbe(13); probes.receiveProbe(UInt32.max)
+        precondition(SteamLog.events.count == initialEvents + 12 && probes.phase == initialPhase)
+        precondition(Array(SteamLog.events.suffix(12)) == SteamClientAuthProbe.allCases.map(\.message))
+        precondition(CMVerifierFixture.calls == 0 && SteamSignIn.saved == nil && SteamClientPendingStore.values.isEmpty)
+        probes.beginSteamSession()
+        let newSessionEvents = SteamLog.events.count
+        probes.receiveProbe(1); probes.receiveProbe(1)
+        precondition(SteamLog.events.count == newSessionEvents + 1)
+        print("PASS: fixed Windows diagnostics deduplicate per session, reject unknown codes and never change authorization")
 
         try account(recent: false)
         var current = fresh(); current.receive(data); await settle()

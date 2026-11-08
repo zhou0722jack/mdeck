@@ -8,7 +8,10 @@
 1. Wine `crypt32` 补丁仅匹配
    `C:\Program Files\Steam Client\Steam.exe`，大小写不敏感。
    在 `CryptProtectData` 成功保存凭据，或 `CryptUnprotectData` 成功恢复凭据后，
-   只将有 JWT 字节特征的有界候选数据交给私有 unixlib 回调。其他程序、浏览器、
+   只在最多 64 KiB 的本次 DPAPI 数据中提取完整 JWT，兼容原始、带前缀或包装的
+   UTF-8／UTF-16LE 数据；仅把令牌片段交给私有 unixlib 回调，不传包装或相邻内容。
+   每个令牌最多 8192 字符，每个数据块最多 4 个候选，不截断过长令牌。
+   其他程序、浏览器、
    旧 Dock 的 Steam、密码等普通 DPAPI 数据不走这一传输。
 2. 原生与 WOW64 回调使用同一新增表项；WOW64 内嵌指针按当前客体窗口转换成宿主指针。
    候选在回调返回前复制，不持有调用方指针。不改动 DPAPI 的输出、返回值或 LastError。
@@ -72,9 +75,23 @@ Build 23 的诊断缺口：候选筛选前没有日志，而 `renew` 筛选会�
 候选被拒绝、接收、等待会话结束以及进入 CM 验证都记录固定阶段，保持凭据不入日志。
 “没有这个条目”本身不能证明 Windows 没有调用 DPAPI，仍需修正版日志定位入口。
 
+Build 24 真机日志只到 `waiting for Windows credential event`，没有接收或拒绝候选，
+也没有进入 CM 验证。它证明 Windows 到 App 的交接尚未到达，不能据此判定网络验证失败。
+该版只检查数据开头的 JWT 特征，会漏掉带前缀或包装的数据；这是已修正的代码缺口，
+尚不能仅凭旧日志证明它就是该次真机故障的原因。
+
+修正版在 `crypt32` 完成 unixlib 初始化后报告 DLL 接入与进程分类，再分别报告
+`CryptProtectData`／`CryptUnprotectData` 入口、成功结果、未提取到完整 JWT 或数据超界。
+固定事件通过原有 ABI 的 NULL 指针与 1–12 阶段码传递；未知阶段码丢弃，正常候选仍走
+非 NULL 指针与长度检查。Windows 端每个 DLL 实例、App 端每次 Windows 会话分别去重。
+这些记录不包含实际路径、数据长度、账号或令牌；事件本身不改变登录状态。
+由此可区分未接入 DLL、进程路径不匹配、未调用 DPAPI、DPAPI 未成功和候选格式不符合预期。
+
 `tests/host/check-steam-signin-sync.py` 使用符合客户端用途的合成令牌、假 CM 结果和内存钥匙串，
 执行生产同步状态机、账号绑定、失败重试、退出、切换账号及旧游戏库响应隔离逻辑。
 它还验证私有 ABI、WOW64 转换、DPAPI 调用范围、LastError 保留和补丁源漂移失败，
+并在 ASan／UBSan 下验证原始及包装的 UTF-8／UTF-16、奇数字节偏移、完整片段、
+超界和错误语法拒绝、多候选数量限制，以及固定诊断事件不授予登录状态。
 并以 iOS SDK 检查完整同步代码、真实 CM 连接代码及登录界面。
 交叉编译器可用时，检查三种 PE 架构的完整修改源。
 

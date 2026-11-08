@@ -955,7 +955,11 @@ extern void madeira_steam_token_received( const void *data, unsigned int size ) 
 static NTSTATUS mdeck_steam_token( void *args )
 {
     const struct mdeck_steam_token_params *params = args;
-    if (params && params->data && params->size >= 128 && params->size <= 16386 && madeira_steam_token_received)
+    if (!params || !madeira_steam_token_received) return STATUS_SUCCESS;
+    /* NULL carries a fixed diagnostic code, never a guest pointer or payload. */
+    if ((!params->data && params->size >= MDECK_STEAM_MONITOR_ATTACHED &&
+         params->size <= MDECK_STEAM_EVENT_LAST) ||
+        (params->data && params->size >= 128 && params->size <= 16386))
         madeira_steam_token_received( params->data, params->size );
     return STATUS_SUCCESS;
 }
