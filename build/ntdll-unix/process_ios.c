@@ -1559,6 +1559,35 @@ static const char *child_extra_args( const char *spec, const WCHAR *image, int i
     return spec;
 }
 
+/* A desktop Steam shortcut uses -applaunch <id> followed by the game's own
+ * flags. In that session compatibility options must precede the selector.
+ * Other users of MADEIRA_CHILD_ARGS keep their existing append behavior. */
+static int child_extra_cmdline( const WCHAR *command, int length, const char *extra,
+                               int first, WCHAR *out, int capacity )
+{
+    int at = length, i, n;
+    if (!command || length < 0 || !extra || !out) return -1;
+    n = strlen( extra );
+    if (capacity <= length || n > capacity - length - 2) return -1;
+    if (first)
+    {
+        int quoted = 0;
+        at = 0;
+        while (at < length && (command[at] == ' ' || command[at] == '\t')) at++;
+        for (; at < length; at++)
+        {
+            if (command[at] == '"') quoted = !quoted;
+            else if (!quoted && (command[at] == ' ' || command[at] == '\t')) break;
+        }
+    }
+    memcpy( out, command, at * sizeof(WCHAR) );
+    out[at] = ' ';
+    for (i = 0; i < n; i++) out[at + 1 + i] = (unsigned char)extra[i];
+    memcpy( out + at + 1 + n, command + at, (length - at) * sizeof(WCHAR) );
+    out[length + n + 1] = 0;
+    return length + n + 1;
+}
+
 /* madeira-bcd: consoles without a window. kernelbase's alloc_console starts
  * conhost.exe with a window unless the program asked for none
  * (CREATE_NO_WINDOW appends --headless). In a Dock session explorer's desktop
@@ -2457,14 +2486,18 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
 
             if (nbuf)
             {
-                memcpy( nbuf, params->CommandLine.Buffer, cl_len * sizeof(WCHAR) );
-                nbuf[cl_len] = ' ';
-                for (k = 0; k < n; k++) nbuf[cl_len + 1 + k] = (WCHAR)(unsigned char)extra[k];
-                nbuf[cl_len + 1 + n] = 0;
-                params->CommandLine.Buffer = nbuf;
-                params->CommandLine.Length = (cl_len + 1 + n) * sizeof(WCHAR);
-                params->CommandLine.MaximumLength = params->CommandLine.Length + sizeof(WCHAR);
-                dprintf( 2, "[child-args] env.MADEIRA_CHILD_ARGS: appended \"%s\" to the command line\n", extra );
+                const char *first = getenv( "MADEIRA_CHILD_ARGS_FIRST" );
+                k = child_extra_cmdline( params->CommandLine.Buffer, cl_len, extra,
+                                        first && !strcmp( first, "1" ), nbuf, cl_len + n + 2 );
+                if (k < 0) free( nbuf );
+                else
+                {
+                    params->CommandLine.Buffer = nbuf;
+                    params->CommandLine.Length = k * sizeof(WCHAR);
+                    params->CommandLine.MaximumLength = params->CommandLine.Length + sizeof(WCHAR);
+                    dprintf( 2, "[child-args] env.MADEIRA_CHILD_ARGS: %s \"%s\"\n",
+                             first && !strcmp( first, "1" ) ? "prefixed" : "appended", extra );
+                }
             }
         }
     }

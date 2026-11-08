@@ -950,6 +950,16 @@ static NTSTATUS ios_enum_root_certs_wow( struct enum_root_certs_params *params )
     return status;
 }
 
+extern void madeira_steam_token_received( const void *data, unsigned int size ) __attribute__((weak));
+
+static NTSTATUS mdeck_steam_token( void *args )
+{
+    const struct mdeck_steam_token_params *params = args;
+    if (params && params->data && params->size >= 128 && params->size <= 16386 && madeira_steam_token_received)
+        madeira_steam_token_received( params->data, params->size );
+    return STATUS_SUCCESS;
+}
+
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
     process_attach,
@@ -959,6 +969,7 @@ const unixlib_entry_t __wine_unix_call_funcs[] =
     import_store_cert,
     close_cert_store,
     enum_root_certs,
+    mdeck_steam_token,
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );
@@ -1059,6 +1070,14 @@ static NTSTATUS wow64_enum_root_certs( void *args )
     return ios_enum_root_certs_wow( &params );
 }
 
+static NTSTATUS wow64_mdeck_steam_token( void *args )
+{
+    const struct { PTR32 data; unsigned int size; } *p = args;
+    if (!p) return STATUS_SUCCESS;
+    struct mdeck_steam_token_params params = { ios_wow_host_ptr( p->data ), p->size };
+    return mdeck_steam_token( &params );
+}
+
 const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
     process_attach,
@@ -1068,6 +1087,7 @@ const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
     wow64_import_store_cert,
     close_cert_store,
     wow64_enum_root_certs,
+    wow64_mdeck_steam_token,
 };
 
 C_ASSERT( ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_funcs_count );

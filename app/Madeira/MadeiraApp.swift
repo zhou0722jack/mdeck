@@ -22,6 +22,9 @@ struct MadeiraApp: App {
         if SigningRefresh.enabled { SigningAccountStore.takeIn() }
         // Use one profile before Wine or Steam Cloud reads the prefix.
         ProfileUnification.run()
+        MadeiraConfig.installMdeckRuntimeDefaults()
+        GameRecommendations.installSteamRuntimeDefaults(windowsPath: SteamClient.windowsExecutable)
+        SteamClientSignInSync.shared.start()
         // Games and downloads keep going when Madeira leaves the screen (BackgroundRun.swift).
         BackgroundRun.shared.start()
         // Read the cached library before the first grid page is built.

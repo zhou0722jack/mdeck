@@ -20,6 +20,10 @@
 
 ## 登录后不启动客户端即可下载
 
+Windows Steam → App 商店的自动授权同步见
+[登录同步流程](steam-client-signin-sync.md)。同步经 Valve 验证后存入同一个 Keychain
+登录项，商店沿用下列原生下载流程；Windows 会话期间保持连接隔离。
+
 1. 在商店或 Steam 设置内登录 Steam，凭据继续保存在系统 Keychain。
 2. 原生连接从 Valve 获取账户许可证与可安装的 Windows 游戏；商店展示账户已拥有的游戏。
 3. 点击“下载”进入已有 `SteamOwnedLibrary` 队列，不申请正式 JIT 池、不启动 Wine、SteamSetup、Steam.exe 或 Dock。

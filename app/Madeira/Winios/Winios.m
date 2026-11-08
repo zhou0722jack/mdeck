@@ -563,6 +563,19 @@ extern int winios_drv_close_desktop_if_owner(void);
 static atomic_int g_close_desktop;
 void winios_close_desktop(void) { atomic_store(&g_close_desktop, 1); }
 
+static _Atomic(uintptr_t) g_desktop_ready_hwnd;
+static atomic_ulong g_desktop_ready_generation;
+static BOOL g_desktop_ready_frame; /* main thread only */
+
+/* Wine event-pump thread: accept Explorer's explicit ready property once.
+ * Its caller invalidates this window, ensuring a post-ready paint follows. */
+int winios_note_desktop_ready(void *hwnd) {
+    uintptr_t empty = 0;
+    if (!hwnd || !atomic_compare_exchange_strong(&g_desktop_ready_hwnd, &empty, (uintptr_t)hwnd)) return 0;
+    fprintf(stderr, "[desktop-ready] Explorer initialized; waiting for its desktop paint hwnd=%p\n", hwnd);
+    return 1;
+}
+
 /* A game's main window can be shown minimized the first time it is shown
  * (ShowWindow cmd 2, parked at -32000,-32000). On Windows the taskbar brings
  * it back; Madeira has no taskbar, so the starting screen waited for a window
@@ -1389,10 +1402,13 @@ void winios_note_game_metal_hwnd(void *hwnd) {
 /* Called at every Wine session start (WineProcessBridge): a game session
  * starts with no overlay windows and no known Metal windows. */
 void winios_session_reset(void) {
+    atomic_fetch_add(&g_desktop_ready_generation, 1);
+    atomic_store(&g_desktop_ready_hwnd, 0);
     atomic_store(&g_size_game_hwnd, 0);
     atomic_store(&g_close_desktop, 0);
     winios_swapchain_hwnds_reset();   /* [swap-win]: HWND values of the last session mean nothing now */
     dispatch_async(dispatch_get_main_queue(), ^{
+        g_desktop_ready_frame = NO;
         g_game_input_key = nil;
         [g_game_metal removeAllObjects];
         if (g_comp_game) winios_drop_compositor("new session");
@@ -2037,6 +2053,11 @@ int winios_window_has_visible_frame(unsigned long long hwnd) {
     return !CGRectIsEmpty(CGRectIntersection(layer.frame, g_compositor_view.bounds));
 }
 
+int winios_desktop_is_ready(void) {
+    return NSThread.isMainThread && g_desktop_ready_frame &&
+        winios_window_has_visible_frame((unsigned long long)atomic_load(&g_desktop_ready_hwnd));
+}
+
 /* MADEIRA_DUMP_SURFACES=1: save each window's DIB as PNG under
  * Documents/surfdump/ — surf-<hwnd>-first.png once, then
  * surf-<hwnd>-latest.png at most every 2s. Ground truth for whether a
@@ -2205,6 +2226,10 @@ void winios_dump_srcbits(const void *bits, int w, int h, int stride) {
 int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
                            int sw, int sh, int stride, const void *bits, unsigned int alpha_mask) {
     if (sw <= 0 || sh <= 0 || !bits) return 1;   /* nothing to paint */
+    /* Tag at submission time: an early backdrop may still be queued when
+     * UIKit commits Explorer's first initialized desktop frame. */
+    const uintptr_t readyDesktop = atomic_load(&g_desktop_ready_hwnd);
+    const unsigned long desktopGeneration = atomic_load(&g_desktop_ready_generation);
     winios_census_note_present(hwnd);   /* no-op unless the census is on */
     size_t snap_len = (size_t)stride * (size_t)sh;
     void *snap = malloc(snap_len);
@@ -2480,6 +2505,8 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
             NSNumber *key = @((uintptr_t)hwnd);
             l.opaque = !pixelAlpha;
             l.contents = (__bridge id)img;
+            if (readyDesktop == (uintptr_t)hwnd && readyDesktop == atomic_load(&g_desktop_ready_hwnd) &&
+                desktopGeneration == atomic_load(&g_desktop_ready_generation)) g_desktop_ready_frame = YES;
             if (pending) { l.hidden = YES; winios_sync_metal_hidden(key, l); }   /* winios_window_frame decides */
             else atomic_fetch_add_explicit(&g_surface_present_count, 1, memory_order_relaxed);
             g_surf_sizes[key] = [NSValue valueWithCGSize:CGSizeMake(sw, sh)];

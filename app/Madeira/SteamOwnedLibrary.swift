@@ -317,7 +317,7 @@ final class SteamOwnedLibrary: ObservableObject {
     private var queue: [Int] = []
     private var active: (id: Int, task: Task<Void, Never>)?
     /// A game session runs: downloads wait, and the Steam connection stays closed.
-    private var inSession = false
+    @Published private(set) var inSession = false
     private var resumeAfterSession = Set<Int>()
     /// Downloads paused because iOS ended Madeira's background time.
     private var resumeAfterBackgroundIDs = Set<Int>()
@@ -333,6 +333,7 @@ final class SteamOwnedLibrary: ObservableObject {
     /// Which account the cached list belongs to: a SHA-256 of the account name,
     /// so the cache file holds no name.
     private var cachedAccount: String?
+    private var accountRevision = UUID()
     private static func accountKey(_ name: String?) -> String? {
         name.map { SHA256.hash(data: Data($0.utf8)).map { String(format: "%02x", $0) }.joined() }
     }
@@ -410,15 +411,16 @@ final class SteamOwnedLibrary: ObservableObject {
     private func signInChanged() {
         let now = SteamSignIn.isSignedIn
         guard now != signedIn || (now && Self.accountKey(SteamSignIn.accountName) != cachedAccount) else { return }
+        accountRevision = UUID()
+        for id in Array(downloads.keys) { pause(id) }
+        resumeAfterSession.removeAll(); queue.removeAll()
+        session.logoff()
+        clearCaches()
+        owned = []; libraryUpdated = nil; playtime = [:]; downloads = [:]
         signedIn = now
         if !now {
-            for id in Array(downloads.keys) { pause(id) }
-            session.logoff()
-            clearCaches()
-            owned = []; libraryUpdated = nil; playtime = [:]; downloads = [:]
             SteamLog.event("[steam-library] signed out: list cleared")
         } else {
-            owned = []; libraryUpdated = nil; playtime = [:]
             Task { await refreshLibrary(interactive: true) }
         }
     }
@@ -452,9 +454,16 @@ final class SteamOwnedLibrary: ObservableObject {
         guard Self.enabled, signedIn, !refreshing, !inSession else { return }
         lastLibraryRefreshAttempt = Date()
         refreshing = true
-        defer { refreshing = false }
+        let requestRevision = accountRevision
+        defer {
+            refreshing = false
+            if accountRevision != requestRevision, signedIn, !inSession {
+                Task { await refreshLibrary(interactive: false) }
+            }
+        }
         do {
             let apps = try await fetcher.fetchOwnedApps()
+            guard accountRevision == requestRevision, signedIn, !inSession else { return }
             var ownedDLC: [UInt32: SteamAppInfo] = [:]
             if Self.dlcEnabled { for dlc in fetcher.ownedDLC { ownedDLC[dlc.appID] = dlc } }
             let games = apps.filter(\.installableOnWindows).map { SteamOwnedGame($0, ownedDLC: ownedDLC) }
@@ -466,6 +475,7 @@ final class SteamOwnedLibrary: ObservableObject {
             SteamLog.event("[steam-library] owned apps=\(apps.count) windows-installable=\(games.count) dlc=\(ownedDLC.count)")
             await refreshPlaytime()
         } catch {
+            guard accountRevision == requestRevision else { return }
             handleSessionError(error, context: "library", report: interactive)
         }
     }
@@ -567,8 +577,10 @@ final class SteamOwnedLibrary: ObservableObject {
 
     func refreshPlaytime() async {
         guard Self.enabled, signedIn, !inSession else { return }
+        let requestRevision = accountRevision
         do {
             let parsed = try SteamPlaytime.parse(try await requestOwnedGamesPlaytime())
+            guard accountRevision == requestRevision, signedIn, !inSession else { return }
             playtime = parsed
             try? FileManager.default.createDirectory(at: Self.supportFolder, withIntermediateDirectories: true)
             try? JSONEncoder().encode(parsed).write(to: Self.playtimeURL, options: .atomic)
@@ -1159,6 +1171,9 @@ final class SteamOwnedLibrary: ObservableObject {
             // Madeira Dock may still hold the account (dockEnded() releases it).
             guard gate.reopen(sessionRunning: false) else { return }
             inSession = false
+            if signedIn && libraryUpdated == nil {
+                Task { await refreshLibrary(interactive: false) }
+            }
             let resume = resumeAfterSession.sorted()
             resumeAfterSession.removeAll()
             for id in resume { install(id) }

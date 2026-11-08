@@ -1815,6 +1815,11 @@ final class LibraryModel: ObservableObject {
             // Interactive Steam has its own ownership-checked frame condition.
         } else if dockStart.holding {
             if launching && !launchSlow && Date().timeIntervalSince(launchStarted) > 30 { launchSlow = true }
+        } else if launching && activeEntry?.desktop == true {
+            // A child/services GDI flush can precede Explorer's shortcut icons
+            // and taskbar by seconds. Wait for the initialized shell's paint.
+            if winios_desktop_is_ready() != 0 { showGameView(reason: "desktop-ready-frame") }
+            else if Date().timeIntervalSince(launchStarted) > 30 { launchSlow = true }
         } else if launching {
             if madeira_frame_count() >= launchPresent + 3 {
                 showGameView(reason: "present")
@@ -4128,6 +4133,8 @@ private extension LibraryView {
                     LinearGradient(colors: [palette.surface, palette.raised], startPoint: .topLeading, endPoint: .bottomTrailing)
                     Image(systemName: "desktopcomputer").font(.system(size: 76, weight: .ultraLight)).foregroundStyle(palette.accent.opacity(0.55))
                 }.frame(height: 220).clipShape(RoundedRectangle(cornerRadius: 18))
+                Text("Installed applications appear on the Windows desktop. Shortcuts are refreshed automatically.")
+                    .font(.subheadline).foregroundStyle(palette.muted)
                 HStack(spacing: 12) {
                     Button { play(model.entries.first { $0.desktop == true } ?? .desktopEntry) } label: {
                         Label("Open desktop", systemImage: "play.fill")
@@ -5546,7 +5553,7 @@ struct MadeiraCredit: View {
 }
 
 /// Settings › Memory & sync: the JIT pool (madeira.cfg pool), the video memory
-/// budget (vram-mb), the file-backed swap tier (swap-mb, off by default, and
+/// budget (vram-mb), the file-backed swap tier (swap-mb, seeded to 4 GB, and
 /// env.MADEIRA_SWAP_COVERAGE, which allocations it backs) and the in-process sync
 /// engine (SyncEngine: fastsync by default, madsync or Wine's own). All are read when Madeira starts,
 /// so changes apply after a restart. "All settings" opens every other option.
@@ -5679,7 +5686,7 @@ struct RuntimeMemorySyncSettings: View {
     var body: some View {
         Section {
             mbPicker(L("JIT pool"), key: "pool", value: $poolMB, choices: Self.poolChoices,
-                     zero: L("Default (896 MB)"), label: { "\($0) MB" })
+                     zero: "896 MB", label: { "\($0) MB" })
             mbPicker(L("Video memory"), key: "vram-mb", value: $vramMB, choices: Self.vramChoices,
                      zero: L("Automatic"), label: Self.gb)
             mbPicker(L("Swap tier"), key: "swap-mb", value: $swapMB, choices: Self.swapChoices,

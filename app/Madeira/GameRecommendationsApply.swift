@@ -33,6 +33,30 @@
 import Foundation
 
 extension GameRecommendations {
+    /// Apply the user's replacement of Steam settings > Advanced > Steam
+    /// runtime config once. This intentionally replaces an older edited Steam
+    /// file too, backs it up, and leaves resolution/control/profile fields alone.
+    @discardableResult
+    static func installSteamRuntimeDefaults(windowsPath: String, defaults: UserDefaults = .standard) -> Bool {
+        guard match(windowsPath: windowsPath, steamAppID: nil, fileExists: { _ in false })?.id == steamBigPicture.id else { return false }
+        let key = "mdeck.steam.runtime-config.v1." + String(LibraryPrefs.stableHash(windowsPath.lowercased()), radix: 16)
+        guard !defaults.bool(forKey: key), let url = GameProfile(windowsPath: windowsPath).url else { return false }
+        let fm = FileManager.default
+        do {
+            let old = fm.fileExists(atPath: url.path) ? try String(contentsOf: url, encoding: .utf8) : ""
+            if !old.isEmpty, old != steamBigPicture.fileText {
+                let backup = url.appendingPathExtension("before-mdeck-steam-runtime-v1.bak")
+                if !fm.fileExists(atPath: backup.path) { try Data(old.utf8).write(to: backup, options: .atomic) }
+            }
+            guard put(steamBigPicture, to: windowsPath, .updated, title: "Steam", switches: false) else { return false }
+            defaults.set(true, forKey: key)
+            return true
+        } catch {
+            LogStore.shared.log("[recommended] Steam runtime config update failed: \(error.localizedDescription)", level: .error)
+            return false
+        }
+    }
+
     /// What Madeira did for which game: [lowercased Windows path: "<id>#<version>#<file hash>"
     /// for a recommendation it wrote, "" for a game that kept its own config].
     private static let appliedKey = "madeira.recommended.applied"

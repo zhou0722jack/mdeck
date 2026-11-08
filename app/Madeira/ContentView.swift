@@ -2863,6 +2863,9 @@ struct ContentView: View {
                 // writes those). Either one turns a switch on.
                 Self.reassertBCDSwitches(profile)
                 SteamClient.configureSession(profile)
+                if SteamClient.owns(profile) || profile.desktop == true {
+                    DispatchQueue.main.async { SteamClientSignInSync.shared.beginSteamSession() }
+                }
                 logStore.log("[launch-route] library profile applied")
                 // madeira-bcd: a Dock session of one-time installs runs without the game's
                 // address-space holds, which leave its 32-bit setups no room.

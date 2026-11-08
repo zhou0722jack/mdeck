@@ -125,9 +125,32 @@ assert 'if bigPicture == true { Self.writeBigPictureBatch() }' in library \
 # ml2230 (version 4, logs 111-112): CEF's verbose log is off. Version 5 (logs 113-114): V8 is interpreted again
 # (version 4's MADEIRA_JITLESS = 0 froze the UI: every store to its pool-aliased code space was emulated).
 bp = presets['steam-big-picture']
-assert bp['version'] == 6 and 'env.MADEIRA_STEAM_ALLOW_CRASHPAD = 1' in bp['lines'] and 'env.MADEIRA_SRW_HANG_KILL_S = 40' in bp['lines'] \
+assert bp['version'] == 7 and 'env.MADEIRA_STEAM_ALLOW_CRASHPAD = 1' in bp['lines'] and 'env.MADEIRA_SRW_HANG_KILL_S = 40' in bp['lines'] \
     and not any(l.startswith('env.MADEIRA_JITLESS') for l in bp['lines']) and 'env.MADEIRA_CEF_VERBOSE = 0' in bp['lines'] \
     and not any(l.startswith('env.MADEIRA_SC_PA_POOLS') for l in bp['lines']), bp
+assert bp['lines'][2:] == '''pool-low = 1
+pool-page-fit = 1
+pool-split = 1
+env.MADEIRA_POOL_HEAD_RESERVE_MB = 48
+env.MADEIRA_POOL_LOW_IMAGES = 1
+env.MADEIRA_POOL_RECYCLE_IMAGES = 1
+env.MADEIRA_X64_IMAGE_NOCOPY = 1
+env.MADEIRA_LOCK_ORPHAN = stamped
+env.MADEIRA_GDI_SHARED_SECTION = 1
+env.MADEIRA_STEAM_ALLOW_CRASHPAD = 1
+env.MADEIRA_CEF_VERBOSE = 0
+env.MADEIRA_SRW_HANG_KILL_S = 40
+env.MADEIRA_TOUCH_MOUSE = 1
+env.MADEIRA_WOW_MIN_FREE_GB = 2
+env.MADEIRA_WOW_PLACEHOLDERS = 1
+env.MADEIRA_FREE_DELAY_MS = 0
+env.MADEIRA_EC_HOOK_TRACE = 0
+# The defaults this list was tested with (upstream's differ).
+env.MADEIRA_CTX_CPU_AREA = 2
+env.MADEIRA_WAIT_CHILDREN = 1
+env.MADEIRA_JIT_DUMP = 0'''.splitlines(), bp['lines']
+app_init = (app / 'MadeiraApp.swift').read_text()
+assert app_init.index('ProfileUnification.run()') < app_init.index('installSteamRuntimeDefaults(windowsPath: SteamClient.windowsExecutable)') < app_init.index('SteamOwnedLibrary.shared.start()')
 # ml2230: Big Picture's libraryfolders.vdf (config/ and steamapps/) gets Madeira's Steam library and the drives'
 # libraries beside its own entries, before each start (env.MADEIRA_BIG_PICTURE_LIBRARIES = 0 leaves them alone).
 assert 'listMadeiraLibraries(in: folder)' in library \
@@ -983,6 +1006,36 @@ check(R.prepare(&gotOwn, new: true) && LibraryPrefs.avx(got) && LibraryPrefs.nvi
 check(LogStore.shared.lines.contains { $0.hasPrefix("[recommended] Red Dead Redemption 2: rdr2-steam v\(R.rdr2Steam.version) written (first sight)") }, "log line")
 UserDefaults.standard.removeObject(forKey: key)
 print("PASS: drive_c is looked up for a program's list; a new entry takes the fields of a list written for its path before")
+
+// Upgrade the exact file shown by Steam settings > Advanced > Steam runtime config.
+let migrationSuite = "mdeck-steam-defaults-" + UUID().uuidString
+let migrationDefaults = UserDefaults(suiteName: migrationSuite)!
+defer { migrationDefaults.removePersistentDomain(forName: migrationSuite) }
+let steamPath = #"C:\Program Files\Steam Client\Steam.exe"#
+let oldSteam = "# old Steam runtime config\nswap-mb = 4096\nswap-min-mb = 1\nenv.MADEIRA_SWAP_COVERAGE = broad\ndonor-pool-mb = 4096\nenv.MADEIRA_POOL_HEAD_RESERVE_MB = 128\n"
+GameProfile(windowsPath: steamPath).text = oldSteam
+LibraryPrefs.setAVX(true, for: steamPath)
+check(R.installSteamRuntimeDefaults(windowsPath: steamPath, defaults: migrationDefaults), "Steam runtime config gets the requested one-time update")
+check(file(steamPath) == R.steamBigPicture.fileText, "Steam editor's file exactly matches the supplied 20 settings")
+let steamBackup = GameProfile(windowsPath: steamPath).url!.appendingPathExtension("before-mdeck-steam-runtime-v1.bak")
+check((try? String(contentsOf: steamBackup, encoding: .utf8)) == oldSteam, "old Steam runtime file is backed up")
+check(LibraryPrefs.avx(steamPath), "runtime update leaves Steam profile's other switches alone")
+let laterSteam = file(steamPath) + "# later user edit\nenv.MADEIRA_POOL_HEAD_RESERVE_MB = 64\n"
+GameProfile(windowsPath: steamPath).text = laterSteam
+check(!R.installSteamRuntimeDefaults(windowsPath: steamPath, defaults: migrationDefaults) && file(steamPath) == laterSteam,
+      "later Steam runtime edits survive app restarts")
+let blockedPath = #"C:\Madeira\Installers\SteamBootstrap.exe"#
+let blocked = GameProfile(windowsPath: blockedPath).url!
+try? FileManager.default.removeItem(at: blocked)
+try! FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+check(!R.installSteamRuntimeDefaults(windowsPath: blockedPath, defaults: migrationDefaults), "unreadable Steam config is preserved")
+try! FileManager.default.removeItem(at: blocked)
+check(R.installSteamRuntimeDefaults(windowsPath: blockedPath, defaults: migrationDefaults), "failed migration can retry after the write problem is resolved")
+check(!R.installSteamRuntimeDefaults(windowsPath: rdr2, defaults: migrationDefaults), "Steam migration cannot replace another game's config")
+var steamEntry = LibraryEntry(title: "Steam", windowsPath: steamPath)
+_ = R.reset(&steamEntry)
+check(file(steamPath) == R.steamBigPicture.fileText, "Reset to Recommended restores the same requested Steam runtime config")
+print("PASS: Steam runtime editor migration, exact template, backup, retry, later user edits and Reset to Recommended")
 '''
 
 with tempfile.TemporaryDirectory(prefix='madeira-recommended-') as directory:
@@ -1001,6 +1054,12 @@ with tempfile.TemporaryDirectory(prefix='madeira-recommended-') as directory:
                         str(app / 'Localization.swift'), str(temporary / 'Stubs.swift'), str(temporary / 'main.swift'), '-o', str(binary)], check=True)
         env = dict(os.environ, MADEIRA_TEST_DRIVE=str(temporary / 'drive'), MADEIRA_TEST_CONFIGS=str(temporary / 'configs'))
         subprocess.run([str(binary)], check=True, env=env)
+        if shutil.which('xcrun'):
+            sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
+            subprocess.run(['xcrun', 'swiftc', '-typecheck', '-sdk', sdk, '-target', 'arm64-apple-ios18.0',
+                            str(app / 'GameRecommendations.swift'), str(app / 'GameRecommendationsApply.swift'),
+                            str(app / 'Localization.swift'), str(temporary / 'Stubs.swift')], check=True)
+            print('PASS: recommendation template and Steam runtime migration typecheck for iOS')
     elif args.require_swift:
         raise SystemExit('Swift compiler required for the recommended-settings fixture')
     else:

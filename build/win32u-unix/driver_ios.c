@@ -55,6 +55,7 @@ static WCHAR driver_load_error[80];
  * a missing impl resolves to NULL and SET_USER_FUNC falls back. */
 extern BOOL winios_pCreateWindow( HWND hwnd ) __attribute__((weak));
 extern BOOL winios_pProcessEvents( DWORD mask ) __attribute__((weak));
+extern int winios_note_desktop_ready( void *hwnd ) __attribute__((weak));
 extern void winios_pSetCursor( HWND hwnd, HCURSOR cursor ) __attribute__((weak));
 extern void winios_pDestroyCursorIcon( HCURSOR cursor ) __attribute__((weak));
 extern void winios_pDestroyWindow( HWND hwnd ) __attribute__((weak));
@@ -996,6 +997,13 @@ static void ios_tiny_window_poll(void)
  * was shown. */
 static BOOL winios_drv_process_events( DWORD mask )
 {
+    if (winios_desktop_mode() && winios_note_desktop_ready)
+    {
+        static const WCHAR ready[] = {'M','D','e','c','k','D','e','s','k','t','o','p','R','e','a','d','y',0};
+        HWND desktop = get_desktop_window();
+        if (desktop && NtUserGetProp( desktop, ready ) && winios_note_desktop_ready( desktop ))
+            NtUserRedrawWindow( desktop, NULL, 0, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN );
+    }
     if (ios_show_foreground) ios_apply_fullscreen_foreground();
     ios_foreground_if_none( "a message poll" );
     ios_tiny_window_poll();

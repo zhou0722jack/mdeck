@@ -240,6 +240,7 @@ func expectError(_ expected: SteamError, _ label: String, _ run: () async throws
         require(SteamAuthAPI.error(for: 84) == .rateLimited && SteamAuthAPI.error(for: 87) == .rateLimited, "rate limits")
         require(SteamAuthAPI.error(for: 17) == .accountDisabled, "banned")
         require(SteamAuthAPI.error(for: 9) == .authSessionExpired && SteamAuthAPI.error(for: 27) == .authSessionExpired, "expired session")
+        require([UInt32(15), 26, 94].allSatisfy { SteamAuthAPI.error(for: $0) == .authSessionExpired }, "denied, revoked or invalid refresh tokens cannot be retried as a transport error")
         if case .authenticationFailed(let text) = SteamAuthAPI.error(for: 65) { require(text.contains("Steam Guard"), "wrong code") } else { require(false, "wrong code") }
         if case .authenticationFailed(let text) = SteamAuthAPI.error(for: 2) { require(text.contains("(code 2)"), "other codes are named") } else { require(false, "other codes are named") }
 
@@ -297,7 +298,7 @@ with tempfile.TemporaryDirectory() as tmp:
     (tmp / 'api.swift').write_text(api_source)
     (tmp / 'checks.swift').write_text(checks)
     sources = [tmp / 'stubs.swift', tmp / 'api.swift', tmp / 'checks.swift',
-               steam / 'Proto/SteamProtoMessages.swift', steam / 'Core/SteamError.swift']
+               steam / 'Proto/SteamProtoMessages.swift', steam / 'Core/SteamError.swift', app / 'Localization.swift']
     exe = tmp / 'swift-checks'
     build = subprocess.run([SWIFTC, '-parse-as-library', '-swift-version', '5', '-sanitize=address', '-o', str(exe)] + [str(s) for s in sources])
     require(build.returncode == 0, 'production sign-in Swift compiles on the host')

@@ -61,7 +61,7 @@ enum SteamAuthAPI {
         case 65, 88: return .authenticationFailed(L("That Steam Guard code is not correct. Try again with a new code."))
         case 84, 87: return .rateLimited                     // RateLimitExceeded, AccountLoginDeniedThrottle
         case 17: return .accountDisabled                     // Banned
-        case 9, 27: return .authSessionExpired               // FileNotFound (expired session), Expired
+        case 9, 15, 26, 27, 94: return .authSessionExpired   // Expired, denied, revoked or invalid signature
         default: return .authenticationFailed(LF("Steam refused the sign-in (code %@).", String(describing: (code))))
         }
     }

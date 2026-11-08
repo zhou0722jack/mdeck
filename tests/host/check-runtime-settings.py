@@ -12,7 +12,7 @@
    env.MADEIRA_FASTSYNC; a hand-edited madeira.cfg reads back as the engine
    Wine will run (madsync wins over any MADEIRA_FASTSYNC value).
 2. Source checks on app/Madeira/Library.swift and FPSOverlay.swift: the
-   defaults are swap tier off, Fastsync and display-rate hold off, the
+   mdeck defaults are the selected memory values, Fastsync and display-rate hold off, the
    Sync engine picker writes through SyncEngine.apply, game details offer the
    Fastsync-only switches greyed out unless Fastsync is chosen, launches export
    them only with Fastsync, and MADEIRA_RUNTIME_SETTINGS=0 hides both sections.
@@ -103,6 +103,36 @@ MadeiraConfig.set("env.MADEIRA_FASTSYNC", nil)
 expect(SyncEngine.current == .wine, "inproc-sync = 0 without MADEIRA_FASTSYNC stays Wine standard sync (as written before)")
 MadeiraConfig.set("inproc-sync", nil)
 expect(SyncEngine.current == .fastsync, "neither key: Fastsync")
+
+// The screenshot's selections are seeded before the first UI/runtime read.
+let fresh = docs.appendingPathComponent("new-defaults/madeira.cfg")
+expect(MadeiraConfig.installMdeckRuntimeDefaults(at: fresh), "fresh install writes mdeck runtime defaults")
+let freshText = try! String(contentsOf: fresh, encoding: .utf8)
+let values = MadeiraConfig.parse(freshText)
+expect(values == ["pool":"1152", "swap-mb":"4096", "env.MADEIRA_SWAP_COVERAGE":"classic", "donor-pool-mb":"6144"],
+       "1152 MB JIT, auto VRAM, 4 GB swap, large allocations, 6 GB donor, donor-only WOW, Fastsync and eco off")
+expect(!MadeiraConfig.installMdeckRuntimeDefaults(at: fresh), "defaults are installed once")
+let upgraded = docs.appendingPathComponent("upgrade-defaults/madeira.cfg")
+try! FileManager.default.createDirectory(at: upgraded.deletingLastPathComponent(), withIntermediateDirectories: true)
+let oldGlobal = "# keep my notes\npool = 512\npool = 896\nvram-mb = 2048\nswap-mb = 2048\nswap-min-mb = 1\nswap-min-kb = 64\nswap-mode = 2\nenv.MADEIRA_SWAP_MIN_KB = 64\nenv.MADEIRA_SWAP_COVERAGE = broad\ndonor-pool-mb = 4096\nswap-wow64 = 1\ninproc-sync = 1\nenv.MADEIRA_FASTSYNC = 0\neco = 1\nd3d9 = wined3d\nenv.CUSTOM = keep\n"
+try! oldGlobal.write(to: upgraded, atomically: true, encoding: .utf8)
+expect(MadeiraConfig.installMdeckRuntimeDefaults(at: upgraded), "old install receives selected defaults once")
+let upgradedText = try! String(contentsOf: upgraded, encoding: .utf8)
+let upgradedValues = MadeiraConfig.parse(upgradedText)
+expect(upgradedValues == values.merging(["d3d9":"wined3d", "env.CUSTOM":"keep"]) { $1 } && upgradedText.contains("# keep my notes"),
+       "stale coverage, thresholds, VRAM, WOW and sync overrides are removed; unrelated keys and comments survive")
+let backup = upgraded.appendingPathExtension("before-mdeck-defaults-v1.bak")
+let backupText = try! String(contentsOf: backup, encoding: .utf8)
+expect(backupText == oldGlobal, "original global config has a backup")
+let later = upgradedText + "pool = 768\nswap-mb = 0\n"
+try! later.write(to: upgraded, atomically: true, encoding: .utf8)
+expect(!MadeiraConfig.installMdeckRuntimeDefaults(at: upgraded), "user can change the new defaults afterward")
+expect((try! String(contentsOf: upgraded, encoding: .utf8)) == later, "app restart preserves later custom settings")
+let blocked = docs.appendingPathComponent("blocked-defaults")
+try! FileManager.default.createDirectory(at: blocked, withIntermediateDirectories: true)
+expect(!MadeiraConfig.installMdeckRuntimeDefaults(at: blocked), "unreadable destination is not overwritten or marked complete")
+try! FileManager.default.removeItem(at: blocked)
+expect(MadeiraConfig.installMdeckRuntimeDefaults(at: blocked), "failed installation retries successfully")
 exit(failed == 0 ? 0 : 1)
 '''
 
@@ -144,7 +174,10 @@ check('if SyncEngine.current == .fastsync {' in apply_env and 'setenv("MADEIRA_F
       and 'else { unsetenv("MADEIRA_FASTSYNC_SEM") }' in apply_env,
       'a launch exports the fastsync switches only when the engine is Fastsync')
 check('static let swapChoices = [0, 1024, 2048, 3072, 4096]' in settings and 'mb > 0 ? String(mb) : nil' in settings,
-      'swap tier: Off removes swap-mb (off by default)')
+      'swap tier: Off removes swap-mb after the initial 4 GB seed')
+startup = (root / 'app/Madeira/MadeiraApp.swift').read_text()
+check(startup.index('MadeiraConfig.installMdeckRuntimeDefaults()') < startup.index('SteamOwnedLibrary.shared.start()'),
+      'selected runtime defaults are installed before frontend and library startup')
 check('@State private var hold = ProMotionIntent.holdMaximum' in display
       and 'MadeiraConfig.set("env.MADEIRA_PROMOTE", on ? "1" : nil)' in display, 'display-rate hold writes env.MADEIRA_PROMOTE')
 check('static var holdMaximum: Bool { MadeiraConfig.flag("MADEIRA_PROMOTE", fallback: false) }' in fps,

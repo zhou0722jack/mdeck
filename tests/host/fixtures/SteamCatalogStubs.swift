@@ -42,6 +42,7 @@ final class SteamOwnedLibrary: ObservableObject {
         }
     }
     @Published var signedIn = false
+    @Published var inSession = false
     @Published var owned: [SteamOwnedGame] = []
     @Published var downloads: [Int: Download] = [:]
     @Published var refreshing = false
@@ -73,6 +74,12 @@ struct SteamGameArtwork: View { let appID: Int; var backdrop = false; var body: 
 struct SteamDownloadStatus: View { let download: SteamOwnedLibrary.Download; var body: some View { Color.clear } }
 struct LibraryDetail: View { let entry: LibraryEntry; let play: (LibraryEntry) -> Void; var body: some View { Color.clear } }
 struct SteamSignInView: View { var body: some View { Color.clear } }
+final class SteamClientSignInSync: ObservableObject {
+    static let shared = SteamClientSignInSync()
+    enum Phase { case idle, failed }
+    var phase = Phase.idle
+    var statusText: String? { nil }
+}
 struct SteamAccountSettingsView: View { var body: some View { Color.clear } }
 struct SteamGameSheet: View { let appID: Int; let open: (LibraryEntry) -> Void; var body: some View { Color.clear } }
 struct SteamGamePreviewContent: View { let appID: Int; var body: some View { Color.clear } }

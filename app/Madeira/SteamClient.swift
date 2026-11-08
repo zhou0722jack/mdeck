@@ -53,6 +53,9 @@ enum SteamClient {
         entry.title = gameProfile?.title ?? (install ? L("Steam installer") : "Steam")
         entry.steamUseGlobalSettings = gameProfile?.steamUseGlobalSettings
         entry.steamSettingsPath = customized?.windowsPath ?? windowsExecutable
+        // The global Steam runtime editor owns GameProfile's file. Legacy
+        // inline lines must not reintroduce its old broad/4 GB overrides.
+        if customized == nil { entry.config = nil }
         entry.steamAppID = nil
         entry.bigPicture = nil
         entry.workingDirectory = nil
@@ -77,6 +80,7 @@ enum SteamClient {
         profile.title = L("Steam settings")
         profile.steamAppID = nil; profile.steamClientAppID = nil; profile.steamSettingsPath = nil
         profile.steamUseGlobalSettings = nil
+        profile.config = nil
         profile.arguments = extraArguments
         return profile
     }
@@ -157,14 +161,18 @@ enum SteamClient {
     /// compatibility flags used by the home button. Preserve Steam-specific
     /// extra options while always supplying the required compatibility flags.
     static func configureSession(_ entry: LibraryEntry) {
-        guard owns(entry) else { return }
+        unsetenv("MADEIRA_CHILD_ARGS_FIRST")
+        guard owns(entry) || entry.desktop == true else { return }
         // The initial controller remains a direct process, but this session
         // will present Steam through explorer's desktop after setup completes.
         setenv("MADEIRA_DESKTOP", "1", 1)
         // Rebuild from persistent global/game preferences each time. Reusing
         // the previous child rule can leak that game's flags to another game.
-        let childArguments = launchArguments(appID: entry.steamClientAppID)
+        let childArguments = launchArguments(appID: owns(entry) ? entry.steamClientAppID : nil)
         setenv("MADEIRA_CHILD_ARGS", "steam.exe " + childArguments, 1)
+        // Desktop shortcuts may already contain -applaunch and game flags.
+        // Steam options belong before that selector, not among game options.
+        if entry.desktop == true { setenv("MADEIRA_CHILD_ARGS_FIRST", "1", 1) }
         LogStore.shared.log("[steam-installer] Steam child/restart compatibility arguments enabled")
         setenv("MADEIRA_STEAM_AUTOINSTALL", entry.id == installerID ? "1" : "0", 1)
         if entry.id == installerID {

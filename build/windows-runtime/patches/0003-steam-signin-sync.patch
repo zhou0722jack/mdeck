@@ -1,0 +1,160 @@
+Madeira: transfer only interactive Steam refresh-token candidates to native authorization validation
+
+diff --git a/dlls/crypt32/crypt32_private.h b/dlls/crypt32/crypt32_private.h
+--- a/dlls/crypt32/crypt32_private.h
++++ b/dlls/crypt32/crypt32_private.h
+@@ -513,6 +513,12 @@
+     DWORD *needed;
+ };
+ 
++struct mdeck_steam_token_params
++{
++    const void *data;
++    unsigned int size;
++};
++
+ enum unix_funcs
+ {
+     unix_process_attach,
+@@ -522,6 +528,7 @@
+     unix_import_store_cert,
+     unix_close_cert_store,
+     unix_enum_root_certs,
++    unix_mdeck_steam_token,
+     unix_funcs_count,
+ };
+ 
+diff --git a/dlls/crypt32/protectdata.c b/dlls/crypt32/protectdata.c
+--- a/dlls/crypt32/protectdata.c
++++ b/dlls/crypt32/protectdata.c
+@@ -42,9 +42,39 @@
+ #include "windef.h"
+ #include "winbase.h"
+ #include "wincrypt.h"
++#include "crypt32_private.h"
+ #include "wine/debug.h"
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(crypt);
++
++
++/* Only the user's interactive Steam client participates. Do not export
++ * generic DPAPI data, a browser, another installed Steam or any password. */
++static BOOL mdeck_steam_process(void)
++{
++    WCHAR path[MAX_PATH];
++    DWORD old_error = GetLastError();
++    DWORD n = GetModuleFileNameW( NULL, path, ARRAY_SIZE(path) );
++    BOOL match = n && n < ARRAY_SIZE(path) &&
++        !lstrcmpiW( path, L"C:\\Program Files\\Steam Client\\Steam.exe" );
++    SetLastError( old_error );
++    return match;
++}
++
++static void mdeck_publish_token( const DATA_BLOB *blob )
++{
++    struct mdeck_steam_token_params params;
++    const BYTE *p;
++    if (!blob || !blob->pbData || blob->cbData < 128 || blob->cbData > 16386) return;
++    p = blob->pbData;
++    /* JWT bytes only, UTF-8 or UTF-16LE. Claims and server acceptance are
++     * checked by the native importer; this call never changes DPAPI's result. */
++    if (!(p[0]=='e' && p[1]=='y' && p[2]=='J') &&
++        !(p[0]=='e' && !p[1] && p[2]=='y' && !p[3] && p[4]=='J' && !p[5])) return;
++    params.data = p;
++    params.size = blob->cbData;
++    CRYPT32_CALL( mdeck_steam_token, &params );
++}
+ 
+ #define CRYPT32_PROTECTDATA_PROV      PROV_RSA_FULL
+ #define CRYPT32_PROTECTDATA_HASH_CALG CALG_SHA1
+@@ -844,8 +874,8 @@
+     }
+ 
+     /* debug: show our arguments */
+-    report(pDataIn,pOptionalEntropy,pPromptStruct,dwFlags);
+-    TRACE("\tszDataDescr: %p %s\n", szDataDescr,
++    if (!mdeck_steam_process()) report(pDataIn,pOptionalEntropy,pPromptStruct,dwFlags);
++    if (!mdeck_steam_process()) TRACE("\tszDataDescr: %p %s\n", szDataDescr,
+           szDataDescr ? debugstr_w(szDataDescr) : "");
+ 
+     /* Windows appears to create an empty szDataDescr instead of maintaining
+@@ -911,7 +941,7 @@
+     protect_data.cipher.cbData=dwLength;
+ 
+     /* debug: show the cipher */
+-    TRACE_DATA_BLOB(&protect_data.cipher);
++    if (!mdeck_steam_process()) TRACE_DATA_BLOB(&protect_data.cipher);
+ 
+     /* attach our fingerprint */
+     if (!convert_hash_to_blob(hHash, &protect_data.fingerprint))
+@@ -947,9 +977,10 @@
+ 
+     if (rc)
+     {
++        if (mdeck_steam_process()) mdeck_publish_token( pDataIn );
+         SetLastError(ERROR_SUCCESS);
+ 
+-        TRACE_DATA_BLOB(pDataOut);
++        if (!mdeck_steam_process()) TRACE_DATA_BLOB(pDataOut);
+     }
+ 
+     TRACE("returning %s\n", rc ? "ok" : "FAIL");
+@@ -1020,7 +1051,7 @@
+     }
+ 
+     /* debug: show our arguments */
+-    report(pDataIn,pOptionalEntropy,pPromptStruct,dwFlags);
++    if (!mdeck_steam_process()) report(pDataIn,pOptionalEntropy,pPromptStruct,dwFlags);
+     TRACE("\tppszDataDescr: %p\n", ppszDataDescr);
+ 
+     /* take apart the opaque blob */
+@@ -1117,13 +1148,14 @@
+     }
+ 
+     if (rc) {
++        if (mdeck_steam_process()) mdeck_publish_token( pDataOut );
+         SetLastError(ERROR_SUCCESS);
+ 
+-        if (ppszDataDescr)
++        if (ppszDataDescr && !mdeck_steam_process())
+         {
+             TRACE("szDataDescr: %s\n",debugstr_w(*ppszDataDescr));
+         }
+-        TRACE_DATA_BLOB(pDataOut);
++        if (!mdeck_steam_process()) TRACE_DATA_BLOB(pDataOut);
+     }
+ 
+     TRACE("returning %s\n", rc ? "ok" : "FAIL");
+diff --git a/dlls/crypt32/unixlib.c b/dlls/crypt32/unixlib.c
+--- a/dlls/crypt32/unixlib.c
++++ b/dlls/crypt32/unixlib.c
+@@ -851,6 +851,13 @@
+     return STATUS_SUCCESS;
+ }
+ 
++/* The iOS app provides the private transfer; other hosts keep DPAPI unchanged. */
++static NTSTATUS mdeck_steam_token( void *args )
++{
++    (void)args;
++    return STATUS_SUCCESS;
++}
++
+ const unixlib_entry_t __wine_unix_call_funcs[] =
+ {
+     process_attach,
+@@ -860,6 +867,7 @@
+     import_store_cert,
+     close_cert_store,
+     enum_root_certs,
++    mdeck_steam_token,
+ };
+ 
+ C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );
+@@ -965,6 +973,7 @@
+     wow64_import_store_cert,
+     close_cert_store,
+     wow64_enum_root_certs,
++    mdeck_steam_token,
+ };
+ 
+ C_ASSERT( ARRAYSIZE(__wine_unix_call_wow64_funcs) == unix_funcs_count );

@@ -39,6 +39,8 @@
 #include "FEXBridge.h"  // fex_get_jit_write_offset()
 #include "ChineseFonts.h"
 
+extern void madeira_prepare_desktop_applications(const char *prefix) __attribute__((weak));
+
 /* Write end of the pipe on fd 0, or -1 when stdin was left alone. The app's
  * host writes the guest's keystrokes here. */
 int madeira_stdin_master = -1;
@@ -694,6 +696,7 @@ void madeira_seed_prefix_if_needed(const char *prefix_path) {
         madeira_ensure_locallow( prefix );
         madeira_chinese_fonts( prefix, NSBundle.mainBundle.resourcePath );
         madeira_japanese_prefix( prefix );
+        if (madeira_prepare_desktop_applications) madeira_prepare_desktop_applications(prefix_path);
     }
 }
 
@@ -2728,6 +2731,7 @@ static void *wine_process_thread(void *arg) {
         unsetenv("MADEIRA_DINPUT_PAD");        /* ml1240 */
         unsetenv("MADEIRA_DESKTOP");           /* each launch chooses its own presentation mode */
         unsetenv("MADEIRA_DIRECT_WINDOW_SIZE"); /* a game's opt-in must not resize the next game */
+        unsetenv("MADEIRA_CHILD_ARGS_FIRST"); /* desktop shortcut argument order is session-local */
         /* madeira-bcd: Horizon Zero Dawn's per-game switches must not reach a later game
          * of this app run (GTA V Enhanced runs without them). */
         unsetenv("MADEIRA_SRV_FGETPATH");

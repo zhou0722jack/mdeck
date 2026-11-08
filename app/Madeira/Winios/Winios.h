@@ -78,6 +78,9 @@ unsigned long long winios_surface_present_count(void);
 /* Main thread: a visible, on-screen GDI/CEF window has received image content.
  * Creating a layer or a swapchain, or a hidden window repaint, is not a frame. */
 int winios_window_has_visible_frame(unsigned long long hwnd);
+/* Main thread: Explorer initialized its launchers and its desktop has painted
+ * after that point. The compositor backdrop alone never satisfies this. */
+int winios_desktop_is_ready(void);
 int winios_compositor_set_hidden(int hidden);
 
 /* Game-mode windows (Winios.m). The window a game session's swapchain

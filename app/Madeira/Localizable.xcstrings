@@ -56484,6 +56484,34 @@
         }
       }
     },
+    "Installed applications appear on the Windows desktop. Shortcuts are refreshed automatically.": {
+      "localizations": {
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已安装的应用会显示在 Windows 桌面上，快捷方式会自动刷新。"
+          }
+        }
+      }
+    },
+    "Sign in once in Windows Steam. Your account will sync here automatically.": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "在 Windows Steam 中登录一次，账号授权就会自动同步到这里。" } } }
+    },
+    "Waiting for Windows Steam to finish saving the sign-in…": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在等待 Windows Steam 保存登录信息…" } } }
+    },
+    "Syncing the Steam sign-in…": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在同步 Steam 登录授权…" } } }
+    },
+    "Steam sign-in sync is waiting and will retry automatically.": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 登录授权尚未同步，稍后会自动重试。" } } }
+    },
+    "Steam sign-in could not be synced. Open Windows Steam and try again.": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 授权同步未成功，请打开 Windows Steam 后重试。" } } }
+    },
+    "Downloads resume after the Windows session ends.": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "结束 Windows 会话后，将恢复游戏库加载与下载。" } } }
+    },
     "Double-tap to skip the animation.": {
       "localizations": {
         "zh-Hans": {

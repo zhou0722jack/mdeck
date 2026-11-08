@@ -84,6 +84,42 @@ static BOOL start_program(const WCHAR *path, WCHAR *command, const WCHAR *direct
     return CreateProcessW(path, command, NULL, NULL, FALSE, 0, NULL, directory, &startup, process);
 }
 
+static DWORD prepare_gui_context(void) {
+    typedef HWINSTA (WINAPI *get_station_fn)(void);
+    typedef HDESK (WINAPI *get_desktop_fn)(DWORD);
+    /* win32u's init_user is shared by the in-process Wine children. Load it
+     * first in the long-lived controller, so its station/desktop survive NSIS.
+     * Keep USER32 loaded until process exit; this creates no visible window. */
+    HMODULE user = LoadLibraryW(L"user32.dll");
+    if (!user) return GetLastError();
+    get_station_fn station = (get_station_fn)GetProcAddress(user, "GetProcessWindowStation");
+    get_desktop_fn desktop = (get_desktop_fn)GetProcAddress(user, "GetThreadDesktop");
+    if (!station || !desktop) return ERROR_PROC_NOT_FOUND;
+    if (!station() || !desktop(GetCurrentThreadId())) return ERROR_INVALID_HANDLE;
+    OutputDebugStringA("[steam-bootstrap] controller GUI station and desktop retained");
+    return ERROR_SUCCESS;
+}
+
+static DWORD start_desktop(WCHAR *command, PROCESS_INFORMATION *process) {
+    void *previous;
+    DWORD error;
+    /* The controller is i386. Without this scope system32 is redirected to
+     * syswow64, unlike the native explorer used by a regular Steam launch. */
+    if (!Wow64DisableWow64FsRedirection(&previous)) return GetLastError();
+    BOOL started = start_program(desktop_path, command, client_dir, process);
+    error = started ? ERROR_SUCCESS : GetLastError();
+    BOOL restored = Wow64RevertWow64FsRedirection(previous);
+    if (!restored && !error) {
+        error = GetLastError();
+        TerminateProcess(process->hProcess, error);
+        CloseHandle(process->hThread);
+        CloseHandle(process->hProcess);
+    }
+    if (!restored) OutputDebugStringA("[steam-bootstrap] filesystem redirection restore failed");
+    if (!error) OutputDebugStringA("[steam-bootstrap] native system32 explorer started; redirection restored");
+    return error;
+}
+
 static DWORD register_libraries(void) {
     /* Do not populate the target before NSIS verifies that it is empty. */
     if (!CreateDirectoryW(config_dir, NULL) && GetLastError() != ERROR_ALREADY_EXISTS) return GetLastError();
@@ -115,6 +151,8 @@ static DWORD bootstrap_run(void) {
      * including sandbox/GPU compatibility, also on updater restarts. */
     WCHAR client_command[1024];
     if (cancelled()) return failed(ERROR_CANCELLED);
+    error = prepare_gui_context();
+    if (error) return failed(error);
     if (!report("installer", 0)) return failed(ERROR_WRITE_FAULT);
     if (!start_program(setup_path, setup_command, NULL, &process)) return failed(GetLastError());
     CloseHandle(process.hThread);
@@ -134,7 +172,8 @@ static DWORD bootstrap_run(void) {
     if (cancelled()) return failed(ERROR_CANCELLED);
     if (!report("starting", 0)) return failed(ERROR_WRITE_FAULT);
     OutputDebugStringA("[steam-bootstrap] starting Steam through prepared desktop/services route");
-    if (!start_program(desktop_path, client_command, client_dir, &process)) return failed(GetLastError());
+    error = start_desktop(client_command, &process);
+    if (error) return failed(error);
     CloseHandle(process.hThread);
     if (!report("waiting", 0)) {
         TerminateProcess(process.hProcess, ERROR_WRITE_FAULT); CloseHandle(process.hProcess);
@@ -143,7 +182,7 @@ static DWORD bootstrap_run(void) {
     error = wait_program(process.hProcess, &code);
     CloseHandle(process.hProcess);
     /* Wine's existing child wait retains updater-created Steam successors. */
-    return error ? failed(error) : code;
+    return error || code ? failed(error ? error : code) : ERROR_SUCCESS;
 }
 
 #ifndef MADEIRA_BOOTSTRAP_HOST_TEST

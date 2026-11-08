@@ -16,6 +16,7 @@ import UIKit
 enum SteamSignIn {
     /// Posted on the main queue after a sign-in is stored or removed.
     static let didChange = Notification.Name("MadeiraSteamSignInDidChange")
+    static let didSignOut = Notification.Name("MadeiraSteamSignOutRequested")
 
     /// `env.NAME` from madeira.cfg, then the process environment. "0" is off.
     static func flag(_ name: String, default fallback: Bool) -> Bool {
@@ -41,6 +42,7 @@ enum SteamSignIn {
     }
 
     static func signOut() {
+        NotificationCenter.default.post(name: didSignOut, object: nil)
         SteamTokenStore().clearTokens()
         SteamLog.event("[steam-signin] signed out")
         notifyChange()
@@ -129,10 +131,23 @@ final class SteamSignInModel: ObservableObject {
     private let credentials = SteamCredentialAuth()
     private let qr = SteamQRAuth()
     private var signInTask: Task<Void, Never>?
+    private var signInObserver: NSObjectProtocol?
 
     var signedIn: Bool { accountName != nil }
 
-    init() { refresh() }
+    init() {
+        refresh()
+        signInObserver = NotificationCenter.default.addObserver(forName: SteamSignIn.didChange, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if SteamSignIn.isSignedIn {
+                    self.cancelSignIn()
+                    self.signInError = nil
+                }
+                self.refresh()
+            }
+        }
+    }
 
     func refresh() { accountName = SteamSignIn.accountName }
 

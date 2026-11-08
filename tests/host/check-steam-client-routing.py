@@ -28,7 +28,7 @@ struct LibraryEntry: Codable {
     var id=UUID(); var title:String; var relativePath:String; var bits:Int
     var launchMode="",arguments="",startServices=false
     var steamAppID:Int?; var steamClientAppID:Int?; var bigPicture:Bool?
-    var workingDirectory:String?
+    var workingDirectory:String?; var desktop:Bool?; var config:String?
     var steamUseGlobalSettings:Bool?; var steamSettingsPath:String?
     var windowsPath:String { "C:\\"+relativePath.replacingOccurrences(of:"/",with:"\\") }
     var resolution="1280x720"
@@ -120,6 +120,8 @@ func winios_steam_setup_reset(){}
         original.steamAppID=570;original.arguments="-novid -language schinese"
         original.resolution="1920x1080";original.workingDirectory="C:\\Games\\Fixture"
         var shared=SteamClient.settingsEntry;shared.resolution="1600x900"
+        shared.config="swap-min-mb = 1\nenv.MADEIRA_SWAP_COVERAGE = broad\ndonor-pool-mb = 4096\n"
+        original.config="env.CUSTOM_GAME_SETTING = 1"
         LibraryModel.shared.entries=[original,shared]
         let game=SteamClient.entry(install:false,appID:570)
         precondition(game.steamClientAppID==570&&game.steamAppID==nil&&game.arguments.contains("-applaunch 570 -novid -language schinese"))
@@ -127,10 +129,13 @@ func winios_steam_setup_reset(){}
         precondition(SteamClient.entry(install:false).resolution==shared.resolution)
         precondition(SteamClient.entry(install:true).resolution==shared.resolution)
         precondition(game.steamSettingsPath==SteamClient.windowsExecutable)
+        precondition(game.config==nil && SteamClient.settingsEntry.config==nil)
+        precondition(SteamClient.entry(install:true).config==nil)
         original.steamUseGlobalSettings=false
         LibraryModel.shared.entries=[original,shared]
         let customized=SteamClient.entry(install:false,appID:570)
         precondition(customized.resolution==original.resolution&&customized.steamSettingsPath==original.windowsPath)
+        precondition(customized.config==original.config)
         precondition(SteamClient.entry(install:false).resolution==shared.resolution)
         original.steamUseGlobalSettings=true
         LibraryModel.shared.entries=[original,shared]
@@ -158,6 +163,19 @@ func winios_steam_setup_reset(){}
         SteamClient.configureSession(SteamClient.entry(install:false))
         precondition(!String(cString:getenv("MADEIRA_CHILD_ARGS")).contains("-applaunch"))
         precondition(!String(cString:getenv("MADEIRA_CHILD_ARGS")).contains("-novid"))
+        var desktop=LibraryEntry(title:"Desktop",relativePath:"windows/explorer.exe",bits:64)
+        desktop.desktop=true;desktop.resolution="1920x1080";desktop.steamClientAppID=570
+        SteamClient.configureSession(desktop)
+        let desktopArgs=String(cString:getenv("MADEIRA_CHILD_ARGS"))
+        precondition(desktopArgs.hasPrefix("steam.exe ")&&desktopArgs.contains("-no-cef-sandbox"))
+        precondition(desktopArgs.contains("-language schinese") && !desktopArgs.contains("-applaunch"))
+        precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="0")
+        precondition(String(cString:getenv("MADEIRA_CHILD_ARGS_FIRST"))=="1")
+        precondition(getenv("MADEIRA_STEAM_CONTROLLED_SETUP")==nil&&desktop.resolution=="1920x1080")
+        setenv("MADEIRA_CHILD_ARGS","custom.exe -test",1)
+        SteamClient.configureSession(original)
+        precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="custom.exe -test")
+        precondition(getenv("MADEIRA_CHILD_ARGS_FIRST")==nil)
         defaults.set(#"-language schinese "a path with -bigpicture inside" -applaunch 999 "-bigpicture""#,forKey:SteamClient.argumentsKey)
         let clean=SteamClient.entry(install:false).arguments
         precondition(clean.contains(#""a path with -bigpicture inside""#) && !clean.contains("999") && !clean.contains(#""-bigpicture""#))

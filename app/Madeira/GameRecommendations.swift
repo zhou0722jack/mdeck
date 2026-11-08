@@ -1199,19 +1199,17 @@ enum GameRecommendations {
     /// came up or on the Steam logo. A 32-bit process stuck like that for 40 s is ended
     /// (MADEIRA_SRW_HANG_KILL_S = 40), so the client starts a new web helper; the holders
     /// are logged at 30 s.
+    /// Version 7: the Steam runtime editor uses the user's 48 MB head reserve
+    /// and inherits the app's memory/swap defaults instead of overriding them.
     static let steamBigPicture = GameRecommendation(
-        id: "steam-big-picture", title: "Steam Big Picture", version: 6,
+        id: "steam-big-picture", title: "Steam Big Picture", version: 7,
         config: """
         # Madeira's recommended settings for Steam Big Picture.
         # Reset to Recommended, at the bottom of the game's settings, brings them back.
-        swap-mb = 4096
-        swap-min-mb = 1
-        env.MADEIRA_SWAP_COVERAGE = broad
-        donor-pool-mb = 4096
         pool-low = 1
         pool-page-fit = 1
         pool-split = 1
-        env.MADEIRA_POOL_HEAD_RESERVE_MB = 128
+        env.MADEIRA_POOL_HEAD_RESERVE_MB = 48
         env.MADEIRA_POOL_LOW_IMAGES = 1
         env.MADEIRA_POOL_RECYCLE_IMAGES = 1
         env.MADEIRA_X64_IMAGE_NOCOPY = 1

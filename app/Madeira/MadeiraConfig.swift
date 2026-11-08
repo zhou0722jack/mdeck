@@ -18,6 +18,51 @@ import Foundation
 enum MadeiraConfig {
     static let fileName = "madeira.cfg"
 
+    /// The user's selected mdeck defaults. A marker in the config makes the
+    /// upgrade run once; later changes in Settings remain the user's choices.
+    private static let runtimeDefaultsMarker = "# mdeck runtime defaults v1"
+    private static let runtimeDefaults: [(String, String?)] = [
+        ("pool", "1152"), ("vram-mb", nil), ("swap-mb", "4096"),
+        ("env.MADEIRA_SWAP_COVERAGE", "classic"), ("donor-pool-mb", "6144"),
+        ("swap-wow64", nil), ("inproc-sync", nil), ("env.MADEIRA_FASTSYNC", nil), ("eco", nil),
+        // Older broad/1 MB settings must not silently change the 8 MB choice.
+        ("swap-mode", nil), ("swap-min-mb", nil), ("swap-min-kb", nil), ("env.MADEIRA_SWAP_MIN_KB", nil),
+    ]
+
+    @discardableResult
+    static func installMdeckRuntimeDefaults(at destination: URL? = MadeiraConfig.url) -> Bool {
+        guard let destination else { return false }
+        if destination == url, !present { migrateLegacy(log: { fputs("[runtime-defaults] \($0)\n", stderr) }) }
+        let fm = FileManager.default
+        do {
+            let previous = fm.fileExists(atPath: destination.path)
+                ? try String(contentsOf: destination, encoding: .utf8) : ""
+            guard !previous.components(separatedBy: .newlines).contains(runtimeDefaultsMarker) else { return false }
+            let keys = Set(runtimeDefaults.map(\.0))
+            var lines = previous.components(separatedBy: .newlines).filter { line in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }
+                return !keys.contains(trimmed[..<equals].trimmingCharacters(in: .whitespaces))
+            }
+            while lines.last == "" { lines.removeLast() }
+            if !lines.isEmpty { lines.append("") }
+            lines.append(runtimeDefaultsMarker)
+            for (key, value) in runtimeDefaults { if let value { lines.append("\(key) = \(value)") } }
+            try fm.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            if !previous.isEmpty {
+                let backup = destination.appendingPathExtension("before-mdeck-defaults-v1.bak")
+                if !fm.fileExists(atPath: backup.path) { try Data(previous.utf8).write(to: backup, options: .atomic) }
+            }
+            try (lines.joined(separator: "\n") + "\n").write(to: destination, atomically: true, encoding: .utf8)
+            invalidate()
+            fputs("[runtime-defaults] installed v1: pool=1152 swap=4096 coverage=classic donor=6144 wow64=donor sync=fastsync eco=off\n", stderr)
+            return true
+        } catch {
+            fputs("[runtime-defaults] could not update config: \(error.localizedDescription)\n", stderr)
+            return false
+        }
+    }
+
     /// Every switch that used to live in its own Documents/madeira-<key>.txt.
     static let legacyKeys = [
         "swap-mb", "swap-canary", "vram-mb", "pool", "totalphys", "inproc-sync", "wx",

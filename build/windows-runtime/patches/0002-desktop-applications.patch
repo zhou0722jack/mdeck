@@ -1,0 +1,153 @@
+Madeira: keep installed application launchers visible and publish desktop readiness
+
+diff --git a/programs/explorer/desktop.c b/programs/explorer/desktop.c
+--- a/programs/explorer/desktop.c
++++ b/programs/explorer/desktop.c
+@@ -360,6 +360,8 @@
+     return ret;
+ }
+ 
++static void free_launcher( struct launcher *launcher );
++
+ static BOOL add_launcher( const WCHAR *folder, const WCHAR *filename, int len_filename )
+ {
+     struct launcher *launcher;
+@@ -381,8 +383,18 @@
+     launcher->icon = extract_icon( link );
+     launcher->title = build_title( filename, len_filename );
+     IShellLinkW_Release( link );
++    /* Keep a valid application visible even when its executable has no icon. */
++    if (!launcher->icon) launcher->icon = CopyIcon( LoadIconW( NULL, (LPCWSTR)IDI_APPLICATION ) );
+     if (launcher->icon && launcher->title)
+     {
++        unsigned int i;
++        for (i = 0; i < nb_launchers; i++)
++        {
++            if (wcsicmp( launchers[i]->path, launcher->path )) continue;
++            free_launcher( launchers[i] );
++            launchers[i] = launcher;
++            return TRUE;
++        }
+         launchers[nb_launchers++] = launcher;
+         return TRUE;
+     }
+@@ -453,6 +465,7 @@
+         {
+         case FILE_ACTION_ADDED:
+         case FILE_ACTION_RENAMED_NEW_NAME:
++        case FILE_ACTION_MODIFIED:
+             if (add_launcher( folder, info->FileName, info->FileNameLength / sizeof(WCHAR) ))
+                 ret = TRUE;
+             break;
+@@ -479,8 +492,8 @@
+     HRESULT init = CoInitialize( NULL );
+-    HANDLE dir0, dir1, events[2];
+-    OVERLAPPED ovl0, ovl1;
++    HANDLE dir0, dir1, events[2] = {0};
++    OVERLAPPED ovl0 = {0}, ovl1 = {0};
+     char *buf0 = NULL, *buf1 = NULL;
+     DWORD count, size = 4096, error = ERROR_OUTOFMEMORY;
+     BOOL ret, redraw;
+ 
+     dir0 = CreateFileW( desktop_folder, FILE_LIST_DIRECTORY|SYNCHRONIZE, FILE_SHARE_READ|FILE_SHARE_WRITE,
+@@ -498,32 +511,28 @@
+     if (!(buf0 = malloc( size ))) goto error;
+     if (!(buf1 = malloc( size ))) goto error;
+ 
++    ret = ReadDirectoryChangesW( dir0, buf0, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &ovl0, NULL );
++    if (!ret) { error = GetLastError(); goto error; }
++    ret = ReadDirectoryChangesW( dir1, buf1, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &ovl1, NULL );
++    if (!ret) { error = GetLastError(); goto error; }
++
+     for (;;)
+     {
+-        ret = ReadDirectoryChangesW( dir0, buf0, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME, NULL, &ovl0, NULL );
+-        if (!ret)
+-        {
+-            error = GetLastError();
+-            goto error;
+-        }
+-        ret = ReadDirectoryChangesW( dir1, buf1, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME, NULL, &ovl1, NULL );
+-        if (!ret)
+-        {
+-            error = GetLastError();
+-            goto error;
+-        }
+-
+         redraw = FALSE;
+         switch ((error = WaitForMultipleObjects( 2, events, FALSE, INFINITE )))
+         {
+         case WAIT_OBJECT_0:
+-            if (!GetOverlappedResult( dir0, &ovl0, &count, FALSE ) || !count) break;
+-            if (process_changes( desktop_folder, buf0 )) redraw = TRUE;
++            if (GetOverlappedResult( dir0, &ovl0, &count, FALSE ) && count)
++                redraw = process_changes( desktop_folder, buf0 );
++            if (!ReadDirectoryChangesW( dir0, buf0, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &ovl0, NULL ))
++            { error = GetLastError(); goto error; }
+             break;
+ 
+         case WAIT_OBJECT_0 + 1:
+-            if (!GetOverlappedResult( dir1, &ovl1, &count, FALSE ) || !count) break;
+-            if (process_changes( desktop_folder_public, buf1 )) redraw = TRUE;
++            if (GetOverlappedResult( dir1, &ovl1, &count, FALSE ) && count)
++                redraw = process_changes( desktop_folder_public, buf1 );
++            if (!ReadDirectoryChangesW( dir1, buf1, size, FALSE, FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_LAST_WRITE, NULL, &ovl1, NULL ))
++            { error = GetLastError(); goto error; }
+             break;
+ 
+         default:
+@@ -573,7 +582,12 @@
+     TEXTMETRICW tm;
+     int icon_size;
+ 
+-    if (!(get_icon_text_metrics( hwnd, &tm ))) return;
++    if (!get_icon_text_metrics( hwnd, &tm ))
++    {
++        memset( &tm, 0, sizeof(tm) );
++        tm.tmHeight = 16;
++        tm.tmAveCharWidth = 8;
++    }
+ 
+     icon_cx = GetSystemMetrics( SM_CXICON );
+     icon_cy = GetSystemMetrics( SM_CYICON );
+@@ -1292,6 +1306,12 @@
+ 
+         initialize_systray( using_root, enable_shell, show_systray, no_tray_items );
+         if (!using_root && enable_launchers) initialize_launchers( hwnd );
++        /* Only the requested shell, not Wine's earlier root desktop. */
++        if (name && !wcsicmp( name, L"shell" ))
++        {
++            SetPropW( hwnd, L"MDeckDesktopReady", (HANDLE)1 );
++            InvalidateRect( hwnd, NULL, TRUE );
++        }
+ 
+         if ((shell32 = LoadLibraryW( L"shell32.dll" )) &&
+             (pShellDDEInit = (void *)GetProcAddress( shell32, (LPCSTR)188)))
+diff --git a/dlls/shell32/shelllink.c b/dlls/shell32/shelllink.c
+--- a/dlls/shell32/shelllink.c
++++ b/dlls/shell32/shelllink.c
+@@ -644,8 +644,23 @@
+     }
+ 
++    /* LinkInfo 0x24 adds a Unicode local path. Prefer it over the ANSI
++     * fallback, which cannot represent every installed application's name. */
++    if (loc->dwHeaderSize >= 0x24 && loc->dwHeaderSize <= loc->dwTotalSize)
++    {
++        memcpy( &n, p + 0x1c, sizeof(n) );
++        if (n >= loc->dwHeaderSize && n < loc->dwTotalSize)
++        {
++            const WCHAR *str = (const WCHAR *)(p + n);
++            DWORD len, count = (loc->dwTotalSize - n) / sizeof(WCHAR);
++            for (len = 0; len < count && str[len]; len++);
++            if (len < count && (*path = malloc( (len + 1) * sizeof(WCHAR) )))
++                memcpy( *path, str, (len + 1) * sizeof(WCHAR) );
++        }
++    }
++
+     /* if there's a local path, load it */
+     n = loc->dwLocalPathOfs;
+-    if( n && (n < loc->dwTotalSize) )
++    if( !*path && n && (n < loc->dwTotalSize) )
+         *path = Stream_LoadPath( &p[n], loc->dwTotalSize - n );
+ 
+     TRACE("type %ld serial %08lx name %s path %s\n", volume->type,

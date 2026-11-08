@@ -8,6 +8,7 @@
 3. 已有主程序时，使用其实际文件名启动，并补齐 `-no-cef-sandbox`、`-cef-disable-gpu`。
    新安装的默认参数仍使用完整 `SteamClient.clientArguments`，已有用户附加参数保留。
 4. 没有主程序时，在唯一 Wine 会话中运行无界面的 32 位 `SteamBootstrap.exe` 控制器。
+   控制器先加载 USER32 并检查窗口站、线程桌面，持有 GUI 上下文直到会话结束，不创建可见窗口。
    它启动原版 SteamSetup.exe，安装器界面始终处于 HUD 进度层下方；安装器不会关闭加载层。
    首装目标目录必须为空：游戏库 VDF 先暂存在 `Madeira/Installers/SteamLibraries.{config,steamapps}.vdf`。
    Build 20 遗留的纯配置目录完整移动到同目录下的独立 metadata 备份；含游戏或其他文件的目录停止安装并提示，不自动删除。
@@ -18,6 +19,8 @@
    文件不存在、安装器非零退出、启动失败等情况写入错误状态，不继续伪装成功。
    安装成功后、启动客户端前，才把两份暂存的 VDF 写入客户端；登记失败停止交接并报告错误。
 7. 控制器读取目录外暂存的 `SteamDesktop.command`，按普通客户端相同的 explorer 虚拟桌面和 services 批处理路径启动该位置的 Steam。
+   创建 explorer 时暂时关闭 WOW64 文件重定向，并立即恢复，确保 system32 不被重定向到 syswow64 的 32 位 explorer。
+   创建失败也恢复原值；恢复失败或 explorer 非零退出写入失败状态。
    不再从非 GUI 安装控制器直接裸启动 Steam.exe。共享分辨率和客户端参数由真实 LibraryEntry 命令生成器生成；
    现有原生子进程规则继续补上兼容与客户端语言参数，更新器后续重启仍有效。客户端默认 `-language schinese`，显式语言参数保留。
    Wine server、正式 JIT 池始终保留，不重新执行第二次 Wine 初始化，不放开一次会话限制。

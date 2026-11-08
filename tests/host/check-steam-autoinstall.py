@@ -238,7 +238,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
     preferences=source[source.index('    static let bigPictureKey ='):source.index('    /// One controller owns')]
     swift=Path(tmp)/'Session.swift'
     swift.write_text('''import Foundation
-struct LibraryEntry { var id: Int; var steamClientAppID: Int?; var steamAppID: Int?; var arguments = "" }
+struct LibraryEntry { var id: Int; var steamClientAppID: Int?; var steamAppID: Int?; var arguments = ""; var desktop: Bool? }
 final class LibraryModel { static let shared=LibraryModel(); var entries:[LibraryEntry]=[] }
 final class LogStore { static let shared=LogStore(); func log(_ text:String) {} }
 enum SteamClient {

@@ -37,6 +37,7 @@ struct DeckSteamCatalog: View {
     let play: (LibraryEntry) -> Void
     let backToLibrary: () -> Void
     @ObservedObject private var steam = SteamOwnedLibrary.shared
+    @ObservedObject private var clientSignIn = SteamClientSignInSync.shared
     @ObservedObject private var games = SteamGamesModel.shared
     @ObservedObject private var library = LibraryModel.shared
     @ObservedObject private var appearance = DeckAppearance.shared
@@ -155,6 +156,14 @@ struct DeckSteamCatalog: View {
                                 .font(.footnote).foregroundStyle(palette.muted)
                         }
                         if !steam.signedIn { signInCard }
+                        if steam.signedIn, let text = clientSignIn.statusText {
+                            Label(text, systemImage: "arrow.triangle.2.circlepath")
+                                .font(.footnote).foregroundStyle(palette.muted)
+                        }
+                        if steam.signedIn && steam.inSession {
+                            Label("Downloads resume after the Windows session ends.", systemImage: "pause.circle")
+                                .font(.footnote).foregroundStyle(palette.muted)
+                        }
                         if let waiting = steam.cloudWaitingFor {
                             Label(LF("Preparing Steam Cloud for app %@…", String(waiting)), systemImage: "icloud")
                                 .font(.footnote).foregroundStyle(palette.muted)
@@ -256,16 +265,25 @@ struct DeckSteamCatalog: View {
     }
 
     private var signInCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if let text = clientSignIn.statusText {
+                HStack(spacing: 10) {
+                    if clientSignIn.phase == .failed { Image(systemName: "exclamationmark.circle") }
+                    else { ProgressView() }
+                    Text(text).font(.footnote)
+                }
+            }
         Button { showSignIn = true } label: {
             HStack(spacing: 12) {
                 Image(systemName: "person.crop.circle.badge.plus").font(.title2)
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Sign in to Steam").font(.headline)
-                    Text("Sign in here to download games without starting Steam.").font(.footnote).foregroundStyle(palette.muted)
+                    Text("Sign in once in Windows Steam. Your account will sync here automatically.").font(.footnote).foregroundStyle(palette.muted)
                 }
                 Spacer(); Image(systemName: "chevron.right")
             }.padding(16).background(palette.surface, in: RoundedRectangle(cornerRadius: 12))
         }.buttonStyle(.plain)
+        }
     }
 
     private var empty: some View {

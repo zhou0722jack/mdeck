@@ -38,4 +38,9 @@ for path in ['C:\\Madeira\\Installers\\SteamSetup.exe', 'C:\\Program Files\\Stea
     assert path.encode('utf-16-le') in data
 assert 'C:\\windows\\system32\\explorer.exe'.encode('utf-16-le') in data
 assert 'C:\\Madeira\\Installers\\SteamDesktop.command'.encode('utf-16-le') in data
+for function in [b'LoadLibraryW', b'GetProcAddress', b'Wow64DisableWow64FsRedirection', b'Wow64RevertWow64FsRedirection']:
+    assert function in data, function
+assert 'user32.dll'.encode('utf-16-le') in data
+assert b'controller GUI station and desktop retained' in data
+assert b'native system32 explorer started; redirection restored' in data
 print('PASS: generated i386 Steam session controller and fixed installer/client paths')
