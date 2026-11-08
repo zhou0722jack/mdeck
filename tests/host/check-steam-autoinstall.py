@@ -250,21 +250,25 @@ enum SteamClient {
 @main struct Check {
     static func main() {
         let defaults=UserDefaults.standard
-        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey]
+        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClientRuntimeFailure.runKey]
         let saved=keys.map{defaults.object(forKey:$0)}
         defer{for (key,value) in zip(keys,saved){defaults.set(value,forKey:key)}}
         defaults.set(false,forKey:SteamClient.bigPictureKey)
         defaults.set(SteamClient.clientArguments,forKey:SteamClient.argumentsKey)
-        unsetenv("MADEIRA_CHILD_ARGS"); unsetenv("MADEIRA_STEAM_AUTOINSTALL")
+        unsetenv("MADEIRA_CHILD_ARGS"); unsetenv("MADEIRA_STEAM_AUTOINSTALL"); unsetenv("MADEIRA_STEAM_RUN_ID")
         SteamClient.configureSession(LibraryEntry(id:3))
         precondition(getenv("MADEIRA_CHILD_ARGS")==nil)
+        precondition(getenv("MADEIRA_STEAM_RUN_ID")==nil)
         SteamClient.configureSession(LibraryEntry(id:1))
+        let firstRun=String(cString:getenv("MADEIRA_STEAM_RUN_ID"))
+        precondition(UUID(uuidString:firstRun) != nil && SteamClientRuntimeFailure.matchesActiveRun(firstRun))
         precondition(String(cString:getenv("MADEIRA_DESKTOP"))=="1")
         precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="steam.exe "+SteamClient.clientArguments)
         precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="1")
         setenv("MADEIRA_CHILD_ARGS","custom.exe --user",1)
         setenv("MADEIRA_STEAM_AUTOINSTALL","0",1)
         SteamClient.configureSession(LibraryEntry(id:1))
+        precondition(String(cString:getenv("MADEIRA_STEAM_RUN_ID")) != firstRun)
         precondition(String(cString:getenv("MADEIRA_CHILD_ARGS"))=="steam.exe "+SteamClient.clientArguments)
         precondition(String(cString:getenv("MADEIRA_STEAM_AUTOINSTALL"))=="1")
         precondition(String(cString:getenv("MADEIRA_STEAM_CONTROLLED_SETUP"))=="1")
@@ -285,6 +289,7 @@ enum SteamClient {
     }
 }
 ''')
-    subprocess.run(['xcrun','swiftc','-parse-as-library',str(swift),'-o',str(binary)],check=True)
+    subprocess.run(['xcrun','swiftc','-parse-as-library',str(swift),
+                    str(ROOT/'app/Madeira/SteamClientRuntimeFailure.swift'),'-o',str(binary)],check=True)
     subprocess.run([str(binary)],check=True)
 print('No installer, Wine session, IPA build or physical-device test performed.')
