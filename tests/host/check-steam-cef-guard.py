@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-cef-guard-') as temporary:
     subprocess.run(['xcrun','clang','-std=gnu11','-Wall','-Wextra','-Werror','-pthread',
         '-fsanitize=address,undefined','-fno-sanitize-recover=all','-I'+str(NATIVE),
         str(NATIVE/'steam_cef_guard.c'),str(ROOT/'tests/host/fixtures/SteamCEFGuardCheck.c'),'-o',str(binary)],check=True)
-    subprocess.run([str(binary)],check=True)
+    subprocess.run([str(binary)],check=True,timeout=15)
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
     subprocess.run(['xcrun','clang','-arch','arm64','-isysroot',sdk,'-miphoneos-version-min=18.0',
         '-std=gnu11','-Wall','-Wextra','-Werror','-fsyntax-only',str(NATIVE/'steam_cef_guard.c')],check=True)

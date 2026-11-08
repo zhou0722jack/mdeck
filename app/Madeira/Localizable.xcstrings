@@ -56390,6 +56390,10 @@
       },
       "extractionState": "manual"
     },
+    "Steam could not create its initial update window and exited (-104). The app has stopped waiting for its first frame. Close the session and share the log.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 无法创建初始更新窗口，已退出（-104）。App 已停止等待首帧，请关闭当前会话并分享日志。" } } }
+    },
     "Region not allocated": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "该区域未分配" } } }

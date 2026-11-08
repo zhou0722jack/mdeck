@@ -17,6 +17,10 @@ void madeira_steam_cef_address_failure(const char *run_id)
 {
     (void)run_id;assert(!"pool placement test must not report a process exit");
 }
+void madeira_steam_initial_window_failure(const char *run_id)
+{
+    (void)run_id;assert(!"pool placement test must not report a Steam UI exit");
+}
 struct span {uint64_t base,size;};
 struct map {struct span ranges[8];unsigned n,calls;int fail;};
 static unsigned fixed_model(void *context,uint64_t base,uint64_t size)

@@ -14,6 +14,8 @@ static const char run_b[]="00000000-0000-4000-8000-000000000002";
 static uint16_t helper[160],other[160];
 static size_t helper_chars;
 static unsigned notifications;
+static unsigned window_notifications;
+static char window_notified_run[37];
 static char notified_run[37];
 static size_t wide(uint16_t *out,const char *text)
 {
@@ -24,6 +26,12 @@ void madeira_steam_cef_address_failure(const char *run)
     notifications++;memcpy(notified_run,run,sizeof(notified_run));
     /* The production callback must be outside its mutex. */
     assert(ios_steam_cef_spawn_blocked(run,helper,helper_chars,X64,0));
+}
+void madeira_steam_initial_window_failure(const char *run)
+{
+    window_notifications++;
+    memcpy(window_notified_run,run,sizeof(window_notified_run));
+    (void)ios_steam_cef_spawn_blocked(run,helper,helper_chars,X64,0); /* Callback must be outside guard_lock. */
 }
 static void allocation(const char *run,uintptr_t owner,uint64_t size,unsigned type,unsigned status)
 {
@@ -90,5 +98,23 @@ int main(void)
     ios_steam_cef_process_exit(run_b,6,other,n,X64,BREAKPOINT);
     assert(blocked(run_b)&&notifications==2);
     puts("PASS: real failed-reserve/exit sequence stops repeated Win64 browser creation; one notification outside mutex, owner/run isolation, successful fallback, crashpad/32-bit/other-path exclusions");
+    n=wide(other,"C:\\Program Files\\Steam Client\\Steam.exe");
+    ios_steam_cef_process_exit(run_a,9,other,n,X64,0);
+    ios_steam_cef_process_exit(run_a,9,other,n,X64,1);
+    ios_steam_cef_process_exit(run_a,9,other,n,0x14c,0xffffff98u);
+    ios_steam_cef_process_exit(NULL,9,other,n,X64,0xffffff98u);
+    ios_steam_cef_process_exit(run_a,0,other,n,X64,0xffffff98u);
+    ios_steam_cef_process_exit(run_a,9,helper,helper_chars,X64,0xffffff98u);
+    assert(!window_notifications);
+    n=wide(other,"C:\\Other\\Steam.exe");
+    ios_steam_cef_process_exit(run_a,9,other,n,X64,0xffffff98u);
+    assert(!window_notifications);
+    n=wide(other,"\\??\\c:/PROGRAM FILES/Steam Client/STEAM.EXE");
+    ios_steam_cef_process_exit(run_a,9,other,n,X64,0xffffff98u);
+    ios_steam_cef_process_exit(run_a,9,other,n,X64,0xffffff98u);
+    assert(window_notifications==1&&!strcmp(window_notified_run,run_a)&&notifications==2);
+    ios_steam_cef_process_exit(run_b,10,other,n,X64,0xffffff98u);
+    assert(window_notifications==2&&!strcmp(window_notified_run,run_b));
+    puts("PASS: canonical Win64 Steam -104 reports once per launch outside mutex; normal exits, other statuses, x86, helper and unrelated paths do not report update-window failure");
     return 0;
 }

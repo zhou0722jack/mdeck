@@ -982,7 +982,16 @@ HWND get_desktop_window(void)
     unsigned int status;
 #endif
 
-    if (thread_info->top_window) return UlongToHandle( thread_info->top_window );
+    if (thread_info->top_window)
+    {
+#ifdef WINE_IOS
+        /* An early dependency can cache the desktop before USER32 installs
+         * this process's callbacks/PFNs. Retry deferred control registration
+         * even on the cached path; the registry handles completed/reentrant calls. */
+        register_builtin_classes();
+#endif
+        return UlongToHandle( thread_info->top_window );
+    }
 
     /* don't create an actual explorer desktop window for services */
     is_service = is_service_process();

@@ -100,6 +100,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
 #include "steam_cef_guard.h"
 #include "steam_cef_pools.h"
 void madeira_steam_cef_address_failure(const char *run) { (void)run; }
+void madeira_steam_initial_window_failure(const char *run) { (void)run; }
 static volatile const uintptr_t required[] = {
     (uintptr_t)ios_steam_cef_allocation_result, (uintptr_t)ios_steam_cef_process_exit,
     (uintptr_t)ios_steam_cef_spawn_blocked, (uintptr_t)ios_steam_cef_pool_forget,

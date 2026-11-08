@@ -1483,12 +1483,15 @@ void register_builtin_classes(void)
      * BUTTON/msctls_progress32 children) was the first victim.
      * Register once per pseudo-process instead, keyed on (pid, peb) so a
      * reused PEB address or ptid alone can't false-positive.  On table
-     * overflow we simply re-register: the server rejects duplicates with
+     * overflow each thread registers once: the server rejects duplicates with
      * CLASS_ALREADY_EXISTS, which register_builtin tolerates.
      * The mutex is held across register_builtins to mirror pthread_once's
      * blocking semantics for concurrent first callers (dedicated lock —
      * winproc_lock is taken inside NtUserRegisterClassExWOW). */
     static pthread_mutex_t builtin_lock = PTHREAD_MUTEX_INITIALIZER;
+    static _Thread_local BOOL registering;
+    static _Thread_local DWORD ready_pid;
+    static _Thread_local void *ready_peb;
     static struct { DWORD pid; void *peb; } done[128];
     static unsigned int done_count;
     DWORD pid = HandleToULong( NtCurrentTeb()->ClientId.UniqueProcess );
@@ -1500,6 +1503,8 @@ void register_builtin_classes(void)
      * back into USER32: never borrow the launcher's callback/proc tables.
      * Do not record this process as done; its next GUI call after USER32's
      * NtUserInitializeClientPfnArrays must register the builtins normally. */
+    if (registering) return; /* LoadImage/User32 callbacks may ask for the cached desktop. */
+    if (ready_pid == pid && ready_peb == peb) return; /* Cached desktop calls are a hot path. */
     if (!NtCurrentTeb()->Peb->KernelCallbackTable || !ios_client_procs_for_peb())
     {
         static unsigned int deferred;
@@ -1513,18 +1518,24 @@ void register_builtin_classes(void)
     {
         if (done[i].pid == pid && done[i].peb == peb)
         {
+            ready_pid = pid;
+            ready_peb = peb;
             pthread_mutex_unlock( &builtin_lock );
             return;
         }
     }
+    registering = TRUE;
     register_builtins();
+    registering = FALSE;
+    ready_pid = pid;
+    ready_peb = peb;
     if (done_count < ARRAYSIZE(done))
     {
         done[done_count].pid = pid;
         done[done_count].peb = peb;
         done_count++;
     }
-    else dprintf(2, "[builtin-classes] registry FULL — pid=%04x will re-register per call\n", (int)pid);
+    else dprintf(2, "[builtin-classes] registry FULL — pid=%04x cached on this thread\n", (int)pid);
     dprintf(2, "[builtin-classes] registered builtin classes for pid=%04x peb=%p\n", (int)pid, peb);
     pthread_mutex_unlock( &builtin_lock );
 }

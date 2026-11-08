@@ -130,6 +130,7 @@ import Foundation
         precondition(launch.permitsLaunch(token))
         let began = Date()
         precondition(launch.sessionStarted(UUID(), at: began))
+        precondition(launch.awaitingClientImage)
         precondition(launch.phase == .waitingForFrame && launch.presented && !launch.permitsLaunch(token))
         launch.waitingStageShown(at: began)
         for invalid in [
@@ -147,6 +148,7 @@ import Foundation
         precondition(launch.presented && launch.phase == .waitingForFrame)
         launch.observe([frame()], at: began.addingTimeInterval(131))
         precondition(launch.presented && launch.phase == .revealing)
+        precondition(!launch.awaitingClientImage)
         launch.observe([], at: began.addingTimeInterval(200))
         precondition(launch.presented && launch.phase == .revealing)
         launch.completeReveal(UUID())

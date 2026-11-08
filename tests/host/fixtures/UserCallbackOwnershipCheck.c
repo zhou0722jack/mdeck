@@ -6,6 +6,12 @@
 #include <string.h>
 
 typedef unsigned int ULONG, DWORD;
+typedef int BOOL;
+typedef void *HWND;
+#define TRUE 1
+#define FALSE 0
+#define WINE_IOS 1
+#define UlongToHandle(h) ((void *)(uintptr_t)(h))
 typedef uint64_t ULONG64;
 typedef uintptr_t ULONG_PTR;
 typedef int NTSTATUS;
@@ -28,6 +34,9 @@ typedef struct {
 typedef struct { PEB *Peb; struct { void *UniqueThread,*UniqueProcess; } ClientId; } TEB;
 static TEB *current;
 static TEB *NtCurrentTeb(void) { return current; }
+struct ntuser_thread_info { DWORD top_window; };
+static struct ntuser_thread_info cached_desktop = { 0x10020 };
+static HWND get_desktop_window(void);
 struct syscall_frame { ULONG64 sp,lr,pc; };
 struct callback_stack_layout { void *args; ULONG len,id; ULONG64 lr,sp,pc; unsigned char args_data[]; };
 static struct { void *kernel_stack; } thread_data;
@@ -64,11 +73,16 @@ static void register_builtins(void)
 {
     void *result = (void *)1; ULONG count = 9;
     registrations++;
+    /* LoadImage and User32 builtin initialization can query the desktop
+     * recursively. This must not wait on the mutex held by the same thread. */
+    assert(get_desktop_window() == UlongToHandle(cached_desktop.top_window));
     NTSTATUS status = KeUserModeCallback(15,"abc",3,&result,&count);
     if(!status) assert(result&&count==3&&!memcmp(result,"abc",3));
 }
 
 // PRODUCTION_BUILTINS
+// PRODUCTION_DESKTOP_CACHED
+static HWND old_cached_desktop(void) { return UlongToHandle(cached_desktop.top_window); }
 /* Build 26 registration order, retained as a negative control without
  * requiring historical Git objects in CI's shallow source checkout. */
 static void old_register_builtin_classes(void)
@@ -121,7 +135,7 @@ int main(void)
     reset_child(&child);
     assert(!child.KernelCallbackTable&&!child.LdrData&&!child.LoaderLock);
     assert(parent.KernelCallbackTable==parent_wow_table&&parent.LoaderLock==(void *)2);
-    register_builtin_classes();register_builtin_classes();
+    get_desktop_window();get_desktop_window();
     assert(!registrations&&!dispatches&&!frame_lookups);
     /* Even a non-NULL stale table cannot bypass this process's PFN readiness. */
     child.KernelCallbackTable=parent_wow_table;
@@ -133,9 +147,10 @@ int main(void)
     install_client_procs(&child,(void *)0x3000);
     register_builtin_classes();assert(!registrations);
     child.KernelCallbackTable=child_ec_table;
-    register_builtin_classes();register_builtin_classes();
+    assert(old_cached_desktop() && !registrations); /* Build 27's cached path lost the retry. */
+    get_desktop_window();get_desktop_window();register_builtin_classes();
     assert(registrations==1&&dispatches==1&&!wrong_callbacks);
-    puts("PASS: child callbacks start empty; missing callback/PFN initialization defers without marking done; own initialization retries once");
+    puts("PASS: child callbacks start empty; cached desktop retries deferred registration after own PFNs/callbacks arrive, exactly once without recursive deadlock");
     /* A 32-bit or native sibling with its own PFNs/table keeps working. */
     become(&sibling_teb,&sibling,0xf0,pKiUserCallbackDispatcher);
     reset_child(&sibling);install_client_procs(&sibling,(void *)0x4000);

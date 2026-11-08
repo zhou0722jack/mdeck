@@ -14,12 +14,14 @@
 
 /* The callback carries only an opaque launch ID, never a credential/path. */
 extern void madeira_steam_cef_address_failure(const char *run) __attribute__((weak));
+extern void madeira_steam_initial_window_failure(const char *run) __attribute__((weak));
 static pthread_mutex_t guard_lock = PTHREAD_MUTEX_INITIALIZER;
 static char current_run[37];
 static uintptr_t failed_owners[CEF_ATTEMPTS];
 static unsigned char failed_kinds[CEF_ATTEMPTS];
 static unsigned int owner_count;
 static int stopped;
+static int client_window_notified;
 
 int ios_steam_cef_valid_run(const char *run)
 {
@@ -34,14 +36,14 @@ int ios_steam_cef_valid_run(const char *run)
     return 1;
 }
 
-int ios_steam_cef_win64_helper(const uint16_t *image, size_t chars, unsigned int machine)
+static int win64_image_matches(const uint16_t *image, size_t chars, unsigned int machine,
+                               const char *expected, size_t expected_chars)
 {
-    static const char expected[] = "c:\\program files\\steam client\\bin\\cef\\cef.win64\\steamwebhelper.exe";
     size_t i, start = 0;
     if (!image || machine != CEF_X64) return 0;
     if (chars >= 4 && image[0] == '\\' && image[1] == '?' && image[2] == '?' && image[3] == '\\') start = 4;
-    if (chars - start != sizeof(expected) - 1) return 0;
-    for (i = 0; i < sizeof(expected) - 1; i++)
+    if (chars - start != expected_chars) return 0;
+    for (i = 0; i < expected_chars; i++)
     {
         uint16_t c = image[start + i];
         if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
@@ -49,6 +51,12 @@ int ios_steam_cef_win64_helper(const uint16_t *image, size_t chars, unsigned int
         if (c != (uint16_t)expected[i]) return 0;
     }
     return 1;
+}
+
+int ios_steam_cef_win64_helper(const uint16_t *image, size_t chars, unsigned int machine)
+{
+    static const char expected[] = "c:\\program files\\steam client\\bin\\cef\\cef.win64\\steamwebhelper.exe";
+    return win64_image_matches(image, chars, machine, expected, sizeof(expected) - 1);
 }
 
 /* Called with guard_lock held. The app changes this UUID before each launch. */
@@ -60,6 +68,34 @@ static void select_run(const char *run)
     memset(failed_kinds, 0, sizeof(failed_kinds));
     owner_count = 0;
     stopped = 0;
+    client_window_notified = 0;
+}
+
+/* Steam's updater reports this exact fatal status after its initial window
+ * fails. Explorer/services may stay alive, so whole-session exit cannot be
+ * used to stop waiting for a Steam frame. This is independent of CEF failures. */
+static void steam_initial_window_exit(const char *run, uintptr_t owner, const uint16_t *image,
+                                      size_t chars, unsigned int machine, unsigned int status)
+{
+    static const char expected[] = "c:\\program files\\steam client\\steam.exe";
+    char notification[37];
+    int notify = 0;
+    if (status != 0xffffff98u || !owner || !ios_steam_cef_valid_run(run) ||
+        !win64_image_matches(image, chars, machine, expected, sizeof(expected) - 1)) return;
+    pthread_mutex_lock(&guard_lock);
+    select_run(run);
+    if (!client_window_notified)
+    {
+        client_window_notified = 1;
+        memcpy(notification, run, sizeof(notification));
+        notify = 1;
+    }
+    pthread_mutex_unlock(&guard_lock);
+    if (notify)
+    {
+        fprintf(stderr, "[steam-startup] canonical Win64 Steam exited with -104 before update UI initialization\n");
+        if (madeira_steam_initial_window_failure) madeira_steam_initial_window_failure(notification);
+    }
 }
 
 void ios_steam_cef_allocation_result(const char *run, uintptr_t owner, const uint16_t *image, size_t chars,
@@ -103,6 +139,7 @@ void ios_steam_cef_process_exit(const char *run, uintptr_t owner, const uint16_t
     unsigned int i;
     char notification[37];
     int notify = 0;
+    steam_initial_window_exit(run, owner, image, chars, machine, status);
     if (!ios_steam_cef_valid_run(run) || !owner || !ios_steam_cef_win64_helper(image, chars, machine)) return;
     pthread_mutex_lock(&guard_lock);
     select_run(run);

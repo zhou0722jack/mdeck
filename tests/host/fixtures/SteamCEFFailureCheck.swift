@@ -10,7 +10,8 @@ enum SteamClient { static func owns(_ entry:LibraryEntry)->Bool{entry.steam} }
 @MainActor final class DeckSteamLaunchPreparation {
     static let shared=DeckSteamLaunchPreparation()
     var calls=0,lastSession:UUID?
-    func runtimeFailure(_ text:String,session:UUID){calls+=1;lastSession=session}
+    var awaitingClientImage=true
+    func runtimeFailure(_ text:String,session:UUID){calls+=1;lastSession=session;awaitingClientImage=false}
 }
 // PRODUCTION_RUNTIME_FAILURE
 @main struct Check {
@@ -41,6 +42,24 @@ enum SteamClient { static func owns(_ entry:LibraryEntry)->Bool{entry.steam} }
         model.error=nil;model.current=nil
         run.withCString{madeiraSteamCEFAddressFailure($0)};await settle()
         precondition(model.error == nil && overlay.calls==2)
+        model.current=session;model.activeEntry=LibraryEntry(desktop:false)
+        overlay.awaitingClientImage=true
+        old.withCString{madeiraSteamInitialWindowFailure($0)}
+        madeiraSteamInitialWindowFailure(nil);await settle()
+        precondition(model.error==nil && overlay.calls==2)
+        run.withCString{madeiraSteamInitialWindowFailure($0)};await settle()
+        precondition(model.error?.contains("(-104)")==true && overlay.calls==3 && overlay.lastSession==session)
+        model.error=nil
+        run.withCString{madeiraSteamInitialWindowFailure($0)};await settle()
+        precondition(model.error==nil && overlay.calls==3) // Already failed/revealed/closing: no startup wait remains.
+        overlay.awaitingClientImage=true
+        model.activeEntry=LibraryEntry(desktop:false,steam:false)
+        run.withCString{madeiraSteamInitialWindowFailure($0)};await settle()
+        precondition(model.error==nil && overlay.calls==3)
+        model.current=nil;model.activeEntry=LibraryEntry(desktop:true,steam:false)
+        run.withCString{madeiraSteamInitialWindowFailure($0)};await settle()
+        precondition(model.error==nil && overlay.calls==3)
         print("PASS: production Swift callback copies launch identity, ignores stale/ended/unrelated sessions and reports only the active Steam/desktop session")
+        print("PASS: Steam -104 stops only the current startup first-frame wait, once; stale, ended, unrelated and post-reveal callbacks are ignored")
     }
 }

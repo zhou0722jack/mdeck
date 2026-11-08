@@ -72,3 +72,6 @@ Build 26 首装后的实际回调故障与后续源码修正见
 
 App 初始化立即请求 JIT、早期保护 A/B/C、附加后建立并在 Steam 启动时复用的流程见
 [App 入口 JIT 与 A/B/C 内存池](entry-jit-pool.md)。
+
+Build 27 首装/普通启动均以 -104 退出、延后控件注册在缓存桌面路径丢失重试的问题见
+[Steam 初始更新窗口重试](steam64-initial-window-retry.md)。

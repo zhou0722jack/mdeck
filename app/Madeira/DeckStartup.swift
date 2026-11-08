@@ -274,6 +274,9 @@ struct DeckSteamSetupStatus {
     private var firstFrameSeenAt: Date?
     var revealID: UUID? { phase == .revealing ? requestID : nil }
     var canRetry: Bool { launch != nil && session == nil }
+    var awaitingClientImage: Bool {
+        presented && !closing && (phase == .starting || phase == .waitingForFrame)
+    }
     // Keep the waiting stage visible after both its view and a real target
     // frame arrive. The main JIT pool can suspend the whole process, so elapsed
     // time since session startup cannot establish that this stage was painted.

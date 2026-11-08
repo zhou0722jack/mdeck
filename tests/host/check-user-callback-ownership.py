@@ -11,6 +11,7 @@ def function(text, signature):
     return text[start:text.index('\n}', start) + 2]
 
 classes = (ROOT / 'build/win32u-unix/class_ios.c').read_text()
+station = (ROOT / 'build/win32u-unix/winstation_ios.c').read_text()
 loader = (ROOT / 'build/ntdll-unix/loader_ios.c').read_text()
 signal = (ROOT / 'build/ntdll-unix/signal_arm64_ios.c').read_text()
 reset = loader[loader.index('    child_peb->LdrData = NULL;'):loader.index("    /* Point child's TEB to the new PEB */")]
@@ -21,6 +22,9 @@ callback = function(signal, 'NTSTATUS KeUserModeCallback(')
 assert callback.index('!teb->Peb->KernelCallbackTable') < callback.index('get_syscall_frame()')
 assert 'SESSION THREAD, CHILD DISPATCHER (BUG)' not in callback
 assert '.hInstance = ios_cur_user32_module(),' in function(classes, 'static void register_builtin(')
+desktop = function(station, 'HWND get_desktop_window(void)')
+cached = desktop[desktop.index('    if (thread_info->top_window)'):desktop.index("    /* don't create an actual explorer")]
+assert cached.index('register_builtin_classes();') < cached.index('return UlongToHandle(')
 
 fixture = (ROOT / 'tests/host/fixtures/UserCallbackOwnershipCheck.c').read_text()
 pieces = {
@@ -28,6 +32,7 @@ pieces = {
     'PEB_RESET': 'static void reset_child(PEB *child_peb) {\n' + reset + '\n}',
     'CALLBACK': callback,
     'BUILTINS': function(classes, 'void register_builtin_classes(void)'),
+    'DESKTOP_CACHED': 'static HWND get_desktop_window(void) {\nstruct ntuser_thread_info *thread_info = &cached_desktop;\n' + cached + '\nreturn NULL;\n}',
 }
 for name, text in pieces.items():
     assert fixture.count('// PRODUCTION_' + name) == 1
@@ -38,5 +43,5 @@ with tempfile.TemporaryDirectory(prefix='mdeck-user-callback-owner-') as tempora
     source.write_text(fixture)
     subprocess.run(['xcrun', 'clang', '-std=gnu11', '-Wall', '-Wextra', '-Werror', '-pthread',
         '-fsanitize=address,undefined', '-fno-sanitize-recover=all', str(source), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True)
+    subprocess.run([str(binary)], check=True, timeout=15)
 print('ASan/UBSan host regression only; no FEX modification, Steam/Wine execution, IPA build or physical-device acceptance.')
