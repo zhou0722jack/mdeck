@@ -36,6 +36,8 @@ class SteamSession {
     private var reconnectAttempts = 0
     private let maxReconnectAttempts = 5
     private var idleDisconnectTask: Task<Void, Never>?
+    private var pendingLogonCancel: (() -> Void)?
+    private let automaticallyReconnect: Bool
     /// How long to stay connected after the last activity before auto-disconnecting (seconds)
     private let idleTimeout: TimeInterval = 60
     private var jobIDCounter: UInt64 = 0
@@ -55,10 +57,12 @@ class SteamSession {
     /// some CM servers.
     private static let preLogonSteamID: UInt64 = 76561197960265728
 
+    init(automaticallyReconnect: Bool = true) { self.automaticallyReconnect = automaticallyReconnect }
+
     // MARK: - Lifecycle
 
     /// Connect and authenticate using stored tokens (auto-login)
-    func connectAndLogin() async throws {
+    func connectAndLogin(credentialsOverride: (accountName: String, refreshToken: String)? = nil) async throws {
         guard !isSuspended else { throw SteamError.disconnected }
         guard connectionState == .disconnected || connectionState == .reconnecting else { return }
 
@@ -107,7 +111,7 @@ class SteamSession {
             SteamLog.trace("Sent ClientHello (\(helloData.count) bytes)")
 
             // Try to log in with stored tokens, retrying up to 2 different servers on timeout/redirect
-            if let tokens = SteamSignIn.credentialsForDock() {
+            if let tokens = credentialsOverride ?? SteamSignIn.credentialsForDock() {
                 var lastError: Error = SteamError.connectionTimeout
                 var loggedIn = false
                 for attempt in 1...2 {
@@ -225,9 +229,8 @@ class SteamSession {
     func resume() { isSuspended = false }
 
     /// Log in using the refresh token from the auth flow.
-    /// NOTE: Despite the parameter name, CM logon requires the *refresh* token (audience: "renew"),
-    /// not the access token (audience: "web"). The CMsgClientLogon.access_token field accepts both,
-    /// but only the refresh token establishes a CM session.
+    /// Despite the field name, CM logon takes the client refresh token
+    /// (client + derive audiences). A web access token cannot replace it.
     /// Single-resume guard for the logon continuation. The logon response,
     /// ClientLoggedOff, the send-error path, and the 20s timeout can each reach
     /// the continuation; without this the timeout double-resumed and crashed
@@ -284,6 +287,11 @@ class SteamSession {
                 self?.messageHandlers.removeValue(forKey: EMsg.clientLogonResponse.rawValue)
                 self?.messageHandlers.removeValue(forKey: 751)
                 self?.messageHandlers.removeValue(forKey: EMsg.clientLoggedOff.rawValue)
+                self?.pendingLogonCancel = nil
+            }
+            pendingLogonCancel = {
+                cleanupHandlers()
+                resumeThrowing(CancellationError())
             }
 
             let handleLogonResponse: (SteamMessageCodec.IncomingMessage) -> Void = { [weak self] message in
@@ -372,6 +380,7 @@ class SteamSession {
 
             Task {
                 do {
+                    guard !isSuspended else { throw SteamError.disconnected }
                     try await connection.send(logonData)
                     SteamLog.trace("Sent ClientLogon, waiting for response")
                 } catch {
@@ -396,6 +405,8 @@ class SteamSession {
 
     /// Disconnect and clean up
     func disconnect() {
+        pendingLogonCancel?()
+        pendingLogonCancel = nil
         heartbeatTask?.cancel()
         heartbeatTask = nil
         reconnectTask?.cancel()
@@ -812,7 +823,7 @@ class SteamSession {
 
         SteamLog.trace("Connection lost\(error.map { ": \($0.localizedDescription)" } ?? "")")
 
-        if wasAuthenticated && reconnectAttempts < maxReconnectAttempts {
+        if automaticallyReconnect && !isSuspended && wasAuthenticated && reconnectAttempts < maxReconnectAttempts {
             attemptReconnect()
         } else {
             connectionState = .disconnected

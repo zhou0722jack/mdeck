@@ -421,6 +421,7 @@ final class SteamOwnedLibrary: ObservableObject {
         if !now {
             SteamLog.event("[steam-library] signed out: list cleared")
         } else {
+            cachedAccount = Self.accountKey(SteamSignIn.accountName)
             Task { await refreshLibrary(interactive: true) }
         }
     }
@@ -1194,6 +1195,21 @@ final class SteamOwnedLibrary: ObservableObject {
         await running?.value
         await gate.holdForDock()
         SteamLog.event("[steam-library] connection closed for Madeira Dock")
+    }
+
+    /// The credential validator borrows the same exclusive account gate.
+    /// No Dock executable or Windows process is started by these methods.
+    func prepareClientSignInVerification() async {
+        let running = active?.task
+        sessionChanged(active: true)
+        await running?.value
+        await gate.holdForDock()
+    }
+
+    func finishClientSignInVerification(imported: Bool) {
+        if imported { signInChanged() }
+        gate.releaseDock()
+        reconcileSession()
     }
 
     /// Madeira Dock's session ended, or its start failed (MadeiraDockModel,

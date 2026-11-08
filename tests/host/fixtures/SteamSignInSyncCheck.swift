@@ -8,7 +8,13 @@ import CryptoKit
     var applicationState = State.active
     static let didBecomeActiveNotification = Notification.Name("FixtureActive")
 }
-enum LibraryModel { static var drive = URL(fileURLWithPath: "/tmp") }
+@MainActor final class LibraryModel {
+    static let shared = LibraryModel()
+    static var drive = URL(fileURLWithPath: "/tmp")
+    var current: Int?
+}
+func wine_process_is_running() -> Int32 { 0 }
+func wineserver_is_running() -> Int32 { 0 }
 enum SteamClient { static let clientDirectory = "Program Files/Steam Client" }
 enum SteamLog { static func event(_ value: String) {} }
 @MainActor enum SteamSignIn {
@@ -39,40 +45,60 @@ enum SteamLog { static func event(_ value: String) {} }
         guard writable else { return false }; Self.values = values; return true
     }
 }
-func token(subject: UInt64 = 0x0110000100000001, audience: String = "renew", expires: Date = Date().addingTimeInterval(86400), label: String = "fixture") -> String {
+func token(subject: UInt64 = 0x0110000100000001, audiences: [String] = ["client", "derive"], expires: Date = Date().addingTimeInterval(86400), label: String = "fixture") -> String {
     func encode(_ data: Data) -> String { data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") }
     let header = Data(#"{"alg":"RS256","typ":"JWT"}"#.utf8)
-    let body = try! JSONSerialization.data(withJSONObject: ["iss":"steam", "sub":String(subject), "aud":[audience], "exp":expires.timeIntervalSince1970, "jti":label], options: .sortedKeys)
+    let body = try! JSONSerialization.data(withJSONObject: ["iss":"steam", "sub":String(subject), "aud":audiences, "exp":expires.timeIntervalSince1970, "jti":label], options: .sortedKeys)
     return encode(header) + "." + encode(body) + ".synthetic_signature"
 }
-@MainActor enum SteamAuthAPI {
+@MainActor enum CMVerifierFixture {
     enum Mode { case success, denied, offline, hold, wrongAccount }
     static var mode = Mode.success, calls = 0
-    static var waiting: CheckedContinuation<Data, Error>?
-    static func response(subject: UInt64) -> Data {
-        var encoder = ProtobufEncoder()
-        encoder.writeString(fieldNumber: 1, value: token(subject: subject, audience: "web"))
-        return encoder.data
-    }
-    static func call(_ method: String, body: Data) async throws -> Data {
-        precondition(method == "GenerateAccessTokenForApp")
+    static var waiting: CheckedContinuation<UInt64, Error>?
+    static func login(_ credentials: (accountName: String, refreshToken: String)) async throws -> UInt64 {
+        precondition(LibraryModel.shared.current == nil, "CM validation must wait for Windows to end")
+        precondition(SteamOwnedLibrary.shared.leases == 1, "validator must hold the account before CM login")
         calls += 1
-        var decoder = ProtobufDecoder(body), subject: UInt64 = 0
-        while let tag = try decoder.readTag() {
-            if tag.fieldNumber == 2 { precondition(tag.wireType == .fixed64); subject = try decoder.readFixed64() }
-            else { try decoder.skip(wireType: tag.wireType) }
-        }
+        let subject = UInt64(SteamClientSignInRules.claims(credentials.refreshToken)!["sub"] as! String)!
         switch mode {
-        case .denied: throw SteamError.invalidCredentials
+        case .denied: throw SteamError.logonDenied(5)
         case .offline: throw URLError(.networkConnectionLost)
         case .hold: return try await withCheckedThrowingContinuation { waiting = $0 }
-        case .wrongAccount: return response(subject: subject + 1)
-        case .success: return response(subject: subject)
+        case .wrongAccount: return subject + 1
+        case .success: return subject
         }
     }
     static func release(subject: UInt64 = 0x0110000100000001) {
-        let saved = waiting; waiting = nil; saved?.resume(returning: response(subject: subject))
+        let saved = waiting; waiting = nil; saved?.resume(returning: subject)
     }
+    static func cancelWait() {
+        let saved = waiting; waiting = nil; saved?.resume(throwing: CancellationError())
+    }
+}
+enum SteamConnectionState { case disconnected, authenticated }
+@MainActor final class SteamSession {
+    var steamID: UInt64 = 0
+    var connectionState = SteamConnectionState.disconnected
+    private var suspended = false
+    private var ownsWait = false
+    init(automaticallyReconnect: Bool = true) { precondition(!automaticallyReconnect) }
+    func connectAndLogin(credentialsOverride: (accountName: String, refreshToken: String)? = nil) async throws {
+        ownsWait = CMVerifierFixture.mode == .hold
+        defer { ownsWait = false }
+        let subject = try await CMVerifierFixture.login(credentialsOverride!)
+        guard !suspended else { throw SteamError.disconnected }
+        steamID = subject; connectionState = .authenticated
+    }
+    func suspend() async {
+        suspended = true; steamID = 0; connectionState = .disconnected
+        if ownsWait { ownsWait = false; CMVerifierFixture.cancelWait() }
+    }
+}
+@MainActor final class SteamOwnedLibrary {
+    static let shared = SteamOwnedLibrary()
+    var leases = 0
+    func prepareClientSignInVerification() async { leases += 1 }
+    func finishClientSignInVerification(imported: Bool) { leases -= 1; precondition(leases >= 0) }
 }
 
 // PRODUCTION_MODEL
@@ -82,6 +108,7 @@ func token(subject: UInt64 = 0x0110000100000001, audience: String = "renew", exp
 extension SteamClientSignInSync {
     func testTick() { retryAt = .distantPast; tick() }
     func testDispose() {
+        _ = closeVerifier()
         revision = UUID(); task?.cancel(); task = nil
         timer?.invalidate(); timer = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }; observers = []
@@ -104,41 +131,61 @@ extension SteamClientSignInSync {
         func fresh() -> SteamClientSignInSync {
             sync?.testDispose(); SteamSignIn.saved = nil; SteamSignIn.stores = 0; SteamSignIn.canStore = true; SteamSignIn.enabled = true
             SteamClientPendingStore.values = []; SteamClientPendingStore.writable = true
-            SteamAuthAPI.mode = .success; SteamAuthAPI.calls = 0; UIApplication.shared.applicationState = .active
+            CMVerifierFixture.mode = .success; CMVerifierFixture.calls = 0; UIApplication.shared.applicationState = .active
+            LibraryModel.shared.current = nil
             let next = SteamClientSignInSync(); sync = next; next.beginSteamSession(); return next
         }
         let refresh = token(), data = Data(refresh.utf8)
         let candidate = SteamClientSignInRules.candidate(data)!
         precondition(SteamClientSignInRules.candidate(Data("password fixture".utf8)) == nil)
-        precondition(SteamClientSignInRules.candidate(Data(token(audience: "web").utf8)) == nil)
+        precondition(SteamClientSignInRules.candidate(Data(token(audiences: ["web", "derive"]).utf8)) == nil)
+        precondition(SteamClientSignInRules.candidate(Data(token(audiences: ["client"]).utf8)) == nil)
+        precondition(SteamClientSignInRules.candidate(Data(token(audiences: ["renew"]).utf8)) == nil)
+        precondition(SteamClientSignInRules.candidate(data) != nil, "client + derive token without renew must be accepted")
         precondition(SteamClientSignInRules.candidate(Data(token(expires: .distantPast).utf8)) == nil)
         precondition(SteamClientSignInRules.candidate(Data(repeating: 65, count: 20000)) == nil)
         precondition(SteamClientSignInRules.candidate(Data((refresh + "\0").utf8))?.refresh == refresh)
         precondition(SteamClientSignInRules.candidate((refresh + "\0").data(using: .utf16LittleEndian)!)?.refresh == refresh)
-        precondition(SteamClientSignInRules.verified(candidate, response: SteamAuthAPI.response(subject: candidate.subject + 1)) == nil)
-        precondition(SteamClientSignInRules.verified(candidate, response: Data([10, 255, 255])) == nil)
+        precondition(!SteamClientSignInRules.acceptsCMSubject(candidate.subject + 1, candidate: candidate))
+        precondition(!SteamClientSignInRules.acceptsCMSubject(0, candidate: candidate))
         print("PASS: only bounded, unexpired refresh JWT candidates survive; UTF-8/UTF-16 and response account binding checked")
 
         try account(recent: false)
         var current = fresh(); current.receive(data); await settle()
-        precondition(SteamSignIn.saved == nil && SteamAuthAPI.calls == 0 && current.phase == .waitingForAccount)
+        precondition(SteamSignIn.saved == nil && CMVerifierFixture.calls == 0 && current.phase == .waitingForAccount)
         try account(); current.testTick(); await settle()
         precondition(current.phase == .synced && SteamSignIn.saved?.refreshToken == refresh && SteamSignIn.stores == 1)
         current.receive(data); await settle(); precondition(SteamSignIn.stores == 1)
         precondition(SteamClientPendingStore.values.isEmpty)
         print("PASS: selected account plus Valve validation imports once and removes the pending transfer")
 
-        current = fresh(); SteamAuthAPI.mode = .wrongAccount; current.receive(data); await settle()
+        current = fresh(); LibraryModel.shared.current = 1; current.receive(data); await settle()
+        precondition(current.phase == .waitingForWindows && CMVerifierFixture.calls == 0 && SteamSignIn.saved == nil)
+        precondition(current.hasPendingAuthorization && SteamClientPendingStore.values.count == 1)
+        LibraryModel.shared.current = nil; current.testTick(); await settle()
+        precondition(current.phase == .synced)
+        print("PASS: Windows keeps its session; captured authorization validates only after the Windows session ends")
+
+        current = fresh(); CMVerifierFixture.mode = .hold; current.receive(data); await settle()
+        var launched = false
+        precondition(current.deferWindowsLaunch { launched = true; LibraryModel.shared.current = 1 })
+        await settle(); precondition(launched)
+        CMVerifierFixture.release(); await settle(); precondition(SteamSignIn.saved == nil)
+        LibraryModel.shared.current = nil; CMVerifierFixture.mode = .success; current.testTick(); await settle()
+        precondition(current.phase == .synced)
+        print("PASS: a new Windows launch closes an in-flight CM validator and stale success cannot import afterward")
+
+        current = fresh(); CMVerifierFixture.mode = .wrongAccount; current.receive(data); await settle()
         precondition(current.phase == .failed && SteamSignIn.saved == nil && SteamClientPendingStore.values.isEmpty)
-        current = fresh(); SteamAuthAPI.mode = .denied; current.receive(data); await settle()
+        current = fresh(); CMVerifierFixture.mode = .denied; current.receive(data); await settle()
         precondition(current.phase == .failed && SteamSignIn.saved == nil)
-        current = fresh(); SteamAuthAPI.mode = .offline; current.receive(data); await settle()
+        current = fresh(); CMVerifierFixture.mode = .offline; current.receive(data); await settle()
         precondition(current.phase == .retrying && SteamSignIn.saved == nil && SteamClientPendingStore.values.count == 1)
-        SteamAuthAPI.mode = .success; current.testTick(); await settle(); precondition(current.phase == .synced)
+        CMVerifierFixture.mode = .success; current.testTick(); await settle(); precondition(current.phase == .synced)
         print("PASS: denied/mismatched tokens never sign in; temporary transport failure retries without losing the candidate")
 
         current = fresh(); UIApplication.shared.applicationState = .inactive; current.receive(data)
-        precondition(SteamClientPendingStore.values.count == 1 && SteamAuthAPI.calls == 0)
+        precondition(SteamClientPendingStore.values.count == 1 && CMVerifierFixture.calls == 0)
         current.testDispose(); UIApplication.shared.applicationState = .active
         current = SteamClientSignInSync(); sync = current; current.start(); await settle()
         precondition(current.phase == .synced && SteamSignIn.saved != nil)
@@ -155,25 +202,25 @@ extension SteamClientSignInSync {
         precondition(current.phase == .synced)
         print("PASS: Keychain failure preserves an existing sign-in and retries after storage becomes available")
 
-        current = fresh(); SteamAuthAPI.mode = .hold; current.receive(data); await settle()
-        precondition(SteamAuthAPI.waiting != nil); SteamSignIn.signOut(); SteamAuthAPI.release(); await settle()
+        current = fresh(); CMVerifierFixture.mode = .hold; current.receive(data); await settle()
+        precondition(CMVerifierFixture.waiting != nil); SteamSignIn.signOut(); CMVerifierFixture.release(); await settle()
         precondition(SteamSignIn.saved == nil && SteamClientPendingStore.values.isEmpty)
         current.receive(data); await settle(); precondition(SteamSignIn.saved == nil)
-        current.beginSteamSession(); SteamAuthAPI.mode = .success; current.receive(data); await settle()
+        current.beginSteamSession(); CMVerifierFixture.mode = .success; current.receive(data); await settle()
         precondition(current.phase == .synced)
         print("PASS: App sign-out cancels stale import and blocks reimport until the user starts a new Windows session")
 
-        current = fresh(); SteamAuthAPI.mode = .hold; current.receive(data); await settle()
+        current = fresh(); CMVerifierFixture.mode = .hold; current.receive(data); await settle()
         let manual = token(subject: candidate.subject + 1, label: "manual_fixture")
         _ = SteamSignIn.store(accountName: "manual_fixture", refreshToken: manual, accessToken: "")
-        await settle(); SteamAuthAPI.release(); await settle()
+        await settle(); CMVerifierFixture.release(); await settle()
         precondition(SteamSignIn.saved?.refreshToken == manual)
         print("PASS: a manual App login wins over an older in-flight Windows authorization import")
 
-        current = fresh(); SteamAuthAPI.mode = .hold; current.receive(data); await settle()
-        try account(candidate.subject + 1); SteamAuthAPI.release(); await settle()
+        current = fresh(); CMVerifierFixture.mode = .hold; current.receive(data); await settle()
+        try account(candidate.subject + 1); CMVerifierFixture.release(); await settle()
         precondition(SteamSignIn.saved == nil)
-        SteamAuthAPI.mode = .success; current.receive(Data(token(subject: candidate.subject + 1).utf8)); await settle()
+        CMVerifierFixture.mode = .success; current.receive(Data(token(subject: candidate.subject + 1).utf8)); await settle()
         precondition(SteamClientSignInRules.claims(SteamSignIn.saved!.refreshToken)?["sub"] as? String == String(candidate.subject + 1))
         current.testDispose()
         print("PASS: changing Windows accounts invalidates an older validation response; only the newly selected account imports")
@@ -190,5 +237,6 @@ extension SteamClientSignInSync {
         precondition(library.owned.map(\.name) == ["new fixture"] && library.writes == [["new fixture"]])
         precondition(library.session.logoffs == 1 && library.paused == [1] && library.resumeAfterSession.isEmpty)
         print("PASS: an old account's delayed library response cannot enter the new account's library or cache")
+        precondition(SteamOwnedLibrary.shared.leases == 0)
     }
 }

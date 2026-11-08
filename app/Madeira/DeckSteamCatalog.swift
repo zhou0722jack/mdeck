@@ -277,7 +277,7 @@ struct DeckSteamCatalog: View {
             HStack(spacing: 12) {
                 Image(systemName: "person.crop.circle.badge.plus").font(.title2)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Sign in to Steam").font(.headline)
+                    Text(clientSignIn.hasPendingAuthorization ? L("Use another sign-in method") : L("Sign in to Steam")).font(.headline)
                     Text("Sign in once in Windows Steam. Your account will sync here automatically.").font(.footnote).foregroundStyle(palette.muted)
                 }
                 Spacer(); Image(systemName: "chevron.right")

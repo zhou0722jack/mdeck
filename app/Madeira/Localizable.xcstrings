@@ -56512,6 +56512,15 @@
     "Downloads resume after the Windows session ends.": {
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "结束 Windows 会话后，将恢复游戏库加载与下载。" } } }
     },
+    "Waiting for Windows Steam sign-in authorization…": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "等待 Windows Steam 的登录授权消息…" } } }
+    },
+    "Authorization received. End the Windows session to finish signing in here.": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已收到授权，结束 Windows 会话后会自动完成 App 登录。" } } }
+    },
+    "Use another sign-in method": {
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "使用其他方式登录" } } }
+    },
     "Double-tap to skip the animation.": {
       "localizations": {
         "zh-Hans": {

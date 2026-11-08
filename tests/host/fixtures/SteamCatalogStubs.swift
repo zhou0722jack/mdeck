@@ -78,6 +78,7 @@ final class SteamClientSignInSync: ObservableObject {
     static let shared = SteamClientSignInSync()
     enum Phase { case idle, failed }
     var phase = Phase.idle
+    var hasPendingAuthorization = false
     var statusText: String? { nil }
 }
 struct SteamAccountSettingsView: View { var body: some View { Color.clear } }

@@ -2812,6 +2812,11 @@ struct ContentView: View {
         }
         if AppEntryJIT.shared.deferLaunchUntilProbeFinishes({ runWineFullSequence(profile: profile) },
                                                           failed: { LibraryModel.shared.launchFailed($0) }) { return }
+        let selectedSession = LibraryModel.shared.current
+        if SteamClientSignInSync.shared.deferWindowsLaunch({
+            guard LibraryModel.shared.current == selectedSession else { return }
+            runWineFullSequence(profile: profile)
+        }) { return }
         // Steam downloads wait for the session, and the app's own Steam connection closes
         // before Valve's client signs in with the same account (SteamOwnedLibrary).
         SteamOwnedLibrary.shared.sessionChanged(active: true)

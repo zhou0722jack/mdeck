@@ -33,7 +33,12 @@ assert 'SecItemUpdate' in (APP / 'SwiftSteam/Auth/SteamTokenStore.swift').read_t
 assert 'kSecAttrAccessibleWhenUnlockedThisDeviceOnly' in sync
 assert 'kSecAttrSynchronizable' not in sync
 assert 'C:\\' not in rules  # no guessed cache decryption or hard-coded account data
-assert not re.search(r'\bSteamSession\(', sync) and 'loginWithToken(' not in sync
+assert 'GenerateAccessTokenForApp' not in sync, 'client refresh validation must use CM, not the web endpoint'
+assert 'SteamSession(automaticallyReconnect: false)' in sync
+assert sync.index('guard !windowsRunning else') < sync.index('try await cm.connectAndLogin(')
+assert sync.index('await SteamOwnedLibrary.shared.prepareClientSignInVerification()') < sync.index('try await cm.connectAndLogin(')
+assert sync.index('await cm.suspend()') < sync.index('guard SteamSignIn.store(')
+assert 'deferWindowsLaunch' in (APP / 'ContentView.swift').read_text()
 assert 'self.account(for: candidate) == account' in model and 'revision == attempt' in model
 assert 'SteamSignIn.credentialsForDock()?.refreshToken == before' in model
 assert 'FileManager.default.createFile' not in sync and 'setenv(' not in sync
@@ -96,9 +101,23 @@ struct SteamOwnedGame {
     # Real UIKit/Security imports are typechecked, not replaced by the host fakes.
     ios_stubs = temp / 'IOSDependencies.swift'
     ios_stubs.write_text('''import Foundation
-enum LibraryModel { static var drive=URL(fileURLWithPath:"/tmp") }
+@MainActor final class LibraryModel { static let shared=LibraryModel();static var drive=URL(fileURLWithPath:"/tmp");var current:Int? }
+func wine_process_is_running()->Int32{0}
+func wineserver_is_running()->Int32{0}
 enum SteamClient { static let clientDirectory="Program Files/Steam Client" }
 enum SteamLog { static func event(_ value:String){}; static func trace(_ value:String){} }
+@MainActor final class SteamOwnedLibrary {
+    static let shared=SteamOwnedLibrary()
+    func prepareClientSignInVerification() async {}
+    func finishClientSignInVerification(imported:Bool){}
+}
+enum SteamConnectionState { case disconnected,authenticated }
+@MainActor final class SteamSession {
+    var steamID:UInt64=0;var connectionState=SteamConnectionState.disconnected
+    init(automaticallyReconnect:Bool=true){}
+    func connectAndLogin(credentialsOverride:(accountName:String,refreshToken:String)?=nil) async throws {}
+    func suspend() async {}
+}
 enum SteamSignIn {
     static let didSignOut=Notification.Name("out"), didChange=Notification.Name("changed")
     static func flag(_ name:String,default value:Bool)->Bool{value}
@@ -112,18 +131,33 @@ enum SteamSignIn {
                     str(APP / 'SwiftSteam/Auth/SteamAuthAPI.swift'), str(APP / 'SwiftSteam/Auth/SteamTokenStore.swift'), str(ios_stubs)], check=True)
     full_stubs = temp / 'IOSFullSigninDependencies.swift'
     full_stubs.write_text('''import Foundation
-enum LibraryModel { static var drive=URL(fileURLWithPath:"/tmp") }
+@MainActor final class LibraryModel { static let shared=LibraryModel();static var drive=URL(fileURLWithPath:"/tmp");var current:Int? }
+func wine_process_is_running()->Int32{0}
+func wineserver_is_running()->Int32{0}
 enum SteamClient { static let clientDirectory="Program Files/Steam Client" }
 enum MadeiraConfig { static func get(_ key:String)->String?{nil} }
 enum SteamLog { static func event(_ value:String){}; static func trace(_ value:@autoclosure ()->String){} }
+@MainActor final class SteamOwnedLibrary {
+    static let shared=SteamOwnedLibrary()
+    func prepareClientSignInVerification() async {}
+    func finishClientSignInVerification(imported:Bool){}
+}
 ''')
     actual_signin = [APP / 'SwiftSteam' / path for path in [
         'SteamSignIn.swift', 'SteamSignInView.swift', 'Auth/SteamAuthAPI.swift', 'Auth/SteamTokenStore.swift',
         'Auth/SteamQRAuth.swift', 'Auth/SteamCredentialAuth.swift', 'Helpers/SteamDevice.swift']]
+    actual_cm = [APP / 'SwiftSteam/Core' / name for name in [
+        'SteamSession.swift', 'SteamConnection.swift', 'SteamCMSession.swift', 'CMServerList.swift',
+        'SteamProtocol.swift', 'SteamMessageCodec.swift', 'LicenseListBox.swift']]
+    actual_cm.append(APP / 'SwiftSteam/Content/SteamLANPeer.swift')
+    actual_cm.append(APP / 'SwiftSteam/Content/ContentDecryptor.swift')
+    bridge_header = temp / 'SteamContentBridge.h'
+    bridge_header.write_text('#include "' + str(APP / 'SwiftSteam/lzma_shim.h') + '"\n')
     subprocess.run(['xcrun', 'swiftc', '-typecheck', '-sdk', sdk, '-target', 'arm64-apple-ios18.0',
+                    '-import-objc-header', str(bridge_header),
                     str(APP / 'SteamClientSignInSync.swift'), *map(str, dependencies),
-                    *map(str, actual_signin), str(full_stubs)], check=True)
-    print('PASS: complete importer, Keychain, authentication model and auto-dismiss sign-in UI typecheck together for iOS')
+                    *map(str, actual_signin), *map(str, actual_cm), str(full_stubs)], check=True)
+    print('PASS: complete importer, actual CM transport/session, Keychain and sign-in UI typecheck together for iOS')
 
     # Execute the production primary Keychain writer against an in-memory
     # Security API. No real device/macOS Keychain item is read or changed.
@@ -272,5 +306,5 @@ int main(void) {
     for name in ['dlls/crypt32/crypt32_private.h', 'dlls/crypt32/unixlib.c']:
         (wine / name).write_text(originals[name])
     assert subprocess.run(['git', '-C', str(wine), 'apply', '--check', str(patch)], capture_output=True).returncode != 0
-print('PASS: real UIKit/Security importer and Valve API typecheck for iOS; privacy, ABI tables and fail-on-drift wiring checked')
+print('PASS: real UIKit/Security importer and CM verification typecheck for iOS; privacy, ABI tables and fail-on-drift wiring checked')
 print('No real credentials, Steam API call, Wine execution, IPA build or physical-device test.')
