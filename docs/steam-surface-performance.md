@@ -70,6 +70,51 @@ utility 队列约每秒汇总，即使静止没有更新或 UIKit 主线程忙�
 这里的更新可能是局部脏区域、重复图像或隐藏窗口更新，不能由它计算真实显示 FPS，
 也不能据此认定 GPU 饱和。实际屏幕呈现和 GPU 性能仍需系统侧工具或单独的呈现采样。
 
+## 分配与重试计时
+
+同一个“Steam 专用性能检测”开关现在同时启用 `[steam-alloc]`，无需额外设置。
+沿用窗口统计的后台 utility 定时器，每秒输出一个总量、最多 8 条线程与申请大小分组，
+以及未逐项输出的 remainder 汇总；每次 API 调用本身不新增日志。
+
+普通 `NtAllocateVirtualMemory` 和扩展 `NtAllocateVirtualMemoryEx` 都覆盖，包括参数
+拒绝、远程请求和未经过普通分配器的特殊路径。嵌套 API 不重复计入整次请求；内部
+`allocate_virtual_memory` 的递归嵌套耗时只计入其最外层尝试。
+
+| 字段 | 含义 |
+| --- | --- |
+| `requests/success/failed` | 本区间完成的 API 请求数、最终成功数、最终失败数 |
+| `final_conflict` | API 最终以地址冲突状态返回的次数，不代表物理内存耗尽 |
+| `hinted/remote` | 带初始指定地址的请求数、目标为其他进程的请求数；pid/tid 是发起者 |
+| `attempts/attempt_failed` | 内部普通分配器尝试数及其中返回失败的次数 |
+| `conflicts/hinted_conflicts` | 内部尝试返回地址冲突次数，其中带指定地址的次数 |
+| `recovered` | 内部曾发生地址冲突，但 API 最终成功的请求数 |
+| `retry_requests/retries` | 一次 API 内进行了多次普通分配器尝试的请求数、首次以后尝试总数 |
+| `low_try/low_success/low_miss` | guest 低 2 GB 预尝试次数、成功数、失败数 |
+| `fallback_success/fallback_failed` | 至少一次低地址预尝试失败后，整个 API 最终成功/失败的请求数 |
+| `size/min_bytes/max_bytes/requestedMiB` | 申请大小分组、原始请求大小最小/最大值、累计申请量；不是实际占用量 |
+| `pid/tid/api/types` | 发起进程、线程、API、分组中的请求 type 标志按位合并 |
+
+所有 `*_ms` 仍为 **平均毫秒 / 最大毫秒 / 样本数**：
+
+- `total_ms`：一次 API 的总耗时，含原有诊断与锁等待；特殊分配路径也有记录。
+- `attempt_ms`：一次最外层内部普通分配器调用耗时，含其锁等待。
+- `conflict_ms` / `hinted_conflict_ms`：返回地址冲突的内部尝试耗时、其中指定地址尝试耗时。
+- `retry_ms`：一次 API 内首次内部尝试之后的尝试耗时。
+- `low_ms`：仅 guest 低 2 GB 的 `map_reserved_area` 搜索调用耗时。
+- `fallback_ms`：低地址搜索失败后，至该次 `map_view` 返回的耗时，含原有回退日志和后续路径。
+- `wall_ms_sum`：完成请求的累计总墙钟毫秒；多线程可能重叠，不等于 CPU 时间，也不能将
+  total、attempt、low、fallback 等包含关系的时间相加。
+
+大小按 `<64 KiB`、`64 KiB～<1 MiB`、`1～<4 MiB`、`4～<16 MiB`、`16～<128 MiB`、
+`128 MiB～<1 GiB`、`≥1 GiB` 分组。每区间最多 128 个线程/大小/API 归因槽，满后
+`overflow` 计数增加，但总量和 remainder 继续累计，不丢失已完成请求的总统计。Top 8
+按累计请求墙钟时间选取。统计窗口跨秒的请求在完成时一次性归属，不拆分成多次请求。
+
+调用者收到冲突后再次调用 API，属于另一个请求；本功能不猜测两个 API 是否来自同一个
+guest 重试循环。内部普通分配器之外的特殊快速路径、软预留等不伪造 `attempts`。
+低地址分配是 guest 地址布局，与宿主 JIT C 区分开。计时不改变地址、参数、回退策略或
+返回状态，关闭开关时不启动计时器、计时及聚合操作。
+
 ## 验证边界
 
 GitHub Actions 的检查执行生产计数器、计时/会话适配器以及 iPhoneOS 语法检查。

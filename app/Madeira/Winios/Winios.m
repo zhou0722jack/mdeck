@@ -561,6 +561,8 @@ extern int winios_drv_close_desktop_if_owner(void);
 /* Steam surface diagnostics have their own switch and lifetime. In particular,
  * ending the first-frame census must not stop them. No thread is suspended,
  * no pixels are inspected, and the utility timer never dispatches to UIKit. */
+extern void ios_steam_alloc_stats_configure(int enabled, uint64_t epoch);
+extern void ios_steam_alloc_stats_report(uint64_t epoch);
 static pthread_mutex_t g_surface_stats_lock = PTHREAD_MUTEX_INITIALIZER;
 static atomic_int g_surface_stats_on;
 static struct winios_surface_stats g_surface_stats;
@@ -615,6 +617,7 @@ static void winios_surface_stats_report(uint64_t epoch) {
                 SURFACE_MS(layer), SURFACE_MS(main), SURFACE_MS(total));
 #undef SURFACE_MS
     }
+    ios_steam_alloc_stats_report(epoch);
 }
 
 void winios_surface_stats_configure(int enabled) {
@@ -624,6 +627,7 @@ void winios_surface_stats_configure(int enabled) {
     uint64_t epoch = g_surface_stats.epoch + 1;
     g_surface_stats = (struct winios_surface_stats){.epoch = epoch, .since = winios_now_mono()};
     g_surface_stats_started = g_surface_stats.since;
+    ios_steam_alloc_stats_configure(enabled, epoch);
     if (enabled) {
         dispatch_queue_t q = dispatch_queue_create("mdeck.steam-surface-stats", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
         g_surface_stats_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);

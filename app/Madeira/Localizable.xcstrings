@@ -5,9 +5,9 @@
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 专用性能检测" } } }
     },
-    "Measure Steam window updates, image copying, main-thread queue waits and layer submission once a second. Cursor updates are separate. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.": {
+    "Measure Steam window updates, image copying, main-thread queue waits, layer submission and allocation retries once a second. Includes address conflicts and low-address fallback timings by thread and request size. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.": {
       "extractionState": "manual",
-      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "每秒汇总 Steam 窗口更新、图像复制、主线程排队和图层提交耗时，光标单独统计。默认关闭，下次启动 Steam 生效；记录的是更新与提交，不代表屏幕帧率或 GPU 耗时。" } } }
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "每秒汇总 Steam 窗口更新、图像复制、主线程排队、图层提交和分配重试耗时，按线程及申请大小记录地址冲突和低地址回退。光标单独统计。默认关闭，下次启动 Steam 生效；不代表屏幕帧率或 GPU 耗时。" } } }
     },
     "Performance logging": {
       "extractionState": "manual",

@@ -125,6 +125,8 @@ objc_test = r'''
 typedef void *HWND;
 #define WINIOS_CENSUS_IMAGE 264
 static atomic_uint owner_queries;
+static void ios_steam_alloc_stats_configure(int enabled, uint64_t epoch) { (void)enabled; (void)epoch; }
+static void ios_steam_alloc_stats_report(uint64_t epoch) { (void)epoch; }
 static double winios_now_mono(void) { return (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9; }
 static int winios_drv_census_owner(HWND hwnd, unsigned *pid, unsigned *style) {
     atomic_fetch_add(&owner_queries, 1); *pid = 123; *style = 0; return 1;

@@ -5005,7 +5005,7 @@ struct LibraryDetail: View {
                 }))
                 .disabled(model.current != nil || model.startingScreen)
                 .accessibilityIdentifier("steam-surface-performance-logging")
-                Text("Measure Steam window updates, image copying, main-thread queue waits and layer submission once a second. Cursor updates are separate. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.")
+                Text("Measure Steam window updates, image copying, main-thread queue waits, layer submission and allocation retries once a second. Includes address conflicts and low-address fallback timings by thread and request size. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Toggle("Performance logging", isOn: Binding(get: {
                     PerformanceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)

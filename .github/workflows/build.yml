@@ -43,6 +43,7 @@ jobs:
       - name: Check native frontend integration
         run: |
           python3 tests/host/check-native-deck.py
+          python3 tests/host/check-steam-alloc-stats.py
           python3 tests/host/check-steam-surface-stats.py
           python3 tests/host/check-runtime-settings.py
           python3 tests/host/check-deck-startup.py

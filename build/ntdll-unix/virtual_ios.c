@@ -26,6 +26,9 @@
 
 #include "config.h"
 #include "../madeira_cfg.h"   /* ml1095: one config file */
+#ifdef WINE_IOS
+#include "steam_alloc_stats.h"
+#endif
 #include <malloc/malloc.h>
 
 #include <assert.h>
@@ -22008,6 +22011,10 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size,
                           unsigned int alloc_type, unsigned int vprot,
                           ULONG_PTR limit_low, ULONG_PTR limit_high, size_t align_mask )
 {
+#ifdef WINE_IOS
+    /* Cleanup covers every normal exit, including goto done and failures. */
+    struct ios_sa_fallback alloc_fallback __attribute__((cleanup(ios_sa_fallback_end))) = {0};
+#endif
     ios_af.stage = 0;   /* ml814: this request's attribution starts clean */
     int top_down = alloc_type & MEM_TOP_DOWN;
     void *ptr;
@@ -22188,12 +22195,18 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size,
             int tried = wb && low_end > start && (char *)end > (char *)low_end &&
                         (size_t)((char *)low_end - (char *)start) >= view_size;
 
-            if (tried &&
-                (ptr = map_reserved_area( start, low_end, host_size, top_down,
-                                          unix_prot, align_mask )))
+            void *low_ptr = NULL;
+            if (tried)
+            {
+                uint64_t low_started = ios_sa_stage_begin();
+                low_ptr = map_reserved_area( start, low_end, host_size, top_down, unix_prot, align_mask );
+                ios_sa_low_result( low_started, low_ptr != NULL );
+            }
+            if (low_ptr)
             {
                 static unsigned long lf_n;
 
+                ptr = low_ptr;
                 if (++lf_n <= 8 || !(lf_n % 512))
                     dprintf( 2, "[laa] ml1070 #%lu low-half placement %p+0x%lx (guest %p) for a "
                                 "program whose header is not large-address-aware — the raised "
@@ -22206,6 +22219,7 @@ static NTSTATUS map_view( struct file_view **view_ret, void *base, size_t size,
             {
                 static unsigned long sp_n;
 
+                ios_sa_fallback_begin( &alloc_fallback );
                 /* The low half could not serve it.  Say so BEFORE spilling, because
                  * "the program got a bit-31 address" and "the program asked for one"
                  * are different findings and only this line separates them. */
@@ -31177,6 +31191,10 @@ static void ios_thin_fix_query( const void *addr, MEMORY_BASIC_INFORMATION *info
 }
 #endif /* WINE_IOS */
 
+#ifdef WINE_IOS
+/* Keep the original implementation and all its return paths intact. */
+#define allocate_virtual_memory ios_sa_allocate_impl
+#endif
 static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG type, ULONG protect,
                                          ULONG_PTR limit_low, ULONG_PTR limit_high,
                                          ULONG_PTR align, ULONG attributes )
@@ -31435,6 +31453,19 @@ static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG typ
 
     return status;
 }
+
+#ifdef WINE_IOS
+#undef allocate_virtual_memory
+static NTSTATUS allocate_virtual_memory( void **ret, SIZE_T *size_ptr, ULONG type, ULONG protect,
+                                         ULONG_PTR limit_low, ULONG_PTR limit_high,
+                                         ULONG_PTR align, ULONG attributes )
+{
+    struct ios_sa_attempt attempt = ios_sa_attempt_begin( ret ? (uintptr_t)*ret : 0 );
+    NTSTATUS status = ios_sa_allocate_impl( ret, size_ptr, type, protect, limit_low, limit_high, align, attributes );
+    ios_sa_attempt_end( attempt, (unsigned)status );
+    return status;
+}
+#endif
 
 
 /***********************************************************************
@@ -32647,6 +32678,9 @@ static unsigned int ios_steam_cef_reserve_full(void *context, uint64_t base, uin
 }
 #endif
 
+#ifdef WINE_IOS
+#define NtAllocateVirtualMemory ios_sa_NtAllocateVirtualMemory_impl
+#endif
 NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR zero_bits,
                                          SIZE_T *size_ptr, ULONG type, ULONG protect )
 {
@@ -33820,6 +33854,24 @@ steam_cef_allocated:
     return allocate_virtual_memory( ret, size_ptr, type, protect, 0, limit, 0, 0 );
 #endif
 }
+#ifdef WINE_IOS
+#undef NtAllocateVirtualMemory
+NTSTATUS WINAPI NtAllocateVirtualMemory( HANDLE process, PVOID *ret, ULONG_PTR zero_bits,
+                                         SIZE_T *size_ptr, ULONG type, ULONG protect )
+{
+    struct ios_sa_request request = {.root = 0};
+    if (__atomic_load_n( &ios_sa_on, __ATOMIC_ACQUIRE ))
+    {
+        TEB *teb = NtCurrentTeb();
+        ios_sa_begin( &request, teb ? (unsigned)(ULONG_PTR)teb->ClientId.UniqueProcess : 0,
+                      teb ? (unsigned)(ULONG_PTR)teb->ClientId.UniqueThread : 0, 1,
+                      size_ptr ? *size_ptr : 0, ret ? (uintptr_t)*ret : 0, type, process != NtCurrentProcess() );
+    }
+    NTSTATUS status = ios_sa_NtAllocateVirtualMemory_impl( process, ret, zero_bits, size_ptr, type, protect );
+    ios_sa_end( &request, (unsigned)status );
+    return status;
+}
+#endif
 
 
 static NTSTATUS get_extended_params( const MEM_EXTENDED_PARAMETER *parameters, ULONG count,
@@ -34323,6 +34375,9 @@ void ios_reserve_fex_arena(void)
              (unsigned)ARRAY_SIZE(plan) );
 }
 
+#ifdef WINE_IOS
+#define NtAllocateVirtualMemoryEx ios_sa_NtAllocateVirtualMemoryEx_impl
+#endif
 NTSTATUS WINAPI NtAllocateVirtualMemoryEx( HANDLE process, PVOID *ret, SIZE_T *size_ptr, ULONG type,
                                            ULONG protect, MEM_EXTENDED_PARAMETER *parameters,
                                            ULONG count )
@@ -35251,6 +35306,24 @@ retry_code_carve_reuse:
                                     limit_low, limit_high, align, attributes );
 #endif
 }
+#ifdef WINE_IOS
+#undef NtAllocateVirtualMemoryEx
+NTSTATUS WINAPI NtAllocateVirtualMemoryEx( HANDLE process, PVOID *ret, SIZE_T *size_ptr, ULONG type,
+                                           ULONG protect, MEM_EXTENDED_PARAMETER *parameters, ULONG count )
+{
+    struct ios_sa_request request = {.root = 0};
+    if (__atomic_load_n( &ios_sa_on, __ATOMIC_ACQUIRE ))
+    {
+        TEB *teb = NtCurrentTeb();
+        ios_sa_begin( &request, teb ? (unsigned)(ULONG_PTR)teb->ClientId.UniqueProcess : 0,
+                      teb ? (unsigned)(ULONG_PTR)teb->ClientId.UniqueThread : 0, 2,
+                      size_ptr ? *size_ptr : 0, ret ? (uintptr_t)*ret : 0, type, process != NtCurrentProcess() );
+    }
+    NTSTATUS status = ios_sa_NtAllocateVirtualMemoryEx_impl( process, ret, size_ptr, type, protect, parameters, count );
+    ios_sa_end( &request, (unsigned)status );
+    return status;
+}
+#endif
 
 
 /***********************************************************************
