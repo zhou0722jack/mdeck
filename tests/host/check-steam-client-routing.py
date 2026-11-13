@@ -51,6 +51,7 @@ final class LogStore{static let shared=LogStore();func log(_ value:String){}}
     static let shared=DeckSteamLaunchPreparation()
     var awaitingClientImage = false
     func runtimeFailure(_ message:String,session:UUID){}
+    func clientPreparationProgress(_ message:String,fraction:Double){}
 }
 func wine_process_is_running()->Int32{0}
 func wineserver_is_running()->Int32{0}
@@ -65,9 +66,29 @@ func winios_steam_setup_reset(){}
         defer{try? fm.removeItem(at:root)}
         LibraryModel.drive=root
         let defaults=UserDefaults.standard
-        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClientRuntimeFailure.runKey]
+        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClient.architectureKey,SteamClientRuntimeFailure.runKey]
         let savedDefaults=keys.map{defaults.object(forKey:$0)}
         keys.forEach{defaults.removeObject(forKey:$0)}
+        precondition(SteamClient.architecture == .x86)
+        precondition(SteamClient.clientDirectory == SteamClient32Bootstrap.directory)
+        precondition(SteamClient.launchArguments().contains("-cef-force-32bit"))
+        precondition(SteamClient.launchArguments().contains("-nobootstrapperupdate"))
+        let registryPrefix=root.appendingPathComponent("registry-fixture")
+        let registryDrive=registryPrefix.appendingPathComponent("drive_c")
+        try fm.createDirectory(at:registryDrive,withIntermediateDirectories:true)
+        let initialHive="WINE REGISTRY Version 2\n\n[Fixture] 1\n\"keep\"=\"unchanged\"\n"
+        for name in ["system.reg","user.reg"] { try initialHive.write(to:registryPrefix.appendingPathComponent(name),atomically:true,encoding:.utf8) }
+        LibraryModel.drive=registryDrive
+        try SteamClient.registerClientPath()
+        let x86Hive=try String(contentsOf:registryPrefix.appendingPathComponent("user.reg"),encoding:.utf8)
+        precondition(x86Hive.contains("Steam Client32")&&x86Hive.contains("unchanged"))
+        defaults.set("64",forKey:SteamClient.architectureKey)
+        try SteamClient.registerClientPath()
+        let x64Hive=try String(contentsOf:registryPrefix.appendingPathComponent("user.reg"),encoding:.utf8)
+        precondition(!x64Hive.contains("Steam Client32")&&x64Hive.contains("unchanged"))
+        let registryFiles=try fm.contentsOfDirectory(atPath:registryPrefix.path)
+        precondition(registryFiles.filter{$0.hasSuffix(".bak")}.count==4)
+        LibraryModel.drive=root
         defer{for (key,value) in zip(keys,savedDefaults){defaults.set(value,forKey:key)}}
         precondition(SteamClient.windowsExecutable=="C:\\Program Files\\Steam Client\\Steam.exe")
         let folder=root.appendingPathComponent(SteamClient.clientDirectory)
@@ -241,10 +262,13 @@ func winios_steam_setup_reset(){}
 with tempfile.TemporaryDirectory(prefix='mdeck-client-route-') as tmp:
     folder=Path(tmp)
     runtime=(ROOT/'app/Madeira/SteamRuntime.swift').read_text()
-    runtime_fixture='enum SteamRuntimeFiles { static let relativeRoot="Program Files (x86)/Steam"\n'
-    for signature in ['enum Failure:', 'static func validPath(', 'static func destination(', 'static func unpack(']:
+    runtime_fixture='enum SteamRuntimeFiles { static let relativeRoot="Program Files (x86)/Steam"\nstatic let windowsRoot="C:\\\\Program Files (x86)\\\\Steam"\nnonisolated(unsafe) static var lastConflict:String?\n'
+    for signature in ['enum Failure:', 'struct UnpackLimits', 'static func validPath(', 'static func destination(', 'static func unpack(', 'static func stringValue(']:
         runtime_fixture+=block(runtime,signature)+'\n'
+    registry_start=runtime.index('    static func registry(')
+    runtime_fixture+=runtime[registry_start:runtime.index('\n    }',registry_start)+6]+'\n'
     runtime_fixture+='}\n'
+    runtime_fixture+='enum SteamClient32Bootstrap { static let directory="Program Files/Steam Client32"\nstatic func ready(drive:URL)->Bool{false}\nstatic func prepare(drive:URL,progress:@escaping @Sendable (Int,Int) async -> Void)async throws{fatalError("32-bit preparation tested separately")}\n}\n'
     fixture=fixture.replace('// RUNTIME_UNPACKER',runtime_fixture)
     storage=(ROOT/'app/Madeira/ExternalStorage.swift').read_text()
     storage=storage[storage.index('enum ExternalStorageError:'):storage.index('enum ExternalInstallTarget')]

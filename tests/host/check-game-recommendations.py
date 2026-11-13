@@ -150,7 +150,7 @@ env.MADEIRA_CTX_CPU_AREA = 2
 env.MADEIRA_WAIT_CHILDREN = 1
 env.MADEIRA_JIT_DUMP = 0'''.splitlines(), bp['lines']
 app_init = (app / 'MadeiraApp.swift').read_text()
-assert app_init.index('ProfileUnification.run()') < app_init.index('installSteamRuntimeDefaults(windowsPath: SteamClient.windowsExecutable)') < app_init.index('SteamOwnedLibrary.shared.start()')
+assert app_init.index('ProfileUnification.run()') < app_init.index('installSteamRuntimeDefaults(windowsPath: SteamClient.settingsWindowsExecutable)') < app_init.index('SteamOwnedLibrary.shared.start()')
 # ml2230: Big Picture's libraryfolders.vdf (config/ and steamapps/) gets Madeira's Steam library and the drives'
 # libraries beside its own entries, before each start (env.MADEIRA_BIG_PICTURE_LIBRARIES = 0 leaves them alone).
 assert 'listMadeiraLibraries(in: folder)' in library \

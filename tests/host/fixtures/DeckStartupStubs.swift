@@ -50,7 +50,10 @@ struct DeckLocalCoverEntry { var coverFile: String? }
     var logURL: URL { URL(fileURLWithPath: "/tmp/mdeck-test-log.txt") }
 }
 enum TouchControlsHost { @MainActor static func attach() {} }
-enum SteamClient { static let windowsExecutable = "C:\\Program Files\\Steam Client\\Steam.exe" }
+enum SteamClient {
+    static let windowsExecutable = "C:\\Program Files\\Steam Client\\Steam.exe"
+    static let settingsWindowsExecutable = windowsExecutable
+}
 enum DeckSteamLocalCovers { @MainActor static func images() -> [Image] { [] } }
 @MainActor final class WineMonoModel {
     static let shared = WineMonoModel()

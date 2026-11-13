@@ -49,6 +49,7 @@ jobs:
           python3 tests/host/check-win-timer-queue.py
           python3 tests/host/check-steam-client-routing.py
           python3 tests/host/check-steam-client64.py
+          python3 tests/host/check-steam-client32.py
           python3 tests/host/check-user-callback-ownership.py
           python3 tests/host/check-steam-cef-guard.py
           python3 tests/host/check-steam-cef-pools.py

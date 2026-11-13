@@ -1,6 +1,42 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "32-bit": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "32 位" } } }
+    },
+    "64-bit": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "64 位" } } }
+    },
+    "Experimental feature": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "试验性功能" } } }
+    },
+    "Selected": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已选中" } } }
+    },
+    "Not selected": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "未选中" } } }
+    },
+    "Downloading and verifying Steam…": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在下载并校验 Steam…" } } }
+    },
+    "Downloading 32-bit Steam (%@ of %@)…": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在下载 32 位 Steam（%@/%@）…" } } }
+    },
+    "The 32-bit Steam client could not be verified. Retry the download.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法验证 32 位 Steam 客户端，请重新下载。" } } }
+    },
+    "Steam architecture changed. Start Steam again.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 位数已更改，请重新启动 Steam。" } } }
+    },
     "The 64-bit Steam web interface could not reserve its required continuous address space. Automatic restarts have stopped for this session. Close the session and share the log.": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "64 位 Steam 网页组件无法预留所需的连续地址空间，本次会话已停止自动重启。请关闭会话并分享日志。" } } }

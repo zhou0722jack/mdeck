@@ -72,9 +72,17 @@ enum SteamRuntimeFiles {
     // Parse the central directory, then validate each local header. ZIP64,
     // encryption, symlinks and duplicate/case-colliding names are rejected.
     // Called only AFTER the whole archive's pinned SHA-256 has been checked.
-    static func unpack(_ data: Data, write: (String, Data) throws -> Void) throws {
+    struct UnpackLimits {
+        var archive = 64 * 1024 * 1024
+        var entries = 256
+        var member = 64 * 1024 * 1024
+        var total = 256 * 1024 * 1024
+        static let interactiveClient = Self(archive: 160 * 1024 * 1024, entries: 8192,
+                                            member: 256 * 1024 * 1024, total: 384 * 1024 * 1024)
+    }
+    static func unpack(_ data: Data, limits: UnpackLimits = .init(), write: (String, Data) throws -> Void) throws {
         func need(_ condition: Bool) throws { if !condition { throw Failure.invalidPackage } }
-        try need(data.count >= 22 && data.count <= 64 * 1024 * 1024)
+        try need(data.count >= 22 && data.count <= limits.archive)
         func u16(_ p: Int) -> Int { Int(data[p]) | Int(data[p + 1]) << 8 }
         func u32(_ p: Int) -> Int { u16(p) | u16(p + 2) << 16 }
         guard let end = stride(from: data.count - 22, through: max(0, data.count - 65557), by: -1)
@@ -82,7 +90,7 @@ enum SteamRuntimeFiles {
             throw Failure.invalidPackage
         }
         let count = u16(end + 10), central = u32(end + 16), centralSize = u32(end + 12)
-        try need(u16(end + 4) == 0 && u16(end + 6) == 0 && u16(end + 8) == count && count <= 256)
+        try need(u16(end + 4) == 0 && u16(end + 6) == 0 && u16(end + 8) == count && count <= limits.entries)
         try need(central <= end && centralSize == end - central)
         var cursor = central, total = 0
         var seen = Set<String>()
@@ -105,14 +113,14 @@ enum SteamRuntimeFiles {
             let directory = normalizedName.hasSuffix("/")
             let name = directory ? String(normalizedName.dropLast()) : normalizedName
             try need(validPath(name) && seen.insert(name.lowercased()).inserted)
-            try need(size <= 64 * 1024 * 1024 && local + 30 <= central && u32(local) == 0x04034b50)
+            try need(size <= limits.member && local + 30 <= central && u32(local) == 0x04034b50)
             try need(u16(local + 6) == flags && u16(local + 8) == method && u16(local + 26) == nameLength)
             let body = local + 30 + nameLength + u16(local + 28)
             try need(body <= central && compressed <= central - body)
             try need(data.subdata(in: local + 30..<local + 30 + nameLength) == Data(rawName.utf8))
             if flags & 8 == 0 { try need(u32(local + 18) == compressed && u32(local + 22) == size) }
             total += size
-            try need(total <= 256 * 1024 * 1024)
+            try need(total <= limits.total)
             if directory { try need(size == 0 && compressed == 0); cursor = next; continue }
             let encoded = data.subdata(in: body..<body + compressed)
             var decoded: Data
@@ -161,9 +169,10 @@ enum SteamRuntimeFiles {
     //   game, or a client removed since, leaves SteamPath / SteamClientDll64
     //   pointing at a folder without Steam: such a value is replaced (both hives
     //   keep their .dock-setup-bak copy), and any other differing value is kept.
-    static func registry(_ text: String, machine: Bool, stale: (String) -> Bool = { _ in false }) throws -> String {
+    static func registry(_ text: String, machine: Bool, rootWindowsPath: String? = nil,
+                         stale: (String) -> Bool = { _ in false }) throws -> String {
         guard text.hasPrefix("WINE REGISTRY Version 2") else { throw Failure.prefixMissing }
-        let root = windowsRoot.replacingOccurrences(of: "\\", with: "\\\\")
+        let root = (rootWindowsPath ?? windowsRoot).replacingOccurrences(of: "\\", with: "\\\\")
         let sections: [(String, [(String, String)])] = machine
             ? [("Software\\\\Valve\\\\Steam", [("InstallPath", root)]),
                ("Software\\\\Wow6432Node\\\\Valve\\\\Steam", [("InstallPath", root)])]
@@ -203,7 +212,7 @@ enum SteamRuntimeFiles {
 }
 
 #if canImport(CryptoKit)
-private final class SteamRuntimeRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+final class SteamRuntimeRedirects: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
         let url = request.url

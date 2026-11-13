@@ -4,14 +4,21 @@ import CryptoKit
 /// The interactive Windows client has its own directory. Never start or update
 /// the pinned client in SteamRuntimeFiles.relativeRoot used by Madeira Dock.
 enum SteamClient {
+    enum Architecture: String, CaseIterable { case x86 = "32", x64 = "64" }
+    static let architectureKey = "mdeck.steam.architecture"
+    static var architecture: Architecture {
+        Architecture(rawValue: UserDefaults.standard.string(forKey: architectureKey) ?? "") ?? .x86
+    }
     static let installerID = UUID(uuidString: "E11F2D61-367D-46D3-8521-AE5B97C36E14")!
     static let clientID = UUID(uuidString: "51DFB51A-09B1-4A41-9B55-613A652F7796")!
     static let installerPath = "Madeira/Installers/SteamSetup.exe"
     static let bootstrapPath = "Madeira/Installers/SteamBootstrap.exe"
-    static let clientDirectory = "Program Files/Steam Client"
-    static let clientPath = clientDirectory + "/steam.exe"
-    static let windowsDirectory = "C:\\Program Files\\Steam Client"
-    static let windowsExecutable = windowsDirectory + "\\Steam.exe"
+    static var clientDirectory: String { architecture == .x86 ? SteamClient32Bootstrap.directory : "Program Files/Steam Client" }
+    static var clientPath: String { clientDirectory + "/steam.exe" }
+    static var windowsDirectory: String { "C:\\" + clientDirectory.replacingOccurrences(of: "/", with: "\\") }
+    static var windowsExecutable: String { windowsDirectory + "\\Steam.exe" }
+    // Both architectures and library games use the same global runtime profile.
+    static let settingsWindowsExecutable = "C:\\Program Files\\Steam Client\\Steam.exe"
     static let clientArguments = "-no-cef-sandbox -cef-disable-gpu -console -nocrashmonitor -cef-disable-features=SegmentationPlatform,OptimizationTargetPrediction,OptimizationHints -language schinese"
     static let installerSHA256 = "7d3654531c32d941b8cae81c4137fc542172bfa9635f169cb392f245a0a12bcb"
 
@@ -52,7 +59,7 @@ enum SteamClient {
         entry.steamClientAppID = appID
         entry.title = gameProfile?.title ?? (install ? L("Steam installer") : "Steam")
         entry.steamUseGlobalSettings = gameProfile?.steamUseGlobalSettings
-        entry.steamSettingsPath = customized?.windowsPath ?? windowsExecutable
+        entry.steamSettingsPath = customized?.windowsPath ?? settingsWindowsExecutable
         // The global Steam runtime editor owns GameProfile's file. Legacy
         // inline lines must not reintroduce its old broad/4 GB overrides.
         if customized == nil { entry.config = nil }
@@ -76,7 +83,7 @@ enum SteamClient {
         var profile = LibraryModel.shared.entries.first { $0.id == clientID }
             ?? LibraryModel.shared.entries.first { $0.id == installerID }
             ?? LibraryEntry(title: "Steam", relativePath: clientDirectory + "/Steam.exe", bits: 32)
-        profile.id = clientID; profile.relativePath = clientDirectory + "/Steam.exe"
+        profile.id = clientID; profile.relativePath = "Program Files/Steam Client/Steam.exe"
         profile.title = L("Steam settings")
         profile.steamAppID = nil; profile.steamClientAppID = nil; profile.steamSettingsPath = nil
         profile.steamUseGlobalSettings = nil
@@ -108,6 +115,11 @@ enum SteamClient {
             arguments += " -language schinese"
         }
         if bigPicture { arguments += " -gamepadui" }
+        if architecture == .x86 {
+            // The full matching Win32 client/CEF is already staged. Keep its
+            // bootstrapper from migrating to Win64 during this launch.
+            arguments += " -cef-force-32bit -nobootstrapperupdate -skipinitialbootstrap"
+        }
         if let appID, appID > 0, UInt64(appID) < UInt64(UInt32.max) {
             arguments += " -applaunch \(appID)"
             if let game = LibraryModel.shared.entries.first(where: { $0.steamAppID == appID }), !game.arguments.isEmpty {
@@ -207,6 +219,50 @@ enum SteamClient {
         try? Data("cancel\n".utf8).write(to: url, options: .atomic)
     }
 
+    @MainActor static func prepareSelectedClient(_ selected: Architecture) async throws {
+        guard selected == architecture, wine_process_is_running() == 0, wineserver_is_running() == 0 else {
+            throw LibraryError.message(L("A session is already running."))
+        }
+        if selected == .x64 { try await prepare64BitBootstrap() }
+        else {
+            try await SteamClient32Bootstrap.prepare(drive: LibraryModel.drive) { index, count in
+                await MainActor.run {
+                    DeckSteamLaunchPreparation.shared.clientPreparationProgress(
+                        LF("Downloading 32-bit Steam (%@ of %@)…", String(index), String(count)),
+                        fraction: Double(index - 1) / Double(count))
+                }
+            }
+            LogStore.shared.log("[steam-client32] matching i386 Steam and CEF verified; updates pinned for this launch")
+        }
+        guard selected == architecture else {
+            throw LibraryError.message(L("Steam architecture changed. Start Steam again."))
+        }
+        if installed { try registerClientPath() }
+    }
+
+    /// Discovery keys follow the selected client before a session starts.
+    /// Preserve the previous hives; never alter login/cache/license values.
+    static func registerClientPath() throws {
+        let fm = FileManager.default, prefix = LibraryModel.drive.deletingLastPathComponent()
+        let backup = UUID().uuidString
+        var changes: [(URL, String, String)] = []
+        for (name, machine) in [("system.reg", true), ("user.reg", false)] {
+            let file = prefix.appendingPathComponent(name)
+            guard fm.fileExists(atPath: file.path) else { throw SteamRuntimeFiles.Failure.prefixMissing }
+            let old = try String(contentsOf: file, encoding: .utf8)
+            let updated = try SteamRuntimeFiles.registry(old, machine: machine, rootWindowsPath: windowsDirectory, stale: { _ in true })
+            if old != updated { changes.append((file, old, updated)) }
+        }
+        // Both hives parse before any mutation; roll back a partial write.
+        for (file, _, _) in changes { try fm.copyItem(at: file, to: file.appendingPathExtension("steam-client-" + backup + ".bak")) }
+        do {
+            for (file, _, updated) in changes { try updated.write(to: file, atomically: true, encoding: .utf8) }
+        } catch {
+            for (file, old, _) in changes { try? old.write(to: file, atomically: true, encoding: .utf8) }
+            throw error
+        }
+    }
+
     @MainActor static func prepare64BitBootstrap() async throws {
         guard wine_process_is_running() == 0, wineserver_is_running() == 0 else {
             throw LibraryError.message(L("A session is already running."))
@@ -230,6 +286,7 @@ enum SteamClient {
     }
 
     static func preparationStatus() -> DeckSteamSetupStatus? {
+        guard architecture == .x64 else { return nil }
         guard let url = try? destination("Madeira/Installers/SteamBootstrap.state"),
               let data = try? Data(contentsOf: url), data.count < 1024,
               let text = String(data: data, encoding: .utf8) else { return nil }
@@ -248,13 +305,17 @@ enum SteamClient {
             guard entry.relativePath.caseInsensitiveCompare(clientPath) == .orderedSame, installed else {
                 throw LibraryError.message(L("Install Steam first, then use Start Steam."))
             }
-            guard let executable = executableURL, try SteamClient64Bootstrap.is64BitExecutable(at: executable) else {
-                throw LibraryError.message(L("The Steam client is still 32-bit. Retry preparing the 64-bit client."))
+            if architecture == .x64 {
+                guard let executable = executableURL, try SteamClient64Bootstrap.is64BitExecutable(at: executable) else {
+                    throw LibraryError.message(L("The Steam client is still 32-bit. Retry preparing the 64-bit client."))
+                }
+            } else if !SteamClient32Bootstrap.ready(drive: LibraryModel.drive) {
+                throw LibraryError.message(L("The 32-bit Steam client could not be verified. Retry the download."))
             }
             try registerLibraries()
             return
         }
-        guard entry.relativePath == bootstrapPath,
+        guard architecture == .x64, entry.relativePath == bootstrapPath,
               let resource = Bundle.main.url(forResource: "SteamSetup", withExtension: "exe", subdirectory: "BundledInstallers") else {
             throw LibraryError.message(L("The bundled Steam installer is missing or damaged."))
         }

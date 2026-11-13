@@ -29,7 +29,9 @@ assert 'DeckStartup.swift in Sources' in project and 'BootAnimation in Resources
 assert '!DeckStartupModel.shared.blocking' in (app / 'SigningRefresh.swift').read_text()
 assert '!DeckSteamLaunchPreparation.shared.presented' in (app / 'SigningRefresh.swift').read_text()
 home = library[library.index('    var deckSteamHome:'):library.index('    var deckDesktop:')]
-assert home.count('Button {') == 2 and 'install: !SteamClient.installed' in home
+assert home.count('Button {') == 3 and 'install: !SteamClient.installed' in home
+assert 'steamArchitectureButton(.x86' in home and 'steamArchitectureButton(.x64' in home
+assert 'Text("Experimental feature")' in home and 'steamArchitecture = architecture.rawValue' in home
 assert 'Label("Steam settings"' in home and 'DeckSettingsRoute(page: .steam)' in home
 assert 'LibraryStatus()' not in home and 'enableJIT' not in home and 'Run Steam installer' not in home
 assert 'deckDestination != .library && deckDestination != .steam' in library

@@ -332,7 +332,7 @@ struct DeckSteamSetupStatus {
             guard let self, self.presented, self.phase == .components, self.requestID == id else { return }
             if success {
                 if let prepareClient = self.prepareClient {
-                    self.setupMessage = L("Downloading and verifying 64-bit Steam…")
+                    self.setupMessage = L("Downloading and verifying Steam…")
                     self.clientPreparationTask = Task { @MainActor [weak self] in
                         guard let self else { return }
                         defer { if self.requestID == id { self.clientPreparationTask = nil } }
@@ -340,7 +340,7 @@ struct DeckSteamSetupStatus {
                             try await prepareClient()
                             try Task.checkCancellation()
                             guard self.presented, self.phase == .components, self.requestID == id else { return }
-                            self.setupMessage = nil
+                            self.setupMessage = nil; self.setupFraction = nil
                             self.startAfterPreparation(id)
                         } catch {
                             guard self.presented, self.phase == .components, self.requestID == id else { return }
@@ -352,6 +352,12 @@ struct DeckSteamSetupStatus {
                 self.fail(L("Some components could not be prepared. Retry the missing downloads."))
             }
         }
+    }
+
+    func clientPreparationProgress(_ message: String, fraction: Double) {
+        guard presented, phase == .components, !closing else { return }
+        setupMessage = message
+        setupFraction = min(1, max(0, fraction))
     }
 
     private func startAfterPreparation(_ id: UUID?) {

@@ -79,7 +79,7 @@ diff --git a/dlls/crypt32/protectdata.c b/dlls/crypt32/protectdata.c
 +    unsigned int scope = MDECK_STEAM_SCOPE_UNKNOWN;
 +    if (n && n < ARRAY_SIZE(path))
 +    {
-+        if (!lstrcmpiW( path, L"C:\\Program Files\\Steam Client\\Steam.exe" ))
++        if (!lstrcmpiW( path, L"C:\\Program Files\\Steam Client\\Steam.exe" ) || !lstrcmpiW( path, L"C:\\Program Files\\Steam Client32\\Steam.exe" ))
 +            scope = MDECK_STEAM_SCOPE_INTERACTIVE;
 +        else
 +        {

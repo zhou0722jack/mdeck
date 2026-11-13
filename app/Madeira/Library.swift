@@ -3430,6 +3430,8 @@ struct LibraryView: View {
     @ObservedObject private var appearance = DeckAppearance.shared
     @State private var deckDestination: DeckDestination = .steam
     @State private var deckHomeCovers: [Image] = []
+    @AppStorage(SteamClient.architectureKey) private var steamArchitecture = SteamClient.Architecture.x86.rawValue
+    @ObservedObject private var steamLaunchPreparation = DeckSteamLaunchPreparation.shared
     @State private var deckSettingsPage: DeckSettingsRoute?
     @State private var deckWorkshop = false
     @State private var deckSettingFocus: SettingsPages.Page?
@@ -4117,13 +4119,46 @@ private extension LibraryView {
 
     var deckSteamActions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button { play(SteamClient.entry(install: !SteamClient.installed)) } label: {
-                Label("Start Steam", systemImage: "play.fill")
-            }.buttonStyle(DeckButtonStyle(primary: true)).disabled(model.launching)
+            HStack(spacing: 12) {
+                Button { play(SteamClient.entry(install: !SteamClient.installed)) } label: {
+                    Label("Start Steam", systemImage: "play.fill")
+                }.buttonStyle(DeckButtonStyle(primary: true))
+                HStack(spacing: 4) {
+                    steamArchitectureButton(.x86, title: L("32-bit"))
+                    steamArchitectureButton(.x64, title: L("64-bit"))
+                }
+                .padding(4)
+                .background(palette.surface, in: Capsule())
+                .overlay(Capsule().strokeBorder(palette.line, lineWidth: 1))
+            }
+            .disabled(model.launching || model.current != nil || steamLaunchPreparation.presented)
+            if steamArchitecture == SteamClient.Architecture.x64.rawValue {
+                Text("Experimental feature")
+                    .font(.footnote).foregroundStyle(palette.muted)
+                    .accessibilityIdentifier("steam-architecture-experimental")
+            }
             Button { deckSettingsPage = DeckSettingsRoute(page: .steam) } label: {
                 Label("Steam settings", systemImage: "gearshape")
             }.buttonStyle(DeckButtonStyle())
         }
+    }
+
+    private func steamArchitectureButton(_ architecture: SteamClient.Architecture, title: String) -> some View {
+        let selected = steamArchitecture == architecture.rawValue
+        return Button {
+            steamArchitecture = architecture.rawValue
+        } label: {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(architecture == .x64 ? palette.muted : palette.text)
+                .padding(.horizontal, 14).padding(.vertical, 10)
+                .background(selected ? palette.raised : Color.clear, in: Capsule())
+                .overlay(Capsule().strokeBorder(selected ? palette.muted.opacity(0.7) : Color.clear, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(selected ? L("Selected") : L("Not selected"))
+        .accessibilityIdentifier("steam-architecture-" + architecture.rawValue)
     }
 
     var deckDesktop: some View {

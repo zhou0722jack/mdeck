@@ -2607,8 +2607,9 @@ struct ContentView: View {
             if !library.entries.contains(where: { $0.id == SteamClient.clientID }) {
                 library.save(SteamClient.settingsEntry)
             }
+            let selectedArchitecture = SteamClient.architecture
             steamPreparation.request(target: SteamClient.windowsExecutable, installer: false,
-                                     prepareClient: { try await SteamClient.prepare64BitBootstrap() }) { request in
+                                     prepareClient: { try await SteamClient.prepareSelectedClient(selectedArchitecture) }) { request in
                 library.error = nil
                 library.restartNotice = nil
                 library.jitNotice = nil

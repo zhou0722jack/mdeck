@@ -20,7 +20,8 @@ source = (APP / 'SteamClient64Bootstrap.swift').read_text()
 client = (APP / 'SteamClient.swift').read_text()
 content = (APP / 'ContentView.swift').read_text()
 assert 'SteamClient64Bootstrap.swift in Sources' in (ROOT / 'app/Madeira.xcodeproj/project.pbxproj').read_text()
-assert 'prepareClient: { try await SteamClient.prepare64BitBootstrap() }' in content
+assert 'prepareClient: { try await SteamClient.prepareSelectedClient(selectedArchitecture) }' in content
+assert 'if selected == .x64 { try await prepare64BitBootstrap() }' in client
 assert client.count('wine_process_is_running() == 0, wineserver_is_running() == 0') >= 3
 assert client.index('try await SteamClient64Bootstrap.stage') < client.index('try SteamClient64Bootstrap.activate')
 assert 'client.bits = 64' in client

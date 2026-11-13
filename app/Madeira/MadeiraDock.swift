@@ -144,7 +144,11 @@ enum MadeiraDock {
         // Dock binary or pinned client download. Prefer the current client.
         let interactive = "Program Files/Steam Client/steamapps"
         var libraries = [interactive, clientLibrary]
-        for rootPath in ["Program Files/Steam Client", SteamRuntimeFiles.relativeRoot] {
+        let client32Library = "Program Files/Steam Client32/steamapps"
+        if FileManager.default.fileExists(atPath: drive.appendingPathComponent("Program Files/Steam Client32/steam.exe").path) {
+            libraries.append(client32Library)
+        }
+        for rootPath in ["Program Files/Steam Client", "Program Files/Steam Client32", SteamRuntimeFiles.relativeRoot] {
             for sub in ["steamapps", "config"] {
                 if let data = try? Data(contentsOf: drive.appendingPathComponent(rootPath + "/" + sub + "/libraryfolders.vdf")),
                    data.count <= 1 << 20, var parser = try? SteamKeyValues(data), let root = try? parser.read() {

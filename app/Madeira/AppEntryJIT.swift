@@ -256,7 +256,7 @@ extension AppEntryJIT.Services {
                  // the settings snapshot to the next main-queue turn, after that
                  // initializer has installed the persisted Steam/global defaults.
                  DispatchQueue.main.async {
-                     let values = MadeiraConfig.all().merging(GameProfile(windowsPath: SteamClient.windowsExecutable).values) { _, game in game }
+                     let values = MadeiraConfig.all().merging(GameProfile(windowsPath: SteamClient.settingsWindowsExecutable).values) { _, game in game }
                      let mb = StikJITHelper.requestedPoolMB(in: values)
                      LogStore.shared.log("[jit-entry-pool] allocating A/B/C immediately after attachment; target A+B=\(mb)MB")
                      DispatchQueue.global(qos: .userInitiated).async {

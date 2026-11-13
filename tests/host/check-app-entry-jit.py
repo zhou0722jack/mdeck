@@ -21,7 +21,7 @@ app_entry = (APP / 'MadeiraApp.swift').read_text()
 assert app_entry.index('AppEntryJIT.shared.requestAtAppEntry()') < app_entry.index('ProfileUnification.run()')
 assert 'self.services.preparePool' in core and 'if case .success = result' in core
 assert '!enableInFlight, !probing, !releasing, pendingLaunch != nil' in core
-assert 'configuration: values' in swift and 'GameProfile(windowsPath: SteamClient.windowsExecutable).values' in swift
+assert 'configuration: values' in swift and 'GameProfile(windowsPath: SteamClient.settingsWindowsExecutable).values' in swift
 assert project.count('/* AppEntryJIT.swift in Sources */') == 2
 assert project.count('/* AppEntryJITProbe.c in Sources */') == 2
 

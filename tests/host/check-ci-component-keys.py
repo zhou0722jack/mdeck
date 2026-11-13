@@ -33,6 +33,7 @@ cases = {
     'steam-signin-runtime-patch': ('build/windows-runtime/patches/0003-steam-signin-sync.patch', {'wine-host', 'i386', 'ipa'}),
     'steam-signin-unix': ('build/crypto-unix/crypt32_unixlib_ios.c', {'ipa'}),
     'steam-client64': ('app/Madeira/SteamClient64Bootstrap.swift', {'ipa'}),
+    'steam-client32': ('app/Madeira/SteamClient32Bootstrap.swift', {'ipa'}),
     'steam-setup-controller': ('build/steam-bootstrap/bootstrap.c', {'ipa'}),
     'child-callback-init': ('build/ntdll-unix/loader_ios.c', {'ipa'}),
     'user-callback-guard': ('build/ntdll-unix/signal_arm64_ios.c', {'ipa'}),

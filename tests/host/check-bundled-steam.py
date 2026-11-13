@@ -31,7 +31,8 @@ assert 'lastKnownFileType = folder; path = "BundledInstallers"' in project
 print("PASS: installer folder and Swift source registered in Xcode project")
 
 runtime = (app / "SteamRuntime.swift").read_text()
-client = re.search(r'clientDirectory = "([^"]+)"', source)[1]
+client = "Program Files/Steam Client"
+assert 'SteamClient32Bootstrap.directory : "' + client + '"' in source
 dock = re.search(r'relativeRoot = "([^"]+)"', runtime)[1]
 assert client.casefold() != dock.casefold(), "Client must not overwrite the pinned Dock runtime"
 print("PASS: interactive client and pinned Dock runtime use different directories")
