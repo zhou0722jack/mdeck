@@ -30,7 +30,7 @@ wrappers = '\n'.join([
     function_after('#undef NtAllocateVirtualMemoryEx\n', 'NTSTATUS WINAPI NtAllocateVirtualMemoryEx('),
 ])
 low_start = source.index('        if (ios_wow_laa_synth && ios_wow_laa_low_first() && !base &&')
-low_end = source.index('\n        if ((ptr = map_reserved_area( start, end,', low_start)
+low_end = source.index('\n#endif', low_start)
 low_branch = source[low_start:low_end]
 fixture = r'''
 #include <assert.h>
