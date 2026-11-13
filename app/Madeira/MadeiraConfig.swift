@@ -1,5 +1,27 @@
 import Foundation
 
+/// Steam's software window path has a separate opt-in from CPU/DXMT sampling.
+enum SteamSurfaceLogSettings {
+    static let key = "env.MADEIRA_STEAM_SURFACE_STATS"
+
+    static func enabled(global: [String: String], profile: String) -> Bool {
+        let value = global.merging(MadeiraConfig.parse(profile)) { _, own in own }[key] ?? "0"
+        return !value.isEmpty && value != "0"
+    }
+
+    static func text(_ previous: String, enabled: Bool) -> String {
+        var lines = previous.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }
+            return trimmed[..<equals].trimmingCharacters(in: .whitespaces) != key
+        }
+        while lines.last == "" { lines.removeLast() }
+        if !lines.isEmpty { lines.append("") }
+        lines.append("\(key) = \(enabled ? "1" : "0")")
+        return lines.joined(separator: "\n") + "\n"
+    }
+}
+
 /// The lightweight performance preset, independent of heavy diagnostics and UI logs.
 enum PerformanceLogSettings {
     static let keys = ["env.MADEIRA_PROBES", "env.MADEIRA_LEAN_DIAG", "env.MADEIRA_FRAME_STATS"]

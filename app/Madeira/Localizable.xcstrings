@@ -1,6 +1,14 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Steam performance diagnostics": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 专用性能检测" } } }
+    },
+    "Measure Steam window updates, image copying, main-thread queue waits and layer submission once a second. Cursor updates are separate. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "每秒汇总 Steam 窗口更新、图像复制、主线程排队和图层提交耗时，光标单独统计。默认关闭，下次启动 Steam 生效；记录的是更新与提交，不代表屏幕帧率或 GPU 耗时。" } } }
+    },
     "Performance logging": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "性能日志" } } }

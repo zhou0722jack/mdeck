@@ -39,6 +39,7 @@
  * including it here keeps both sides' definitions the same. */
 #include "Winios.h"
 #include "VulkanLayerGeometry.h"
+#include "WiniosSurfaceStats.h"
 
 static pthread_mutex_t steam_setup_progress_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct winios_steam_setup_progress steam_setup_progress = {0, -1, 0};
@@ -557,6 +558,160 @@ extern int winios_drv_post_restore(HWND hwnd);
 extern int winios_drv_foreground_if_owner(HWND hwnd);
 extern int winios_drv_close_desktop_if_owner(void);
 
+/* Steam surface diagnostics have their own switch and lifetime. In particular,
+ * ending the first-frame census must not stop them. No thread is suspended,
+ * no pixels are inspected, and the utility timer never dispatches to UIKit. */
+static pthread_mutex_t g_surface_stats_lock = PTHREAD_MUTEX_INITIALIZER;
+static atomic_int g_surface_stats_on;
+static struct winios_surface_stats g_surface_stats;
+static dispatch_source_t g_surface_stats_timer;
+static double g_surface_stats_started;
+
+static void winios_surface_stats_report(uint64_t epoch) {
+    struct winios_surface_stats snapshot;
+    double now = winios_now_mono(), started;
+    pthread_mutex_lock(&g_surface_stats_lock);
+    if (!atomic_load(&g_surface_stats_on) || g_surface_stats.epoch != epoch) {
+        pthread_mutex_unlock(&g_surface_stats_lock); return;
+    }
+    snapshot = g_surface_stats; started = g_surface_stats_started;
+    winios_surface_interval_reset(&g_surface_stats, now);
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    double dt = now - snapshot.since;
+    if (dt <= 0) return;
+    struct winios_surface_counts totals[WINIOS_SURFACE_ROLES] = {0};
+    unsigned windows[WINIOS_SURFACE_ROLES] = {0};
+    int main_slot = winios_surface_main_slot(&snapshot);
+    for (int i = 0; i < WINIOS_SURFACE_STATS_SLOTS; i++) {
+        struct winios_surface_slot *w = &snapshot.slots[i];
+        if (!w->serial) continue;
+        int role = winios_surface_role_for(w, i, main_slot);
+        winios_surface_counts_merge(&totals[role], &w->counts);
+        if (w->live) windows[role]++;
+    }
+    const char *roles[] = {"steam-main", "steam-other", "other", "unknown", "cursor"};
+    for (int r = 0; r < WINIOS_SURFACE_ROLES; r++) {
+        struct winios_surface_counts *c = &totals[r];
+        if (r != WINIOS_SURFACE_MAIN && r != WINIOS_SURFACE_CURSOR && !c->received && !c->total.n && !c->pending) continue;
+        struct winios_surface_slot *main = main_slot >= 0 ? &snapshot.slots[main_slot] : NULL;
+        /* ms fields are mean/max/count; prepare is time spent between the owned
+         * copy and enqueue (including existing diagnostic work). layer is only
+         * the host assignment, not a CA commit or a displayed frame. */
+#define SURFACE_MS(f) (c->f.n ? c->f.sum / c->f.n : 0), c->f.max, (unsigned long long)c->f.n
+        dprintf(STDERR_FILENO, "[steam-surface] session=%llu t+%.3f dt=%.3f kind=%s main_hwnd=0x%llx main_pid=%04x size=%dx%d windows=%u "
+                "recv=%llu queued=%llu applied=%llu skipped=%llu failed=%llu updates/s=%.2f copyMiB/s=%.2f dirtyMP/s=%.2f "
+                "pending=%llu pendingMiB=%.2f peak_pending_sum=%llu peakMiB_sum=%.2f overflow=%llu "
+                "copy_ms=%.3f/%.3f/%llu prepare_ms=%.3f/%.3f/%llu queue_ms=%.3f/%.3f/%llu "
+                "image_ms=%.3f/%.3f/%llu layer_ms=%.3f/%.3f/%llu main_ms=%.3f/%.3f/%llu total_ms=%.3f/%.3f/%llu\n",
+                (unsigned long long)epoch, now - started, dt, roles[r],
+                main ? (unsigned long long)main->hwnd : 0, main ? main->pid : 0,
+                main ? main->width : 0, main ? main->height : 0, windows[r],
+                (unsigned long long)c->received, (unsigned long long)c->queued, (unsigned long long)c->applied,
+                (unsigned long long)c->skipped, (unsigned long long)c->failed, c->applied / dt,
+                c->copied_bytes / (1048576.0 * dt), c->dirty_pixels / (1e6 * dt),
+                (unsigned long long)c->pending, c->pending_bytes / 1048576.0,
+                (unsigned long long)c->peak_pending, c->peak_bytes / 1048576.0, (unsigned long long)snapshot.overflow,
+                SURFACE_MS(copy), SURFACE_MS(prepare), SURFACE_MS(queue), SURFACE_MS(image),
+                SURFACE_MS(layer), SURFACE_MS(main), SURFACE_MS(total));
+#undef SURFACE_MS
+    }
+}
+
+void winios_surface_stats_configure(int enabled) {
+    pthread_mutex_lock(&g_surface_stats_lock);
+    atomic_store(&g_surface_stats_on, 0);
+    if (g_surface_stats_timer) { dispatch_source_cancel(g_surface_stats_timer); g_surface_stats_timer = nil; }
+    uint64_t epoch = g_surface_stats.epoch + 1;
+    g_surface_stats = (struct winios_surface_stats){.epoch = epoch, .since = winios_now_mono()};
+    g_surface_stats_started = g_surface_stats.since;
+    if (enabled) {
+        dispatch_queue_t q = dispatch_queue_create("mdeck.steam-surface-stats", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
+        g_surface_stats_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_set_timer(g_surface_stats_timer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, 100 * NSEC_PER_MSEC);
+        dispatch_source_set_event_handler(g_surface_stats_timer, ^{ winios_surface_stats_report(epoch); });
+        atomic_store(&g_surface_stats_on, 1);
+        dispatch_resume(g_surface_stats_timer);
+    }
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    if (enabled) dprintf(STDERR_FILENO, "[steam-surface] enabled session=%llu interval=1s ms=mean/max/count "
+            "updates=host-layer-submissions (not display FPS); no GPU timing; main=largest visible Steam-owned window; "
+            "cursor and other windows separate; switch=MADEIRA_STEAM_SURFACE_STATS\n", (unsigned long long)epoch);
+}
+
+static struct winios_surface_ticket winios_surface_stats_begin(HWND hwnd, uint64_t bytes) {
+    struct winios_surface_ticket t = {.slot = -1};
+    if (!atomic_load_explicit(&g_surface_stats_on, memory_order_relaxed)) return t;
+    pthread_mutex_lock(&g_surface_stats_lock);
+    if (atomic_load(&g_surface_stats_on)) t = winios_surface_begin(&g_surface_stats, (uintptr_t)hwnd, bytes, winios_now_mono());
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    return t;
+}
+
+static double winios_surface_stats_copied(struct winios_surface_ticket t, uint64_t dirty_pixels) {
+    if (t.slot < 0) return 0;
+    double now = winios_now_mono();
+    pthread_mutex_lock(&g_surface_stats_lock);
+    winios_surface_copied(&g_surface_stats, t, now, dirty_pixels);
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    return now;
+}
+
+static struct winios_surface_ticket winios_surface_stats_enqueue(struct winios_surface_ticket t, double copied_at) {
+    if (t.slot < 0) return t;
+    pthread_mutex_lock(&g_surface_stats_lock);
+    winios_surface_enqueued(&g_surface_stats, &t, winios_now_mono(), copied_at);
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    return t;
+}
+
+static void winios_surface_stats_finish(struct winios_surface_ticket t, int result, double main_at,
+                                        double image_s, double layer_s) {
+    if (t.slot < 0) return;
+    double now = winios_now_mono();
+    pthread_mutex_lock(&g_surface_stats_lock);
+    winios_surface_finished(&g_surface_stats, t, result, main_at, now, image_s, layer_s);
+    pthread_mutex_unlock(&g_surface_stats_lock);
+}
+
+/* Window-owner queries run only on a Wine thread, once per HWND lifetime.
+ * This table is independent of g_census_on, which stops after the first frame. */
+static void winios_surface_stats_window(HWND hwnd, int w, int h, int visible) {
+    if (!atomic_load_explicit(&g_surface_stats_on, memory_order_relaxed)) return;
+    pthread_mutex_lock(&g_surface_stats_lock);
+    if (!atomic_load(&g_surface_stats_on)) { pthread_mutex_unlock(&g_surface_stats_lock); return; }
+    struct winios_surface_slot *slot = winios_surface_slot_for(&g_surface_stats, (uintptr_t)hwnd);
+    int query = slot && !slot->owner_checked;
+    struct winios_surface_ticket t = {.slot = -1};
+    if (slot) {
+        if (w >= 0) slot->width = w;
+        if (h >= 0) slot->height = h;
+        if (visible >= 0) slot->visible = visible;
+        slot->owner_checked = 1;
+        t = (struct winios_surface_ticket){.epoch = g_surface_stats.epoch, .serial = slot->serial,
+                                          .slot = (int)(slot - g_surface_stats.slots)};
+    }
+    pthread_mutex_unlock(&g_surface_stats_lock);
+    if (!query) return;
+    unsigned pid = 0, style = 0;
+    char image[WINIOS_CENSUS_IMAGE] = {0};
+    if (!winios_drv_census_owner(hwnd, &pid, &style)) return;
+    int known = winios_drv_process_image(pid, image, sizeof(image));
+    pthread_mutex_lock(&g_surface_stats_lock);
+    slot = winios_surface_ticket_slot(&g_surface_stats, t);
+    if (slot) { slot->pid = known ? pid : 0; slot->steam = known && winios_surface_is_steam(image); }
+    pthread_mutex_unlock(&g_surface_stats_lock);
+}
+
+static void winios_surface_stats_forget(HWND hwnd) {
+    if (!atomic_load_explicit(&g_surface_stats_on, memory_order_relaxed)) return;
+    pthread_mutex_lock(&g_surface_stats_lock);
+    for (int i = 0; i < WINIOS_SURFACE_STATS_SLOTS; i++) {
+        struct winios_surface_slot *w = &g_surface_stats.slots[i];
+        if (w->hwnd == (uintptr_t)hwnd) { w->live = 0; w->visible = 0; }
+    }
+    pthread_mutex_unlock(&g_surface_stats_lock);
+}
+
 /* winios_close_desktop: the app asks explorer's desktop to close (a Dock
  * session whose game and Steam have ended); the desktop's own thread does it
  * from its event pump (winios_pProcessEvents). */
@@ -770,6 +925,7 @@ int winios_window_census(struct winios_census_window *out, int max) {
 
 void winios_pDestroyWindow(HWND hwnd) {
     WLOG("pDestroyWindow hwnd=%p", hwnd);
+    winios_surface_stats_forget(hwnd);
     uintptr_t pending = (uintptr_t)hwnd;
     atomic_compare_exchange_strong(&g_restore_foreground, &pending, 0);
     pending = (uintptr_t)hwnd;
@@ -1402,6 +1558,7 @@ void winios_note_game_metal_hwnd(void *hwnd) {
 /* Called at every Wine session start (WineProcessBridge): a game session
  * starts with no overlay windows and no known Metal windows. */
 void winios_session_reset(void) {
+    winios_surface_stats_configure(0);
     atomic_fetch_add(&g_desktop_ready_generation, 1);
     atomic_store(&g_desktop_ready_hwnd, 0);
     atomic_store(&g_size_game_hwnd, 0);
@@ -1961,6 +2118,7 @@ CAMetalLayer *winios_vulkan_layer_for_hwnd(void *hwnd) {
 /* Parent show/hide: update existing child layers on the same queue as frames.
  * A hidden child retains its surface and Metal layer for a later parent show. */
 void winios_window_visibility(HWND hwnd, int visible) {
+    winios_surface_stats_window(hwnd, -1, -1, visible);
     dispatch_async(dispatch_get_main_queue(), ^{
         if ([g_game_input_key isEqual:@((uintptr_t)hwnd)]) g_game_input_hidden = !visible;
         CALayer *l = g_layers[@((uintptr_t)hwnd)];
@@ -1987,6 +2145,7 @@ void winios_window_visibility(HWND hwnd, int visible) {
  * All Wine queries happened on the caller's Wine thread, not this queue. */
 void winios_window_geometry(HWND hwnd, int x, int y, int w, int h,
                             int cx, int cy, int cw, int ch) {
+    winios_surface_stats_window(hwnd, w, h, -1);
     dispatch_async(dispatch_get_main_queue(), ^{
         NSNumber *key = @((uintptr_t)hwnd);
         if (!g_client_rects) g_client_rects = [NSMutableDictionary new];
@@ -2015,6 +2174,7 @@ void winios_window_frame(HWND hwnd, int x, int y, int w, int h, int visible,
     /* Here, not in the block below: the census asks win32u about the window,
      * which needs this Wine thread. No-op unless the app turned it on. */
     winios_census_note_frame(hwnd, x, y, w, h, visible);
+    winios_surface_stats_window(hwnd, w, h, visible);
     dispatch_async(dispatch_get_main_queue(), ^{
         winios_ensure_compositor();
         if (!g_compositor_view) return;
@@ -2232,6 +2392,7 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
     const unsigned long desktopGeneration = atomic_load(&g_desktop_ready_generation);
     winios_census_note_present(hwnd);   /* no-op unless the census is on */
     size_t snap_len = (size_t)stride * (size_t)sh;
+    struct winios_surface_ticket stats = winios_surface_stats_begin(hwnd, snap_len);
     void *snap = malloc(snap_len);
     if (!snap) {
         static unsigned nfail;
@@ -2242,6 +2403,7 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
                     "hwnd=%p) -- returning failure so Wine KEEPS the dirty bounds and "
                     "repaints; this used to throw and kill the pseudo-process\n",
                     n, snap_len, sw, sh, stride, hwnd);
+        winios_surface_stats_finish(stats, -1, 0, -1, -1);
         return 0;
     }
     memcpy(snap, bits, snap_len);
@@ -2249,6 +2411,13 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
      * wants. Ownership now belongs to `data` and, through it, to every CGImage
      * CoreGraphics builds from it. */
     NSData *data = [NSData dataWithBytesNoCopy:snap length:snap_len freeWhenDone:YES];
+    uint64_t dirty_pixels = 0;
+    if (stats.slot >= 0) {
+        int64_t right = MIN((int64_t)sw, (int64_t)dx + dw), bottom = MIN((int64_t)sh, (int64_t)dy + dh);
+        int64_t left = MAX(0, dx), top = MAX(0, dy);
+        if (right > left && bottom > top) dirty_pixels = (uint64_t)(right - left) * (uint64_t)(bottom - top);
+    }
+    double copied_at = winios_surface_stats_copied(stats, dirty_pixels);
     static int dumpSurf = -1;
     if (dumpSurf < 0) dumpSurf = getenv("MADEIRA_DUMP_SURFACES") != NULL;
     /* ml537: complete an armed src/surface pair with the FIRST present after the
@@ -2473,14 +2642,16 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
                 hwnd, mycnt, dx, dy, dw, dh, sw, sh, bits, sig);
         fflush(stderr);
     }
+    stats = winios_surface_stats_enqueue(stats, copied_at);
     dispatch_async(dispatch_get_main_queue(), ^{
+        double main_at = stats.slot >= 0 ? winios_now_mono() : 0;
         winios_ensure_compositor();
         /* ml1028: this block is dispatch_block_t (void). The snapshot copy has
          * already SUCCEEDED by the time we get here, so the function's own
          * result stays 1 -- only the presentation is skipped. `data` is captured
          * and released with the block, which is exactly why the snapshot has to
          * own its bytes: this runs AFTER winios_surface_present has returned. */
-        if (!g_compositor_view) return;
+        if (!g_compositor_view) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
         /* game mode draws a window only once its position says it is not
          * the game's own (winios_game_window_shown); bits that arrive before
          * any position wait in a hidden layer for winios_window_frame. */
@@ -2488,19 +2659,22 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
         if (g_comp_game) {
             NSNumber *k = @((uintptr_t)hwnd);
             if (!g_px_rects[k] && ![g_game_metal containsObject:k]) pending = YES;
-            else if (!winios_game_window_shown(k)) return;
+            else if (!winios_game_window_shown(k)) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
         }
         CALayer *l = winios_layer_for(hwnd, true);
+        double image_at = stats.slot >= 0 ? winios_now_mono() : 0;
         CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
         CGDataProviderRef dp = CGDataProviderCreateWithCFData((__bridge CFDataRef)data);
         /* UpdateLayeredWindow marks premultiplied BGRA with alpha_mask.
          * Ordinary GDI is BGRX: its unused high byte can also be zero, so
          * only a surface explicitly marked by Wine uses per-pixel alpha. */
         BOOL pixelAlpha = alpha_mask == 0xff000000u;
-        CGImageRef img = CGImageCreate(sw, sh, 8, 32, stride, cs,
+        CGImageRef img = cs && dp ? CGImageCreate(sw, sh, 8, 32, stride, cs,
                                        kCGBitmapByteOrder32Little |
                                        (pixelAlpha ? kCGImageAlphaPremultipliedFirst : kCGImageAlphaNoneSkipFirst),
-                                       dp, NULL, false, kCGRenderingIntentDefault);
+                                       dp, NULL, false, kCGRenderingIntentDefault) : NULL;
+        double layer_at = stats.slot >= 0 ? winios_now_mono() : 0;
+        int applied = img != NULL;
         if (img) {
             NSNumber *key = @((uintptr_t)hwnd);
             l.opaque = !pixelAlpha;
@@ -2518,8 +2692,11 @@ int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
             winios_apply_contents_rect(key, l);
             CGImageRelease(img);
         }
-        CGDataProviderRelease(dp);
-        CGColorSpaceRelease(cs);
+        double layer_end = stats.slot >= 0 ? winios_now_mono() : 0;
+        if (dp) CGDataProviderRelease(dp);
+        if (cs) CGColorSpaceRelease(cs);
+        winios_surface_stats_finish(stats, applied ? 1 : -1, main_at, layer_at - image_at,
+                                    applied ? layer_end - layer_at : -1);
     });
     return 1;
 }
@@ -2639,16 +2816,21 @@ static void winios_cursor_place(void) {
 }
 
 void winios_cursor_move(int x, int y) {
+    struct winios_surface_ticket stats = winios_surface_stats_begin(NULL, 0);
+    stats = winios_surface_stats_enqueue(stats, stats.began);
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (!winios_desktop_session()) return;   /* game sessions: no drawn arrow */
+        double main_at = stats.slot >= 0 ? winios_now_mono() : 0;
+        if (!winios_desktop_session()) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
         winios_ensure_compositor();
-        if (!g_compositor_view) return;
+        if (!g_compositor_view) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
         winios_ensure_cursor_layer();
+        double layer_at = stats.slot >= 0 ? winios_now_mono() : 0;
         g_cursor_pos_px = CGPointMake(x, y);
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
         winios_cursor_place();
         [CATransaction commit];
+        winios_surface_stats_finish(stats, 1, main_at, -1, stats.slot >= 0 ? winios_now_mono() - layer_at : -1);
     });
 }
 
@@ -2657,21 +2839,30 @@ void winios_cursor_move(int x, int y) {
  * → resize arrows → app cursors). Copy before returning. */
 void winios_cursor_set(unsigned int cur_id, int w, int h, int hot_x, int hot_y, const void *bgra) {
     if (w <= 0 || h <= 0 || !bgra) return;
+    struct winios_surface_ticket stats = winios_surface_stats_begin(NULL, (size_t)w * h * 4);
     NSData *data = [NSData dataWithBytes:bgra length:(size_t)w * h * 4];
+    double copied_at = winios_surface_stats_copied(stats, (uint64_t)w * h);
+    stats = winios_surface_stats_enqueue(stats, copied_at);
     dispatch_async(dispatch_get_main_queue(), ^{
+        double main_at = stats.slot >= 0 ? winios_now_mono() : 0;
         if (!winios_desktop_session()) {   /* game sessions: only the dialog cursor */
-            if (!winios_game_cursor_enabled() || !g_comp_game || !g_compositor_view) return;
+            if (!winios_game_cursor_enabled() || !g_comp_game || !g_compositor_view) {
+                winios_surface_stats_finish(stats, 0, main_at, -1, -1); return;
+            }
         } else {
             winios_ensure_compositor();
-            if (!g_compositor_view) return;
+            if (!g_compositor_view) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
         }
         winios_ensure_cursor_layer();
-        if (!g_cursor_layer) return;
+        if (!g_cursor_layer) { winios_surface_stats_finish(stats, 0, main_at, -1, -1); return; }
+        double image_at = stats.slot >= 0 ? winios_now_mono() : 0;
         CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
         CGDataProviderRef dp = CGDataProviderCreateWithCFData((__bridge CFDataRef)data);
-        CGImageRef img = CGImageCreate(w, h, 8, 32, w * 4, cs,
+        CGImageRef img = cs && dp ? CGImageCreate(w, h, 8, 32, w * 4, cs,
                                        kCGBitmapByteOrder32Little | kCGImageAlphaFirst,
-                                       dp, NULL, false, kCGRenderingIntentDefault);
+                                       dp, NULL, false, kCGRenderingIntentDefault) : NULL;
+        double layer_at = stats.slot >= 0 ? winios_now_mono() : 0;
+        int applied = img != NULL;
         if (img) {
             [CATransaction begin];
             [CATransaction setDisableActions:YES];
@@ -2681,9 +2872,12 @@ void winios_cursor_set(unsigned int cur_id, int w, int h, int hot_x, int hot_y, 
             [CATransaction commit];
             CGImageRelease(img);
         }
-        CGDataProviderRelease(dp);
-        CGColorSpaceRelease(cs);
+        double layer_end = stats.slot >= 0 ? winios_now_mono() : 0;
+        if (dp) CGDataProviderRelease(dp);
+        if (cs) CGColorSpaceRelease(cs);
         winios_game_cursor_refresh();
+        winios_surface_stats_finish(stats, applied ? 1 : -1, main_at, layer_at - image_at,
+                                    applied ? layer_end - layer_at : -1);
     });
 }
 

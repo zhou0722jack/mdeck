@@ -88,6 +88,9 @@ int winios_compositor_set_hidden(int hidden);
  * session start clears the overlay. */
 void winios_note_game_metal_hwnd(void *hwnd);
 void winios_session_reset(void);
+/* Session worker, after effective env config is applied. Independent of the
+ * first-frame census; 0 also cancels its timer and invalidates queued samples. */
+void winios_surface_stats_configure(int enabled);
 /* Ends a Dock session: explorer's desktop is asked to close (its own thread posts WM_CLOSE). */
 void winios_close_desktop(void);
 int winios_desktop_point_from_window(double wx, double wy, int *px, int *py);

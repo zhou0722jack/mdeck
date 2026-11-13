@@ -128,6 +128,21 @@ let off = PerformanceLogSettings.text(profiling, enabled: false)
 expect(!PerformanceLogSettings.enabled(global: quiet, profile: off) && MadeiraConfig.parse(off)["env.MADEIRA_PROBES"] == "0"
        && MadeiraConfig.parse(off)["env.MADEIRA_FRAME_STATS"] == "0", "off stops the preset's counters and frame logging")
 expect(PerformanceLogSettings.text(profiling, enabled: true) == profiling, "repeated enabling is idempotent")
+expect(!SteamSurfaceLogSettings.enabled(global: [:], profile: ""), "Steam surface diagnostics default off")
+let steamSurface = SteamSurfaceLogSettings.text(profiling, enabled: true)
+expect(SteamSurfaceLogSettings.enabled(global: [:], profile: steamSurface), "Steam surface diagnostics can be enabled independently")
+expect(PerformanceLogSettings.enabled(global: quiet, profile: steamSurface), "surface diagnostics preserve the CPU performance preset")
+expect(SteamSurfaceLogSettings.text(steamSurface, enabled: true) == steamSurface, "surface diagnostics enabling is idempotent")
+let noCPU = PerformanceLogSettings.text(steamSurface, enabled: false)
+expect(SteamSurfaceLogSettings.enabled(global: quiet, profile: noCPU)
+       && !PerformanceLogSettings.enabled(global: quiet, profile: noCPU), "turning CPU sampling off preserves Steam diagnostics")
+let noSurface = SteamSurfaceLogSettings.text(steamSurface, enabled: false)
+expect(!SteamSurfaceLogSettings.enabled(global: [SteamSurfaceLogSettings.key: "1"], profile: noSurface)
+       && PerformanceLogSettings.enabled(global: quiet, profile: noSurface), "profile off overrides global on without disabling CPU logs")
+let duplicates = "# keep me\npool=1152\nenv.MADEIRA_STEAM_SURFACE_STATS = 1\nenv.MADEIRA_STEAM_SURFACE_STATS=0\n"
+let deduped = SteamSurfaceLogSettings.text(duplicates, enabled: true)
+expect(deduped.components(separatedBy: SteamSurfaceLogSettings.key).count == 2
+       && deduped.contains("# keep me") && deduped.contains("pool=1152"), "surface switch removes duplicate keys while keeping notes and unrelated settings")
 try! profiling.write(to: fresh, atomically: true, encoding: .utf8)
 expect(!MadeiraConfig.installPerformanceLogDefaults(at: fresh) && (try! String(contentsOf: fresh, encoding: .utf8)) == profiling,
        "upgrade preserves manually selected performance logging")
@@ -175,6 +190,11 @@ check('Toggle("Performance logging"' in detail and 'PerformanceLogSettings.enabl
       and 'PerformanceLogSettings.text(file.text, enabled: enabled)' in detail
       and '.accessibilityIdentifier("steam-performance-logging")' in detail,
       'Steam advanced settings read and persist the standalone performance preset')
+check('Toggle("Steam performance diagnostics"' in detail
+      and 'SteamSurfaceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)' in detail
+      and 'SteamSurfaceLogSettings.text(file.text, enabled: enabled)' in detail
+      and '.accessibilityIdentifier("steam-surface-performance-logging")' in detail,
+      'Steam advanced settings expose independent surface diagnostics')
 app_source = (root / 'app/Madeira/MadeiraApp.swift').read_text()
 check(app_source.index('MadeiraConfig.installMdeckRuntimeDefaults()') < app_source.index('MadeiraConfig.installPerformanceLogDefaults()')
       < app_source.index('SteamClientSignInSync.shared.start()'), 'sampling defaults initialize before runtime startup')
