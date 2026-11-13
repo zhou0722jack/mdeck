@@ -55,6 +55,8 @@ jobs:
           python3 tests/host/check-steam-cef-pools.py
           python3 tests/host/check-steam-signin-sync.py
           python3 tests/host/check-steam-catalog.py
+          python3 tests/host/check-steam-uninstall.py
+          python3 tests/host/check-external-storage.py
           python3 tests/host/check-steam-library-preview.py
           python3 tests/host/check-frontend.py
           python3 tests/host/check-real-suspend-game.py

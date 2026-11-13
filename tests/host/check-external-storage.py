@@ -137,6 +137,58 @@ check(!fm.fileExists(atPath: manifest.path) && !fm.fileExists(atPath: apps.appen
       "successful uninstall removes payload and record")
 rejects("uninstall rejects an unavailable library") { try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: tmp.appendingPathComponent("offline")) }
 rejects("uninstall rejects a folder traversal") { try SteamInstallFiles.delete(appID: 9000, folderName: "../other", steamApps: apps) }
+
+for library in [SteamInstallPaths.libraryRelative, SteamInstallPaths.clientLibraryRelative,
+                "Program Files/Steam Client32/steamapps", "program files/steam client32/STEAMAPPS",
+                "External/SSD/SteamLibrary/steamapps"] {
+    check(SteamInstallPaths.isManaged(library: library), "uninstall supports library \(library)")
+}
+check(!SteamInstallPaths.isManaged(library: "Program Files/Steam Client32"), "the client folder itself is never a game library")
+
+func gameRecord(_ id: Int, _ folder: String, shared: String = "", depots: String = "") throws {
+    let text = "\"AppState\" { \"appid\" \"\(id)\" \"installdir\" \"\(folder)\" \"SharedDepots\" { \(shared) } \"InstalledDepots\" { \(depots) } }"
+    try Data(text.utf8).write(to: apps.appendingPathComponent("appmanifest_\(id).acf"))
+}
+let payload = apps.appendingPathComponent("common/Game/save.dat")
+try fm.createDirectory(at: payload.deletingLastPathComponent(), withIntermediateDirectories: true)
+try Data("inside save".utf8).write(to: payload)
+try gameRecord(9000, "Game", shared: "\"9003\" \"9100\"")
+try gameRecord(9100, "Game", depots: "\"9003\" { \"manifest\" \"1\" } \"9004\" { \"manifest\" \"2\" }")
+rejects("uninstall refuses an owner that also holds other depots in the same folder") { try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps) }
+try gameRecord(9100, "Game", depots: "\"9003\" { \"manifest\" \"1\" }")
+try gameRecord(9200, "Game")
+rejects("uninstall refuses another game sharing the folder") { try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps) }
+check(fm.fileExists(atPath: payload.path) && fm.fileExists(atPath: manifest.path)
+      && fm.fileExists(atPath: apps.appendingPathComponent("appmanifest_9100.acf").path), "shared-folder refusal removes nothing")
+try gameRecord(9200, "Other Game")
+let otherGame = apps.appendingPathComponent("common/Other Game/game.exe")
+try fm.createDirectory(at: otherGame.deletingLastPathComponent(), withIntermediateDirectories: true)
+try Data("other game".utf8).write(to: otherGame)
+let outsideSave = tmp.appendingPathComponent("Documents/save.dat")
+try fm.createDirectory(at: outsideSave.deletingLastPathComponent(), withIntermediateDirectories: true)
+try Data("outside save".utf8).write(to: outsideSave)
+let journal = apps.appendingPathComponent("downloading/9000")
+try fm.createDirectory(at: journal, withIntermediateDirectories: true)
+rejects("a stale install folder is refused") { try SteamInstallFiles.delete(appID: 9000, folderName: "Other Game", steamApps: apps) }
+try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps)
+check(!fm.fileExists(atPath: payload.path) && !fm.fileExists(atPath: manifest.path)
+      && !fm.fileExists(atPath: journal.path) && !fm.fileExists(atPath: apps.appendingPathComponent("appmanifest_9100.acf").path),
+      "uninstall deletes the target folder, in-folder saves, journal and shared owner record")
+check(fm.fileExists(atPath: otherGame.path) && fm.fileExists(atPath: outsideSave.path)
+      && fm.fileExists(atPath: apps.appendingPathComponent("appmanifest_9200.acf").path), "uninstall keeps another game, its record and outside saves")
+try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps)
+check(true, "repeated removal of missing game files succeeds")
+
+// A shared-depot owner installed in its own directory retains its record.
+try gameRecord(9000, "Game", shared: "\"9201\" \"9200\"")
+try gameRecord(9200, "Other Game", depots: "\"9201\" { \"manifest\" \"1\" }")
+try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps)
+check(fm.fileExists(atPath: otherGame.path) && fm.fileExists(atPath: apps.appendingPathComponent("appmanifest_9200.acf").path),
+      "a shared owner with a separate install retains its files and install record")
+
+try fm.createSymbolicLink(at: apps.appendingPathComponent("common/Game"), withDestinationURL: otherGame.deletingLastPathComponent())
+rejects("uninstall refuses a linked game folder") { try SteamInstallFiles.delete(appID: 9000, folderName: "Game", steamApps: apps) }
+check(fm.fileExists(atPath: otherGame.path), "linked folder refusal keeps its destination")
 exit(failures == 0 ? 0 : 1)
 '''
 with tempfile.TemporaryDirectory() as tmp:

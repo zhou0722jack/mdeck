@@ -7,6 +7,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 APP = ROOT / 'app/Madeira'
 source = (APP / 'DeckSteamCatalog.swift').read_text()
+assert 'clientSignIn.rereadInstalledSignIn()' in source
+assert 'steam-reread-installed-signin' in source
+assert '.disabled(clientSignIn.phase == .validating)' in source
 games = (APP / 'SteamGames.swift').read_text()
 
 def block(text, header):

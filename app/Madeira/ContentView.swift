@@ -2588,6 +2588,9 @@ struct ContentView: View {
     /// applies the entry's launch profile and runs the same full sequence as the
     /// developer interface's buttons.
     private func launchLibraryEntry(_ entry: LibraryEntry) {
+        guard SteamOwnedLibrary.shared.deleting.isEmpty else {
+            library.error = L("Wait for the file operation to finish."); return
+        }
         guard !steamPreparation.presented else { return }
         if let appID = entry.steamAppID, !entry.startsSteamGameDirectly {
             guard MadeiraDock.validAppID(appID),
@@ -2675,6 +2678,10 @@ struct ContentView: View {
     /// licence, the EA app's environment and Madeira's stand-in for the EA app's local
     /// service (EALibrary.prepareLaunch); every other launch starts without that environment.
     private func startLibraryEntry(_ entry: LibraryEntry, epicReady: Bool = false, eaReady: Bool = false) {
+        guard SteamOwnedLibrary.shared.deleting.isEmpty else {
+            library.preparing = nil
+            library.error = L("Wait for the file operation to finish."); return
+        }
         guard !EpicCloud.shared.isBusy else {
             library.error = L("Wait for Epic Cloud save sync to finish before starting a game.")
             return

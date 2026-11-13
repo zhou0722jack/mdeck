@@ -1631,6 +1631,7 @@ struct SteamEntrySection: View {
             if let freeSpace { LabeledContent("Free space where the game is installed", value: formatBytes(freeSpace)) }
             if managed, download == nil {
                 Button("Uninstall", role: .destructive) { confirmUninstall = true }
+                    .disabled(steam.inSession || !steam.deleting.isEmpty)
             }
         } header: {
             Text("Steam")
@@ -1651,8 +1652,7 @@ struct SteamEntrySection: View {
         .confirmationDialog("Uninstall \(entry.title)? Its downloaded files are deleted from where it is installed. Saves stored elsewhere are kept.",
                             isPresented: $confirmUninstall, titleVisibility: .visible) {
             Button("Uninstall", role: .destructive) {
-                if let installed { steam.uninstall(installed) }
-                uninstalled()
+                if let installed { steam.uninstall(installed, onRemoved: uninstalled) }
             }
         }
     }

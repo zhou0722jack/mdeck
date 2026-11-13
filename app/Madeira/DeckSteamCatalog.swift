@@ -59,6 +59,8 @@ struct DeckSteamCatalog: View {
     @State private var showAccountSettings = false
     @State private var downloadOptions: GameSelection?
     @State private var settingsEntry: LibraryEntry?
+    @State private var deleteSelection: DockGame?
+    @State private var deletedName: String?
     @State private var allItems: [SteamGamesRules.Item] = []
     @State private var visible: [SteamGamesRules.Item] = []
     @State private var recorded: [Int: SteamGamesRules.Recorded] = [:]
@@ -107,6 +109,22 @@ struct DeckSteamCatalog: View {
             }
         }
         .sheet(item: $settingsEntry) { entry in LibraryDetail(entry: entry, play: play) }
+        .confirmationDialog("Delete game?", isPresented: Binding(get: { deleteSelection != nil }, set: { if !$0 { deleteSelection = nil } }),
+                            titleVisibility: .visible, presenting: deleteSelection) { game in
+            Button("Delete game", role: .destructive) {
+                steam.uninstall(game) {
+                    withAnimation(motion) { selected = nil }
+                    deletedName = game.name
+                }
+                deleteSelection = nil
+            }
+            Button("Cancel", role: .cancel) { deleteSelection = nil }
+        } message: { game in
+            Text(LF("Delete %@? Game files, mods and saves inside its install folder, and local game settings will be deleted. Saves stored elsewhere and Steam account ownership are kept.", game.name))
+        }
+        .alert("Game deleted", isPresented: Binding(get: { deletedName != nil }, set: { if !$0 { deletedName = nil } })) {
+            Button("OK", role: .cancel) { deletedName = nil }
+        } message: { Text(LF("%@ has been removed from this device. You can download it again from your Steam library.", deletedName ?? "")) }
         .alert("Steam", isPresented: Binding(get: { steam.error != nil }, set: { if !$0 { steam.error = nil } })) {
             Button("OK", role: .cancel) { steam.error = nil }
         } message: { Text(steam.error ?? "") }
@@ -136,7 +154,8 @@ struct DeckSteamCatalog: View {
         .onChange(of: sort) { _, _ in arrange() }
         .onReceive(controller.commands) { command in
             guard !DeckSteamLaunchPreparation.shared.presented, !showSignIn, !showAccountSettings,
-                  downloadOptions == nil, settingsEntry == nil else { return }
+                  downloadOptions == nil, settingsEntry == nil, deleteSelection == nil, deletedName == nil,
+                  steam.deleting.isEmpty else { return }
             navigate(command)
         }
     }
@@ -178,6 +197,11 @@ struct DeckSteamCatalog: View {
                                     }
                                     .buttonStyle(DeckSteamTileStyle(focused: focused == item.id))
                                     .accessibilityLabel(item.name)
+                                    .contextMenu {
+                                        if let game = item.installed, SteamInstallPaths.isManaged(library: game.library) {
+                                            deleteButton(game)
+                                        }
+                                    }
                                     if mode == .store {
                                         action(item, compact: true).padding(.top, 6)
                                     }
@@ -238,6 +262,17 @@ struct DeckSteamCatalog: View {
             } label: { Image(systemName: "arrow.up.arrow.down") }.accessibilityLabel("Sort by")
             Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }.disabled(steam.refreshing).accessibilityLabel("Refresh Steam library")
             Button { showAccountSettings = true } label: { Image(systemName: "person.crop.circle") }.accessibilityLabel("Steam account and downloads")
+            Button { clientSignIn.rereadInstalledSignIn() } label: {
+                HStack(spacing: 6) {
+                    if clientSignIn.phase == .validating { ProgressView().controlSize(.small) }
+                    else { Image(systemName: "arrow.triangle.2.circlepath") }
+                    Text("Read Steam sign-in").font(.subheadline)
+                }
+            }
+            .disabled(clientSignIn.phase == .validating)
+            .accessibilityLabel("Read Steam sign-in")
+            .accessibilityHint("Recheck the installed Windows Steam sign-in.")
+            .accessibilityIdentifier("steam-reread-installed-signin")
         }.font(.system(size: 18)).buttonStyle(.borderless).frame(minHeight: 36)
     }
 
@@ -268,8 +303,8 @@ struct DeckSteamCatalog: View {
         VStack(alignment: .leading, spacing: 10) {
             if let text = clientSignIn.statusText {
                 HStack(spacing: 10) {
-                    if clientSignIn.phase == .failed { Image(systemName: "exclamationmark.circle") }
-                    else { ProgressView() }
+                    if clientSignIn.phase == .validating { ProgressView() }
+                    else { Image(systemName: clientSignIn.phase == .failed ? "exclamationmark.circle" : "info.circle") }
                     Text(text).font(.footnote)
                 }
             }
@@ -331,7 +366,7 @@ struct DeckSteamCatalog: View {
     @ViewBuilder private func badge(_ item: SteamGamesRules.Item) -> some View {
         let state = SteamGamesRules.status(installed: item.installed, transfer: steam.downloads[item.id]?.transfer,
                                           updateAvailable: steam.updateAvailable(appID: item.id, installedBuild: games.builds[item.id], installedBranch: games.branches[item.id]))
-        if let text = state.badge {
+        if let text = steam.deleting.contains(item.id) ? L("Deleting game…") : state.badge {
             Text(text).font(.system(size: 10, weight: .semibold)).padding(.horizontal, 7).padding(.vertical, 4)
                 .foregroundStyle(.white).background(.black.opacity(0.7), in: Capsule())
         }
@@ -354,6 +389,14 @@ struct DeckSteamCatalog: View {
                     Button { settingsEntry = library.steamEntry(installed, title: item.name) } label: {
                         Label("Game settings", systemImage: "slider.horizontal.3")
                     }.buttonStyle(DeckButtonStyle())
+                        .disabled(steam.deleting.contains(item.id))
+                    if SteamInstallPaths.isManaged(library: installed.library) {
+                        deleteButton(installed).buttonStyle(DeckButtonStyle())
+                        if deletionBlocked {
+                            Text("End the Windows session before deleting a game.")
+                                .font(.footnote).foregroundStyle(palette.muted)
+                        }
+                    }
                 }
                 if let size = size(item) { Label(size, systemImage: "internaldrive") }
                 if let playtime = steam.playtime[item.id]?.summary { Label(playtime, systemImage: "clock") }
@@ -366,11 +409,25 @@ struct DeckSteamCatalog: View {
     private func downloadOptionsButton(_ item: SteamGamesRules.Item) -> some View {
         Button { downloadOptions = GameSelection(id: item.id) } label: {
             Label("Download options", systemImage: "arrow.down.circle")
-        }.buttonStyle(DeckButtonStyle())
+        }.buttonStyle(DeckButtonStyle()).disabled(steam.deleting.contains(item.id))
+    }
+
+    private var deletionBlocked: Bool {
+        steam.inSession || library.current != nil || library.startingScreen || DeckSteamLaunchPreparation.shared.presented
+    }
+
+    private func deleteButton(_ game: DockGame) -> some View {
+        Button(role: .destructive) { deleteSelection = game } label: {
+            Label("Delete game", systemImage: "trash").foregroundStyle(.red)
+        }
+        .disabled(deletionBlocked || !steam.deleting.isEmpty)
+        .accessibilityIdentifier("steam-delete-game-\(game.id)")
     }
 
     @ViewBuilder private func action(_ item: SteamGamesRules.Item, compact: Bool = false) -> some View {
-        if let download = steam.downloads[item.id] {
+        if steam.deleting.contains(item.id) {
+            ProgressView("Deleting game…")
+        } else if let download = steam.downloads[item.id] {
             switch download.state {
             case .active, .queued:
                 Button { steam.pause(item.id) } label: { Label("Pause", systemImage: "pause.fill") }.buttonStyle(DeckButtonStyle())
@@ -380,7 +437,7 @@ struct DeckSteamCatalog: View {
             }
         } else if let installed = item.installed, installed.installed {
             Button { play(library.steamEntry(installed, title: item.name)) } label: { Label("Play", systemImage: "play.fill") }
-                .buttonStyle(DeckButtonStyle(primary: !compact)).disabled(library.launching)
+                .buttonStyle(DeckButtonStyle(primary: !compact)).disabled(library.launching || !steam.deleting.isEmpty)
         } else if item.owned != nil {
             Button { steam.install(item.id) } label: { Label("Download", systemImage: "arrow.down.circle") }
                 .buttonStyle(DeckButtonStyle(primary: !compact)).disabled(!steam.signedIn)

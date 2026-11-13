@@ -4992,6 +4992,21 @@ struct LibraryDetail: View {
         }
         if isSteamGlobal {
             Section("Diagnostics") {
+                Toggle("Performance logging", isOn: Binding(get: {
+                    PerformanceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = PerformanceLogSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The performance logging setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-performance-logging")
+                Text("Collect lightweight CPU, thread, memory and supported frame statistics. Takes effect the next time Steam starts. Extended logging and live logs are separate.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 Toggle("Extended logging", isOn: $input.diagnostics)
             }
         }

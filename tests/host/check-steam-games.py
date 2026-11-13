@@ -70,7 +70,7 @@ run_body = owned_source[owned_source.index('    private func run(_ appID: Int) a
 run_body = run_body[:run_body.index('\n    }\n')]
 require(run_body.index('try await downloader.install(') < run_body.index('LibraryModel.shared.upsertSteam(') < run_body.index('} catch {'),
         'a finished download (record written) gets its library entry; a failed or paused one does not')
-require('LibraryModel.shared.removeSteam(appID: game.id)' in owned_source[owned_source.index('func uninstall(_ game: DockGame)'):],
+require('LibraryModel.shared.removeSteam(appID: game.id)' in owned_source[owned_source.index('func uninstall(_ game: DockGame,'):],
         "Uninstall removes the game's library entry with its files")
 detail = library[library.index('struct LibraryDetail: View {'):library.index('struct FPSChoice: View {')]
 steam_section = games[games.index('struct SteamEntrySection'):]

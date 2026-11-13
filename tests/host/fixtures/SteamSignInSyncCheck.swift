@@ -15,7 +15,7 @@ import CryptoKit
 }
 func wine_process_is_running() -> Int32 { 0 }
 func wineserver_is_running() -> Int32 { 0 }
-enum SteamClient { static let clientDirectory = "Program Files/Steam Client" }
+enum SteamClient { static var clientDirectory = "Program Files/Steam Client" }
 @MainActor enum SteamLog {
     static var events: [String] = []
     static func event(_ value: String) { events.append(value) }
@@ -135,6 +135,7 @@ extension SteamClientSignInSync {
             SteamClientPendingStore.values = []; SteamClientPendingStore.writable = true
             CMVerifierFixture.mode = .success; CMVerifierFixture.calls = 0; UIApplication.shared.applicationState = .active
             LibraryModel.shared.current = nil
+            SteamClient.clientDirectory = "Program Files/Steam Client"
             let next = SteamClientSignInSync(); sync = next; next.beginSteamSession(); return next
         }
         let refresh = token(header: #"{ "typ": "JWT", "alg": "RS256" }"#), data = Data(refresh.utf8)
@@ -250,6 +251,77 @@ extension SteamClientSignInSync {
         precondition(SteamClientSignInRules.claims(SteamSignIn.saved!.refreshToken)?["sub"] as? String == String(candidate.subject + 1))
         current.testDispose()
         print("PASS: changing Windows accounts invalidates an older validation response; only the newly selected account imports")
+
+        // The manual button must never turn account metadata into a sign-in.
+        current = fresh(); try account()
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.rereadNotice != nil && CMVerifierFixture.calls == 0 && SteamSignIn.saved == nil)
+        let executable = root.appendingPathComponent(SteamClient.clientDirectory + "/Steam.exe")
+        try Data([0x4d,0x5a]).write(to: executable)
+        current = fresh(); current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .waitingForToken && current.rereadNotice != nil && SteamSignIn.saved == nil && CMVerifierFixture.calls == 0)
+        print("PASS: manual reread reports missing installation/no captured authorization; loginusers alone cannot sign in")
+
+        current = fresh(); SteamSignIn.signOut(); await settle()
+        SteamClientPendingStore.values = [candidate]
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .synced && current.statusText != nil && SteamSignIn.saved?.refreshToken == refresh)
+        precondition(!UserDefaults.standard.bool(forKey: key) && CMVerifierFixture.calls == 1)
+        current = fresh(); SteamSignIn.saved = ("fixture_user", refresh, "")
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .synced && CMVerifierFixture.calls == 1)
+        print("PASS: explicit manual retry restores protected handoff or revalidates matching App authorization; success still requires CM")
+
+        current = fresh(); SteamClientPendingStore.values = [candidate]; CMVerifierFixture.mode = .hold
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .validating && CMVerifierFixture.calls == 1)
+        current.rereadInstalledSignIn(); await settle()
+        precondition(CMVerifierFixture.calls == 1)
+        CMVerifierFixture.release(); await settle(); precondition(current.phase == .synced)
+        current = fresh(); SteamClientPendingStore.values = [candidate]; LibraryModel.shared.current = 1
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .waitingForWindows && CMVerifierFixture.calls == 0)
+        LibraryModel.shared.current = nil; current.testTick(); await settle()
+        precondition(current.phase == .synced)
+        print("PASS: repeated clicks share one verification; manual reread waits for Windows instead of starting a second CM session")
+
+        let client32 = root.appendingPathComponent("Program Files/Steam Client32")
+        try FileManager.default.createDirectory(at: client32.appendingPathComponent("config"), withIntermediateDirectories: true)
+        try Data([0x4d,0x5a]).write(to: client32.appendingPathComponent("steam.exe"))
+        current = fresh(); SteamClient.clientDirectory = "Program Files/Steam Client32"
+        SteamClientPendingStore.values = [candidate]
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .synced && SteamSignIn.saved?.refreshToken == refresh)
+        let login32 = client32.appendingPathComponent("config/loginusers.vdf")
+        try "\"users\" { \"\(candidate.subject + 1)\" { \"AccountName\" \"fixture_32\" \"MostRecent\" \"1\" } }"
+            .write(to: login32, atomically: true, encoding: .utf8)
+        current = fresh(); SteamClient.clientDirectory = "Program Files/Steam Client32"
+        SteamClientPendingStore.values = [candidate]
+        current.rereadInstalledSignIn(); await settle()
+        precondition(SteamSignIn.saved == nil && CMVerifierFixture.calls == 0 && current.rereadNotice != nil)
+        SteamSignIn.saved = ("fixture_user", refresh, "")
+        current.rereadInstalledSignIn(); await settle()
+        precondition(SteamSignIn.saved?.refreshToken == refresh && CMVerifierFixture.calls == 0)
+        SteamSignIn.saved = nil
+        let refresh32 = token(subject: candidate.subject + 1, label: "client32_fixture")
+        let candidate32 = SteamClientSignInRules.candidate(Data(refresh32.utf8))!
+        SteamClientPendingStore.values = [candidate32]
+        current.rereadInstalledSignIn(); await settle()
+        precondition(current.phase == .synced && SteamSignIn.saved?.refreshToken == refresh32)
+        print("PASS: other installed architecture is a metadata fallback; a selected client's different account is never replaced by the other client's login")
+
+        let ambiguous = "\"users\" { \"\(candidate.subject)\" { \"AccountName\" \"fixture_user\" \"MostRecent\" \"1\" } \"\(candidate.subject + 1)\" { \"AccountName\" \"fixture_32\" \"MostRecent\" \"1\" } }"
+        precondition(SteamClientSignInRules.selectedAccount(loginUsers: Data(ambiguous.utf8)) == nil)
+        try ambiguous.write(to: login32, atomically: true, encoding: .utf8)
+        current = fresh(); SteamClient.clientDirectory = "Program Files/Steam Client32"
+        SteamClientPendingStore.values = [candidate]
+        current.rereadInstalledSignIn(); current.testTick(); await settle()
+        precondition(SteamSignIn.saved == nil && CMVerifierFixture.calls == 0 && current.rereadNotice != nil)
+        current = fresh(); SteamSignIn.enabled = false; SteamClientPendingStore.values = [candidate]
+        current.rereadInstalledSignIn(); await settle()
+        precondition(CMVerifierFixture.calls == 0 && SteamSignIn.saved == nil && current.rereadNotice != nil)
+        current.testDispose(); SteamClient.clientDirectory = "Program Files/Steam Client"
+        print("PASS: ambiguous account metadata and disabled sync never authorize an import")
 
         let library = AccountLibraryCheck()
         SteamSignIn.saved = ("old_fixture", "", "")

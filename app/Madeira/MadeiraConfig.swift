@@ -1,5 +1,32 @@
 import Foundation
 
+/// The lightweight performance preset, independent of heavy diagnostics and UI logs.
+enum PerformanceLogSettings {
+    static let keys = ["env.MADEIRA_PROBES", "env.MADEIRA_LEAN_DIAG", "env.MADEIRA_FRAME_STATS"]
+
+    static func enabled(global: [String: String], profile: String) -> Bool {
+        let values = global.merging(MadeiraConfig.parse(profile)) { _, own in own }
+        // The native sampler defaults to all probes when the key is absent.
+        // Show an existing manual/full preset as on so the user can disable it.
+        let probes = values[keys[0]] ?? "1"
+        let frames = values[keys[2]] ?? "0"
+        return probes != "0" || (!frames.isEmpty && frames != "0")
+    }
+
+    static func text(_ previous: String, enabled: Bool) -> String {
+        var lines = previous.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }
+            return !keys.contains(trimmed[..<equals].trimmingCharacters(in: .whitespaces))
+        }
+        while lines.last == "" { lines.removeLast() }
+        if !lines.isEmpty { lines.append("") }
+        let values = [enabled ? "light" : "0", "1", enabled ? "1" : "0"]
+        lines += zip(keys, values).map { "\($0.0) = \($0.1)" }
+        return lines.joined(separator: "\n") + "\n"
+    }
+}
+
 /// ml1095: ONE configuration file for every runtime switch: Documents/madeira.cfg
 ///
 ///     # comments start with #
@@ -17,6 +44,25 @@ import Foundation
 /// from whatever legacy files exist, once, so they can then be deleted.
 enum MadeiraConfig {
     static let fileName = "madeira.cfg"
+
+    /// Explicit user sampling choices remain untouched on upgrades.
+    @discardableResult
+    static func installPerformanceLogDefaults(at destination: URL? = MadeiraConfig.url) -> Bool {
+        guard let destination else { return false }
+        do {
+            let previous = FileManager.default.fileExists(atPath: destination.path)
+                ? try String(contentsOf: destination, encoding: .utf8) : ""
+            let values = parse(previous)
+            guard !PerformanceLogSettings.keys.contains(where: { values[$0] != nil }) else { return false }
+            try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try PerformanceLogSettings.text(previous, enabled: false).write(to: destination, atomically: true, encoding: .utf8)
+            invalidate()
+            return true
+        } catch {
+            fputs("[performance-log] could not initialize defaults: \(error.localizedDescription)\n", stderr)
+            return false
+        }
+    }
 
     /// The user's selected mdeck defaults. A marker in the config makes the
     /// upgrade run once; later changes in Settings remain the user's choices.

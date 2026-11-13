@@ -764,7 +764,7 @@ final class SteamOwnedLibrary: ObservableObject {
     }
 
     private var cloudBusy: Set<Int> = []
-    private var deleting: Set<Int> = []
+    @Published private(set) var deleting: Set<Int> = []
     var hasStorageWork: Bool {
         hasActiveDownload || !cloudBusy.isEmpty || !deleting.isEmpty || cloud.values.contains { $0.phase == .checking }
     }
@@ -1389,27 +1389,44 @@ final class SteamOwnedLibrary: ObservableObject {
 
     /// Removes an install that Madeira's downloads own (its library folder is
     /// Madeira Dock's own), with its library entry (its per-game settings).
-    func uninstall(_ game: DockGame) {
-        guard SteamInstallPaths.isManaged(library: game.library), !inSession else { return }
+    func uninstall(_ game: DockGame, onRemoved: (@MainActor () -> Void)? = nil) {
+        guard SteamInstallPaths.isManaged(library: game.library) else {
+            error = L("The install library is invalid."); return
+        }
+        guard !inSession, LibraryModel.shared.current == nil, !LibraryModel.shared.startingScreen,
+              !DeckSteamLaunchPreparation.shared.presented else {
+            error = L("End the Windows session before deleting a game."); return
+        }
         guard !deleting.contains(game.id), !cloudBusy.contains(game.id), cloud[game.id]?.phase != .checking,
               GameMover.shared.moving == nil else { error = L("Wait for the file operation to finish."); return }
         let running = active?.id == game.id ? active?.task : nil
-        pause(game.id); downloads[game.id] = nil
+        pause(game.id)
         deleting.insert(game.id)
+        SteamLog.event("[steam-depot] uninstall requested app=\(game.id)")
         Task { @MainActor in
             defer { deleting.remove(game.id) }
             await running?.value
             do {
+                guard !inSession, LibraryModel.shared.current == nil, !LibraryModel.shared.startingScreen,
+                      !DeckSteamLaunchPreparation.shared.presented else {
+                    throw NSError(domain: "SteamInstall", code: 2, userInfo: [NSLocalizedDescriptionKey:
+                        L("End the Windows session before deleting a game.")])
+                }
                 let apps = try ExternalDrives.nativeURL(game.library, write: true)
                 try await Task.detached(priority: .utility) {
                     try SteamInstallFiles.delete(appID: game.id, folderName: game.installDir, steamApps: apps)
                 }.value
+                downloads[game.id] = nil
                 LibraryModel.shared.removeSteam(appID: game.id)
                 DockInstallers.setRunsNext(game.id, true, prefix: MadeiraDock.prefix)
                 setTarget(game.id, nil)
                 SteamGamesModel.shared.refresh()
                 SteamLog.event("[steam-depot] uninstalled app=\(game.id)")
-            } catch { self.error = L("The install could not be removed: ") + error.localizedDescription }
+                onRemoved?()
+            } catch {
+                SteamLog.event("[steam-depot] uninstall failed app=\(game.id)")
+                self.error = L("The install could not be removed: ") + error.localizedDescription
+            }
         }
     }
 

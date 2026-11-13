@@ -2,7 +2,8 @@ import SwiftUI
 import Combine
 func L(_ value: String) -> String { value }
 func LF(_ value: String, _ arguments: CVarArg...) -> String { String(format: value, arguments: arguments) }
-struct DockGame: Equatable { var id: Int; var installed: Bool; var name = "Local fixture" }
+struct DockGame: Equatable { var id: Int; var installed: Bool; var name = "Local fixture"; var library = "Program Files (x86)/Steam/steamapps" }
+enum SteamInstallPaths { static func isManaged(library: String) -> Bool { true } }
 struct SteamOwnedGame: Equatable {
     var id: Int; var name: String
     var installBytes: UInt64? = nil
@@ -17,6 +18,8 @@ final class LibraryModel: ObservableObject {
     static let shared = LibraryModel()
     @Published var entries: [LibraryEntry] = []
     @Published var launching = false
+    @Published var current: UUID?
+    var startingScreen: Bool { launching }
     func steamEntry(_ game: DockGame, title: String) -> LibraryEntry { LibraryEntry(title: title, steamAppID: game.id) }
 }
 final class SteamGamesModel: ObservableObject {
@@ -47,6 +50,7 @@ final class SteamOwnedLibrary: ObservableObject {
     @Published var downloads: [Int: Download] = [:]
     @Published var refreshing = false
     @Published var error: String?
+    @Published var deleting: Set<Int> = []
     var cloudWaitingFor: Int?
     @Published var playtime: [Int: SteamPlaytime] = [:]
     func start() {}
@@ -56,6 +60,7 @@ final class SteamOwnedLibrary: ObservableObject {
     func updateAvailable(appID: Int, installedBuild: Int?, installedBranch: String?) -> Bool { false }
     func install(_ id: Int) {}
     func pause(_ id: Int) {}
+    func uninstall(_ game: DockGame, onRemoved: (@MainActor () -> Void)? = nil) {}
 }
 final class LibraryController: ObservableObject {
     static let shared = LibraryController(); let commands = PassthroughSubject<String, Never>()
@@ -76,10 +81,11 @@ struct LibraryDetail: View { let entry: LibraryEntry; let play: (LibraryEntry) -
 struct SteamSignInView: View { var body: some View { Color.clear } }
 final class SteamClientSignInSync: ObservableObject {
     static let shared = SteamClientSignInSync()
-    enum Phase { case idle, failed }
+    enum Phase { case idle, validating, failed }
     var phase = Phase.idle
     var hasPendingAuthorization = false
     var statusText: String? { nil }
+    func rereadInstalledSignIn() {}
 }
 struct SteamAccountSettingsView: View { var body: some View { Color.clear } }
 struct SteamGameSheet: View { let appID: Int; let open: (LibraryEntry) -> Void; var body: some View { Color.clear } }

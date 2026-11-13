@@ -15,6 +15,24 @@ enum SteamClientSignInRules {
     }
     struct Account: Equatable { let name: String; let subject: UInt64 }
 
+    /// A single explicitly selected account is metadata only. Multiple
+    /// MostRecent users are ambiguous and must never choose a login for us.
+    static func selectedAccount(loginUsers: Data) -> Account? {
+        guard var parser = try? SteamKeyValues(loginUsers), let tree = try? parser.read(),
+              let users = tree["users"] else { return nil }
+        let recent = users.fields.filter { $0.value["mostrecent"]?.string == "1" }
+        guard recent.count == 1, let entry = recent.first, let subject = UInt64(entry.key),
+              subject >> 32 == 0x01100001, subject & 0xffffffff != 0,
+              let name = entry.value["accountname"]?.string, !name.isEmpty, name.utf8.count <= 128,
+              !name.contains("\0"), name == name.trimmingCharacters(in: .whitespacesAndNewlines) else { return nil }
+        return Account(name: name, subject: subject)
+    }
+    static func invalidSelection(loginUsers: Data) -> Bool {
+        guard var parser = try? SteamKeyValues(loginUsers), let tree = try? parser.read(), let users = tree["users"] else { return true }
+        let count = users.fields.filter { $0.value["mostrecent"]?.string == "1" }.count
+        return count > 1 || (count == 1 && selectedAccount(loginUsers: loginUsers) == nil)
+    }
+
     static func claims(_ token: String) -> [String: Any]? {
         guard token.utf8.count <= 8192 else { return nil }
         let parts = token.split(separator: ".", omittingEmptySubsequences: false)
@@ -143,6 +161,9 @@ private enum SteamClientPendingStore {
     static let shared = SteamClientSignInSync()
     enum Phase { case idle, waitingForToken, waitingForAccount, waitingForWindows, validating, synced, retrying, failed }
     @Published private(set) var phase: Phase = .idle
+    @Published private(set) var rereadNotice: String?
+    private var manualReread = false
+    private var rereadLoginURL: URL?
     private let suppressedKey = "mdeck.steam.client-signin.suppressed"
     private var pending: [SteamClientSignInRules.Candidate] = []
     private var pendingStored = true
@@ -187,6 +208,7 @@ private enum SteamClientPendingStore {
     func beginSteamSession() {
         start()
         _ = closeVerifier()
+        rereadLoginURL = nil; rereadNotice = nil; manualReread = false
         UserDefaults.standard.removeObject(forKey: suppressedKey)
         reportedInvalidCandidate = false
         reportedProbeCodes.removeAll()
@@ -214,6 +236,7 @@ private enum SteamClientPendingStore {
             }
             return
         }
+        if !manualReread || rereadLoginURL != nil { rereadNotice = nil }
         if let native = SteamSignIn.credentialsForDock(), native.refreshToken == candidate.refresh,
            account(for: candidate)?.name.caseInsensitiveCompare(native.accountName) == .orderedSame {
             phase = .synced; return
@@ -233,6 +256,90 @@ private enum SteamClientPendingStore {
         _ = closeVerifier()
         revision = UUID(); task?.cancel(); task = nil; pending = []
         SteamClientPendingStore.save([]); timer?.invalidate(); timer = nil; phase = .idle
+        rereadLoginURL = nil; rereadNotice = nil; manualReread = false
+    }
+
+    /// Explicitly re-read installed client metadata and the protected handoff
+    /// store. This does not launch Windows or treat loginusers as a credential.
+    /// The selected architecture wins when it has a selected account; the other
+    /// supported installation is a fallback only when that metadata is absent.
+    func rereadInstalledSignIn() {
+        start()
+        guard task == nil, closingTask == nil else { return }
+        manualReread = true; rereadNotice = nil
+        rereadLoginURL = nil
+        SteamLog.event("[steam-signin-sync] manual installed-client reread requested")
+        guard SteamSignIn.flag("MADEIRA_STEAM_SIGNIN_SYNC", default: true) else {
+            rereadNotice = L("Steam sign-in sync is disabled. Enable it before reading the installed Steam sign-in.")
+            return
+        }
+        let fm = FileManager.default
+        var directories = [SteamClient.clientDirectory]
+        for path in ["Program Files/Steam Client", "Program Files/Steam Client32"] where !directories.contains(path) {
+            directories.append(path)
+        }
+        var installed = false
+        var selection: (URL, SteamClientSignInRules.Account)?
+        for directory in directories {
+            let folder = LibraryModel.drive.appendingPathComponent(directory)
+            guard let files = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey]),
+                  files.contains(where: { file in
+                      file.lastPathComponent.caseInsensitiveCompare("steam.exe") == .orderedSame &&
+                      (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true &&
+                      file.resolvingSymlinksInPath().path.hasPrefix(folder.resolvingSymlinksInPath().path + "/")
+                  }) else { continue }
+            installed = true
+            let url = folder.appendingPathComponent("config/loginusers.vdf")
+            if let data = readLoginUsers(at: url) {
+                if SteamClientSignInRules.invalidSelection(loginUsers: data) {
+                    rereadNotice = L("The installed Steam account selection could not be read safely. Open that Steam client and select your account, then try again.")
+                    SteamLog.event("[steam-signin-sync] manual reread stopped at invalid or ambiguous account metadata")
+                    return
+                }
+                if let account = SteamClientSignInRules.selectedAccount(loginUsers: data) {
+                    selection = (url, account); break
+                }
+            } else if fm.fileExists(atPath: url.path) {
+                rereadNotice = L("The installed Steam account selection could not be read safely. Open that Steam client and select your account, then try again.")
+                SteamLog.event("[steam-signin-sync] manual reread stopped at unreadable account metadata")
+                return
+            }
+        }
+        guard let (url, selected) = selection else {
+            rereadLoginURL = nil
+            rereadNotice = installed
+                ? L("No selected account was found in the installed Steam. Sign in there once, then try again.")
+                : L("No installed Windows Steam client was found. Start Steam once to prepare it.")
+            SteamLog.event("[steam-signin-sync] manual reread has no selected installed-client account")
+            return
+        }
+        rereadLoginURL = url
+        // This explicit user action permits a retry after App sign-out. No
+        // background event can remove that suppression on its own.
+        UserDefaults.standard.removeObject(forKey: suppressedKey)
+        var candidates = pending + SteamClientPendingStore.load()
+        if let native = SteamSignIn.credentialsForDock(),
+           native.accountName.caseInsensitiveCompare(selected.name) == .orderedSame,
+           let candidate = SteamClientSignInRules.candidate(Data(native.refreshToken.utf8)), candidate.subject == selected.subject {
+            candidates.insert(candidate, at: 0)
+        }
+        candidates = candidates.filter { $0.subject == selected.subject } + candidates.filter { $0.subject != selected.subject }
+        var seen = Set<String>()
+        pending = Array(candidates.filter { candidate in
+            SteamClientSignInRules.clientRefreshIdentity(candidate.refresh, now: Date())?.0 == candidate.subject &&
+                candidate.expires > Date() && seen.insert(candidate.fingerprint).inserted
+        }.prefix(4))
+        pendingStored = SteamClientPendingStore.save(pending)
+        guard pending.contains(where: { $0.subject == selected.subject && account(for: $0) == selected }) else {
+            phase = .waitingForToken
+            rereadNotice = L("The installed Steam account was found, but no reusable authorization is available. Open Windows Steam to restore its sign-in, end the Windows session, then try again.")
+            SteamLog.event("[steam-signin-sync] manual reread found metadata but no matching reusable authorization")
+            return
+        }
+        revision = UUID(); retryAt = .distantPast
+        phase = windowsRunning ? .waitingForWindows : .waitingForAccount
+        SteamLog.event("[steam-signin-sync] manual reread will verify the saved authorization")
+        wake()
     }
     private func wake() {
         guard SteamSignIn.flag("MADEIRA_STEAM_SIGNIN_SYNC", default: true),
@@ -244,10 +351,16 @@ private enum SteamClientPendingStore {
         }
         tick()
     }
-    private func account(for candidate: SteamClientSignInRules.Candidate) -> SteamClientSignInRules.Account? {
-        guard let handle = try? FileHandle(forReadingFrom: loginURL) else { return nil }
+    private func readLoginUsers(at url: URL) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
         defer { try? handle.close() }
         guard let data = try? handle.read(upToCount: 4 * 1024 * 1024 + 1), data.count <= 4 * 1024 * 1024 else { return nil }
+        return data
+    }
+    private func account(for candidate: SteamClientSignInRules.Candidate) -> SteamClientSignInRules.Account? {
+        if manualReread && rereadLoginURL == nil { return nil }
+        guard let data = readLoginUsers(at: rereadLoginURL ?? loginURL) else { return nil }
+        if manualReread && SteamClientSignInRules.invalidSelection(loginUsers: data) { return nil }
         return SteamClientSignInRules.account(candidate, loginUsers: data)
     }
     private func tick() {
@@ -364,8 +477,10 @@ private enum SteamClientPendingStore {
 
     var hasPendingAuthorization: Bool { !pending.isEmpty }
     var statusText: String? {
+        if let rereadNotice { return rereadNotice }
         switch phase {
-        case .idle, .synced: return nil
+        case .idle: return nil
+        case .synced: return manualReread ? L("Installed Steam sign-in reread successfully.") : nil
         case .waitingForToken: return L("Waiting for Windows Steam sign-in authorization…")
         case .waitingForAccount: return L("Waiting for Windows Steam to finish saving the sign-in…")
         case .waitingForWindows: return L("Authorization received. End the Windows session to finish signing in here.")

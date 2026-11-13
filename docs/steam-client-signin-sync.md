@@ -6,7 +6,8 @@
 ## 数据流程
 
 1. Wine `crypt32` 补丁仅匹配
-   `C:\Program Files\Steam Client\Steam.exe`，大小写不敏感。
+   `C:\Program Files\Steam Client\Steam.exe` 和
+   `C:\Program Files\Steam Client32\Steam.exe`，大小写不敏感。
    在 `CryptProtectData` 成功保存凭据，或 `CryptUnprotectData` 成功恢复凭据后，
    只在最多 64 KiB 的本次 DPAPI 数据中提取完整 JWT，兼容原始、带前缀或包装的
    UTF-8／UTF-16LE 数据；仅把令牌片段交给私有 unixlib 回调，不传包装或相邻内容。
@@ -38,6 +39,21 @@
 SteamClient 刷新令牌要求 `client`、`derive`；客户端刷新令牌的访问令牌刷新接口
 需要认证 CM 上下文，不能作为独立 HTTPS 验证入口。
 CM 消息由项目既有的 `CMsgClientLogon` 与 `CMsgClientLogonResponse` 实现处理。
+
+## 游戏库和商店的手动重读
+
+两个页面右上角提供“读取 Steam 登录”按钮，共用原有同步器。
+按钮优先检查当前选择的客户端目录；该客户端没有当前账号记录时，再检查另一位数的安装。
+账号记录不可读或出现多个 MostRecent 用户时停止，不据此猜选另一个账号。
+
+手动操作会重新读取 `loginusers.vdf` 和设备钥匙串中待同步的授权；也可重新验证与该账号
+匹配的现有 App 客户端授权。账号文件只提供账号选择信息，不是可直接导入的登录凭据。
+有匹配候选时仍需等待 Windows 会话结束，并通过原有 CM 校验后才更新 App 登录。
+重复点击不会并行建立验证连接；手动重读属于用户明确授权，可重试 App 退出后受抑制的同步。
+
+界面分别显示未安装、无当前账号、缺少可复用授权、等待 Windows 结束、验证中、成功或失败。
+缺少交接授权时提示先运行 Windows Steam 恢复登录，再结束会话重试；按钮不自动启动 Windows，
+也不解密扫描客户端缓存或显示凭据。全局同步开关关闭时保持关闭并说明原因。
 
 ## 与 Madeira Dock 的区别
 

@@ -19,6 +19,7 @@ enum SteamInstallPaths {
     /// The library folder, relative to drive_c (the value `DockGame.library` has).
     static let libraryRelative = "Program Files (x86)/Steam/steamapps"
     static let clientLibraryRelative = "Program Files/Steam Client/steamapps"
+    static let client32LibraryRelative = "Program Files/Steam Client32/steamapps"
 
     static func steamApps(drive: URL) -> URL { drive.appendingPathComponent(libraryRelative, isDirectory: true) }
     static func common(drive: URL) -> URL { steamApps(drive: drive).appendingPathComponent("common", isDirectory: true) }
@@ -27,7 +28,7 @@ enum SteamInstallPaths {
     /// Madeira downloads into, and so can be updated or removed here.
     /// A library on an external drive (drive_c/External/<name>/...) counts too.
     static func isManaged(library: String) -> Bool {
-        if [libraryRelative, clientLibraryRelative].contains(where: { library.caseInsensitiveCompare($0) == .orderedSame }) { return true }
+        if [libraryRelative, clientLibraryRelative, client32LibraryRelative].contains(where: { library.caseInsensitiveCompare($0) == .orderedSame }) { return true }
         guard let parts = try? ExternalStoragePath.components(library) else { return false }
         return parts.count >= 3 && parts[0] == "External" && parts.last == "steamapps"
     }
@@ -121,15 +122,34 @@ enum SteamInstallFiles {
         let recordURL = try target("appmanifest_\(appID).acf")
         var shared: [URL] = []
         if let state = record(appID: appID, steamApps: root) {
+            guard let dir = state["installdir"]?.string,
+                  dir.caseInsensitiveCompare(folderName) == .orderedSame else {
+                throw CocoaError(.fileWriteInvalidFileName)
+            }
             for (_, owner) in (state["SharedDepots"]?.fields ?? [:]).sorted(by: { $0.key < $1.key }).prefix(64) {
                 guard let ownerID = owner.string.flatMap({ Int($0) }), ownerID > 0, ownerID != appID else { continue }
                 let ownerURL = try target("appmanifest_\(ownerID).acf")
                 guard let ownerState = record(appID: ownerID, steamApps: root),
                       let dir = ownerState["installdir"]?.string else { continue }
+                // A separately installed owner keeps its own record and files.
                 let mine = Set((state["SharedDepots"]?.fields ?? [:]).filter { $0.value.string == owner.string }.map { $0.key })
                 let held = Set((ownerState["InstalledDepots"]?.fields ?? [:]).keys)
-                guard dir.caseInsensitiveCompare(folderName) == .orderedSame || held.isSubset(of: mine) else { continue }
+                guard dir.caseInsensitiveCompare(folderName) == .orderedSame,
+                      !held.isEmpty, held.isSubset(of: mine) else { continue }
                 shared.append(ownerURL)
+            }
+        }
+        // Some Steam apps share one install directory. Refuse to remove its
+        // payload while another app outside this install's owner records uses it.
+        let removedRecords = Set((shared + [recordURL]).map { $0.lastPathComponent.lowercased() })
+        for name in try fm.contentsOfDirectory(atPath: root.path) {
+            let lower = name.lowercased()
+            guard lower.hasPrefix("appmanifest_"), lower.hasSuffix(".acf"), !removedRecords.contains(lower),
+                  let id = Int(lower.dropFirst("appmanifest_".count).dropLast(4)),
+                  let state = record(appID: id, steamApps: root), let dir = state["installdir"]?.string else { continue }
+            guard dir.caseInsensitiveCompare(folderName) != .orderedSame else {
+                throw NSError(domain: "SteamInstall", code: 1, userInfo: [NSLocalizedDescriptionKey:
+                    L("Another Steam app uses this install folder. Uninstall it through Windows Steam.")])
             }
         }
         // Missing targets are already removed; every other I/O failure is real.

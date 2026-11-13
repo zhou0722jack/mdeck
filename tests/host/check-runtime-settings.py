@@ -112,6 +112,25 @@ let values = MadeiraConfig.parse(freshText)
 expect(values == ["pool":"1152", "swap-mb":"4096", "env.MADEIRA_SWAP_COVERAGE":"classic", "donor-pool-mb":"6144"],
        "1152 MB JIT, auto VRAM, 4 GB swap, large allocations, 6 GB donor, donor-only WOW, Fastsync and eco off")
 expect(!MadeiraConfig.installMdeckRuntimeDefaults(at: fresh), "defaults are installed once")
+expect(MadeiraConfig.installPerformanceLogDefaults(at: fresh), "new performance logging switch defaults to off")
+let quiet = MadeiraConfig.parse(try! String(contentsOf: fresh, encoding: .utf8))
+expect(quiet["env.MADEIRA_PROBES"] == "0" && quiet["env.MADEIRA_FRAME_STATS"] == "0" && quiet["pool"] == "1152",
+       "performance defaults disable samplers without changing runtime memory settings")
+let original = "# keep notes\npool = 896\nenv.WINEDEBUG = trace+process\nenv.MADEIRA_PROBES = 1\nenv.MADEIRA_PROBES=0\n"
+let profiling = PerformanceLogSettings.text(original, enabled: true)
+expect(PerformanceLogSettings.enabled(global: quiet, profile: profiling), "profile overrides global defaults with the lightweight preset")
+expect(PerformanceLogSettings.enabled(global: quiet, profile: "env.MADEIRA_PROBES = 1\n"), "an existing full manual profiler is shown as enabled")
+expect(PerformanceLogSettings.enabled(global: quiet, profile: "env.MADEIRA_FRAME_STATS = 1\n"), "an existing frame-only preset is shown as enabled")
+expect(profiling.contains("# keep notes") && profiling.contains("pool = 896") && profiling.contains("env.WINEDEBUG = trace+process"),
+       "the switch preserves comments, memory settings and separate Wine logging choices")
+expect(profiling.components(separatedBy: "env.MADEIRA_PROBES").count == 2, "switch removes duplicate preset keys")
+let off = PerformanceLogSettings.text(profiling, enabled: false)
+expect(!PerformanceLogSettings.enabled(global: quiet, profile: off) && MadeiraConfig.parse(off)["env.MADEIRA_PROBES"] == "0"
+       && MadeiraConfig.parse(off)["env.MADEIRA_FRAME_STATS"] == "0", "off stops the preset's counters and frame logging")
+expect(PerformanceLogSettings.text(profiling, enabled: true) == profiling, "repeated enabling is idempotent")
+try! profiling.write(to: fresh, atomically: true, encoding: .utf8)
+expect(!MadeiraConfig.installPerformanceLogDefaults(at: fresh) && (try! String(contentsOf: fresh, encoding: .utf8)) == profiling,
+       "upgrade preserves manually selected performance logging")
 let upgraded = docs.appendingPathComponent("upgrade-defaults/madeira.cfg")
 try! FileManager.default.createDirectory(at: upgraded.deletingLastPathComponent(), withIntermediateDirectories: true)
 let oldGlobal = "# keep my notes\npool = 512\npool = 896\nvram-mb = 2048\nswap-mb = 2048\nswap-min-mb = 1\nswap-min-kb = 64\nswap-mode = 2\nenv.MADEIRA_SWAP_MIN_KB = 64\nenv.MADEIRA_SWAP_COVERAGE = broad\ndonor-pool-mb = 4096\nswap-wow64 = 1\ninproc-sync = 1\nenv.MADEIRA_FASTSYNC = 0\neco = 1\nd3d9 = wined3d\nenv.CUSTOM = keep\n"
@@ -152,6 +171,13 @@ settings = lib[lib.index('struct RuntimeMemorySyncSettings: View'):lib.index('st
 display = lib[lib.index('struct DisplayRateSettings: View'):lib.index('struct RuntimeMemorySyncSettings: View')]
 engine = block(lib, 'enum SyncEngine: String, CaseIterable, Identifiable')
 detail = lib[lib.index('struct LibraryDetail: View'):lib.index('struct RuntimeMemorySyncSettings: View')]
+check('Toggle("Performance logging"' in detail and 'PerformanceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)' in detail
+      and 'PerformanceLogSettings.text(file.text, enabled: enabled)' in detail
+      and '.accessibilityIdentifier("steam-performance-logging")' in detail,
+      'Steam advanced settings read and persist the standalone performance preset')
+app_source = (root / 'app/Madeira/MadeiraApp.swift').read_text()
+check(app_source.index('MadeiraConfig.installMdeckRuntimeDefaults()') < app_source.index('MadeiraConfig.installPerformanceLogDefaults()')
+      < app_source.index('SteamClientSignInSync.shared.start()'), 'sampling defaults initialize before runtime startup')
 apply_env = block(lib, 'func applyEnvironment()')
 entry = block(lib, 'struct LibraryEntry: Codable, Identifiable')
 check('return inproc == nil ? .fastsync : .wine' in engine, 'fastsync is the engine unless madeira.cfg says otherwise')

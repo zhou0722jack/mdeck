@@ -1,6 +1,82 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Performance logging": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "性能日志" } } }
+    },
+    "The performance logging setting could not be saved.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法保存性能日志设置，请重试。" } } }
+    },
+    "Collect lightweight CPU, thread, memory and supported frame statistics. Takes effect the next time Steam starts. Extended logging and live logs are separate.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "记录轻量 CPU、线程、内存及支持的帧统计，下次启动 Steam 时生效。扩展日志和实时日志分别控制。" } } }
+    },
+    "Delete game": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "删除游戏" } } }
+    },
+    "Delete game?": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "删除游戏？" } } }
+    },
+    "Deleting game…": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "正在删除游戏…" } } }
+    },
+    "Game deleted": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "游戏已删除" } } }
+    },
+    "Delete %@? Game files, mods and saves inside its install folder, and local game settings will be deleted. Saves stored elsewhere and Steam account ownership are kept.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "确定删除“%@”吗？将删除游戏安装文件、安装目录内的模组和存档，以及本地游戏设置。保留安装目录外的存档和 Steam 账号中的游戏所有权。" } } }
+    },
+    "%@ has been removed from this device. You can download it again from your Steam library.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已从此设备删除“%@”。你可以在 Steam 游戏库中重新下载。" } } }
+    },
+    "End the Windows session before deleting a game.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "请先结束 Windows 运行会话，再删除游戏。" } } }
+    },
+    "Another Steam app uses this install folder. Uninstall it through Windows Steam.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "另一个 Steam 应用也在使用此安装目录，请在 Windows Steam 中卸载，避免删除共享文件。" } } }
+    },
+    "The installed Steam account selection could not be read safely. Open that Steam client and select your account, then try again.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法可靠读取已安装 Steam 的当前账号，请在该 Steam 客户端中选择账号后重试。" } } }
+    },
+    "Read Steam sign-in": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "读取 Steam 登录" } } }
+    },
+    "Recheck the installed Windows Steam sign-in.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "重新读取已安装的 Windows Steam 登录信息。" } } }
+    },
+    "Steam sign-in sync is disabled. Enable it before reading the installed Steam sign-in.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 登录同步已关闭，请先启用同步，再读取已安装 Steam 的登录信息。" } } }
+    },
+    "No selected account was found in the installed Steam. Sign in there once, then try again.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "未找到已安装 Steam 的当前账号，请先在 Windows Steam 中登录一次，再重试。" } } }
+    },
+    "No installed Windows Steam client was found. Start Steam once to prepare it.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "未找到已安装的 Windows Steam，请先启动 Steam 完成准备。" } } }
+    },
+    "The installed Steam account was found, but no reusable authorization is available. Open Windows Steam to restore its sign-in, end the Windows session, then try again.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已找到 Steam 账号记录，但没有可复用的登录授权。请打开 Windows Steam 恢复登录，结束 Windows 会话后重试。" } } }
+    },
+    "Installed Steam sign-in reread successfully.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "已重新读取并验证 Steam 登录。" } } }
+    },
     "32-bit": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "32 位" } } }
