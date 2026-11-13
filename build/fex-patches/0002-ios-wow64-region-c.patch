@@ -1,4 +1,5 @@
 diff --git a/FEXCore/include/FEXCore/Utils/IOSJITRegions.h b/FEXCore/include/FEXCore/Utils/IOSJITRegions.h
+new file mode 100644
 --- /dev/null
 +++ b/FEXCore/include/FEXCore/Utils/IOSJITRegions.h
 @@ -0,0 +1,57 @@
