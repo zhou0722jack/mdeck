@@ -15,6 +15,11 @@ def block(source, header):
     return source[start:end]
 
 client=(ROOT/'app/Madeira/SteamClient.swift').read_text().split('\n/// Global preferences',1)[0]
+prefix_check=block(client,'    static func registerClientPath(')
+assert 'LibraryModel.prefix' in prefix_check and 'drive.deletingLastPathComponent()' not in prefix_check
+prepare=block(client,'    @MainActor static func prepareSelectedClient(')
+assert prepare.index('try prepareWindowsPrefix()') < prepare.index('if selected == .x64')
+assert 'static var prefix: URL { documents.appendingPathComponent("wine", isDirectory: true) }' in (ROOT/'app/Madeira/Library.swift').read_text()
 assert '["c:", "madeira", "installers", "steambootstrap.exe"]' in (ROOT/'app/Madeira/GameRecommendations.swift').read_text()
 build=(ROOT/'tools/build-ipa.sh').read_text()
 assert build.index('setup-llvm-mingw.sh') < build.index('build/steam-bootstrap/build.sh') < build.index('package-ipa.sh')
@@ -41,20 +46,34 @@ final class LibraryModel {
     static let shared=LibraryModel();var entries:[LibraryEntry]=[]
     var current:UUID?;var activeEntry:LibraryEntry?;var error:String?
     static var drive=URL(fileURLWithPath:"/tmp")
+    static var prefix=URL(fileURLWithPath:"/tmp/unused-prefix")
     static func inspect(_ url:URL)throws->(bits:Int,other:Int){(try SteamClient64Bootstrap.is64BitExecutable(at:url) ? 64 : 32,0)}
 }
 enum LibraryError:Error{case message(String)}
 // RUNTIME_UNPACKER
 enum ExternalDrives { static var steamLibraries:[String]{[]} }
-final class LogStore{static let shared=LogStore();func log(_ value:String){}}
+final class LogStore{static let shared=LogStore();var messages:[String]=[];func log(_ value:String){messages.append(value)}}
 @MainActor final class DeckSteamLaunchPreparation {
     static let shared=DeckSteamLaunchPreparation()
     var awaitingClientImage = false
     func runtimeFailure(_ message:String,session:UUID){}
     func clientPreparationProgress(_ message:String,fraction:Double){}
 }
-func wine_process_is_running()->Int32{0}
+var fixtureRunning:Int32=0
+var fixtureSeedCalls=0
+var fixtureSeedFails=false
+func wine_process_is_running()->Int32{fixtureRunning}
 func wineserver_is_running()->Int32{0}
+func madeira_seed_prefix_if_needed(_ path:String){
+    fixtureSeedCalls+=1
+    if fixtureSeedFails{return}
+    let prefix=URL(fileURLWithPath:path),fm=FileManager.default
+    try! fm.createDirectory(at:prefix.appendingPathComponent("drive_c"),withIntermediateDirectories:true)
+    for name in ["system.reg","user.reg"]{
+        try! "WINE REGISTRY Version 2\n\n".write(to:prefix.appendingPathComponent(name),atomically:true,encoding:.utf8)
+    }
+    try! Data().write(to:prefix.appendingPathComponent(".update-timestamp"))
+}
 struct winios_steam_setup_progress{var step:Int32=4;var percent:Int32=63;var blocked:Int32=0}
 func winios_steam_setup_snapshot(_ value:UnsafeMutablePointer<winios_steam_setup_progress>){}
 func winios_steam_setup_reset(){}
@@ -73,21 +92,78 @@ func winios_steam_setup_reset(){}
         precondition(SteamClient.clientDirectory == SteamClient32Bootstrap.directory)
         precondition(SteamClient.launchArguments().contains("-cef-force-32bit"))
         precondition(SteamClient.launchArguments().contains("-nobootstrapperupdate"))
+        // Build 29's first Win32 snapshot could create drive_c before Wine
+        // ever seeded its hives. Initializing that prefix must retain the client.
+        let fresh=root.appendingPathComponent("fresh-prefix")
+        let freshDownloaded=fresh.appendingPathComponent("drive_c/Program Files/Steam Client32/fixture.bin")
+        try fm.createDirectory(at:freshDownloaded.deletingLastPathComponent(),withIntermediateDirectories:true)
+        try Data("download retained".utf8).write(to:freshDownloaded)
+        LibraryModel.prefix=fresh
+        try SteamClient.prepareWindowsPrefix()
+        precondition(fixtureSeedCalls==1)
+        precondition(fm.fileExists(atPath:fresh.appendingPathComponent("system.reg").path))
+        let retained=try Data(contentsOf:freshDownloaded)
+        precondition(retained==Data("download retained".utf8))
+        try SteamClient.prepareWindowsPrefix();precondition(fixtureSeedCalls==1)
+        fixtureRunning=1
+        do{try SteamClient.prepareWindowsPrefix();preconditionFailure("running session accepted")}
+        catch SteamRuntimeFiles.Failure.activeSession{}
+        fixtureRunning=0
+        // A damaged existing prefix must never be replaced by the full template.
+        try fm.removeItem(at:fresh.appendingPathComponent("user.reg"))
+        do{try SteamClient.prepareWindowsPrefix();preconditionFailure("missing stamped hive accepted")}
+        catch SteamRuntimeFiles.Failure.prefixMissing{}
+        precondition(fixtureSeedCalls==1)
+        precondition(LogStore.shared.messages.contains{$0.contains("registry missing after initialization: user.reg")})
+        let brokenHive=fresh.appendingPathComponent("user.reg")
+        try Data("invalid registry fixture".utf8).write(to:brokenHive)
+        do{try SteamClient.prepareWindowsPrefix();preconditionFailure("invalid hive header accepted")}
+        catch SteamRuntimeFiles.Failure.prefixMissing{}
+        let brokenPreserved=try Data(contentsOf:brokenHive)
+        precondition(brokenPreserved==Data("invalid registry fixture".utf8) && fixtureSeedCalls==1)
+        let unstamped=root.appendingPathComponent("unstamped-prefix")
+        try fm.createDirectory(at:unstamped,withIntermediateDirectories:true)
+        let userHive=unstamped.appendingPathComponent("user.reg")
+        let userContent="WINE REGISTRY Version 2\n\n[Fixture]\n\"account\"=\"synthetic-preserved\"\n"
+        try userContent.write(to:userHive,atomically:true,encoding:.utf8)
+        LibraryModel.prefix=unstamped
+        do{try SteamClient.prepareWindowsPrefix();preconditionFailure("existing unstamped hive overwritten")}
+        catch SteamRuntimeFiles.Failure.conflict{}
+        let preservedHive=try String(contentsOf:userHive,encoding:.utf8)
+        precondition(preservedHive==userContent && fixtureSeedCalls==1)
+        LibraryModel.prefix=root.appendingPathComponent("failed-seed")
+        fixtureSeedFails=true
+        do{try SteamClient.prepareWindowsPrefix();preconditionFailure("failed seeding accepted")}
+        catch SteamRuntimeFiles.Failure.prefixMissing{}
+        fixtureSeedFails=false
+        precondition(fixtureSeedCalls==2)
         let registryPrefix=root.appendingPathComponent("registry-fixture")
         let registryDrive=registryPrefix.appendingPathComponent("drive_c")
         try fm.createDirectory(at:registryDrive,withIntermediateDirectories:true)
         let initialHive="WINE REGISTRY Version 2\n\n[Fixture] 1\n\"keep\"=\"unchanged\"\n"
         for name in ["system.reg","user.reg"] { try initialHive.write(to:registryPrefix.appendingPathComponent(name),atomically:true,encoding:.utf8) }
+        try Data().write(to:registryPrefix.appendingPathComponent(".update-timestamp"))
+        LibraryModel.prefix=registryPrefix
         LibraryModel.drive=registryDrive
         try SteamClient.registerClientPath()
         let x86Hive=try String(contentsOf:registryPrefix.appendingPathComponent("user.reg"),encoding:.utf8)
         precondition(x86Hive.contains("Steam Client32")&&x86Hive.contains("unchanged"))
         defaults.set("64",forKey:SteamClient.architectureKey)
+        // A resolved C: drive can live outside the real prefix. Do not open
+        // registry hives beside that drive, or seed its parent by mistake.
+        let externalVolume=root.appendingPathComponent("external-volume")
+        LibraryModel.drive=externalVolume.appendingPathComponent("windows-drive")
+        try fm.createDirectory(at:LibraryModel.drive,withIntermediateDirectories:true)
+        let foreignHive=externalVolume.appendingPathComponent("user.reg")
+        try Data("unrelated volume".utf8).write(to:foreignHive)
         try SteamClient.registerClientPath()
+        let foreign=try Data(contentsOf:foreignHive)
+        precondition(foreign==Data("unrelated volume".utf8) && fixtureSeedCalls==2)
         let x64Hive=try String(contentsOf:registryPrefix.appendingPathComponent("user.reg"),encoding:.utf8)
         precondition(!x64Hive.contains("Steam Client32")&&x64Hive.contains("unchanged"))
         let registryFiles=try fm.contentsOfDirectory(atPath:registryPrefix.path)
         precondition(registryFiles.filter{$0.hasSuffix(".bak")}.count==4)
+        print("PASS: fresh prefix initialized before client registration; downloaded client retained; failed/stamped/unstamped/running prefixes protected; redirected drive never supplies registry location")
         LibraryModel.drive=root
         defer{for (key,value) in zip(keys,savedDefaults){defaults.set(value,forKey:key)}}
         precondition(SteamClient.windowsExecutable=="C:\\Program Files\\Steam Client\\Steam.exe")

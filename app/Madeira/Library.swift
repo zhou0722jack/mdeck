@@ -982,6 +982,9 @@ struct LibraryPublication {
 final class LibraryModel: ObservableObject {
     static let shared = LibraryModel()
     static let documents: URL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    /// Registry hives belong to the Wine prefix, even when drive_c resolves
+    /// to a different directory. Keep this paired with the native bridge.
+    static var prefix: URL { documents.appendingPathComponent("wine", isDirectory: true) }
     /// drive_c with its symlinks resolved. Resolving stats every path component, and the new grid reads this for each card
     /// that appears, so with it on the answer is kept once the folder exists (until then each read looks again). With it
     /// off every read resolves, as it always did.

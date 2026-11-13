@@ -344,6 +344,7 @@ struct DeckSteamSetupStatus {
                             self.startAfterPreparation(id)
                         } catch {
                             guard self.presented, self.phase == .components, self.requestID == id else { return }
+                            LogStore.shared.log("[steam-loading] client preparation failed: " + error.localizedDescription)
                             self.fail(error.localizedDescription)
                         }
                     }

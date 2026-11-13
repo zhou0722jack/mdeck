@@ -223,6 +223,9 @@ enum SteamClient {
         guard selected == architecture, wine_process_is_running() == 0, wineserver_is_running() == 0 else {
             throw LibraryError.message(L("A session is already running."))
         }
+        // Client preparation now installs a complete Win32 snapshot before a
+        // Wine session. A fresh drive_c can exist without any registry yet.
+        try prepareWindowsPrefix()
         if selected == .x64 { try await prepare64BitBootstrap() }
         else {
             try await SteamClient32Bootstrap.prepare(drive: LibraryModel.drive) { index, count in
@@ -240,10 +243,46 @@ enum SteamClient {
         if installed { try registerClientPath() }
     }
 
+    static func prepareWindowsPrefix() throws {
+        guard wine_process_is_running() == 0, wineserver_is_running() == 0 else {
+            throw SteamRuntimeFiles.Failure.activeSession
+        }
+        let fm = FileManager.default, prefix = LibraryModel.prefix
+        let names = ["system.reg", "user.reg"]
+        let stamped = fm.fileExists(atPath: prefix.appendingPathComponent(".update-timestamp").path)
+        let present = names.map { fm.fileExists(atPath: prefix.appendingPathComponent($0).path) }
+        LogStore.shared.log("[steam-prefix] preflight stamped=\(stamped) system=\(present[0]) user=\(present[1]) source=wine-prefix")
+        if !stamped {
+            // The seeder extracts a whole template. Never run it over an
+            // existing unstamped registry/account to make this check pass.
+            guard !present.contains(true) else {
+                LogStore.shared.log("[steam-prefix] existing unstamped registry preserved; template extraction refused")
+                throw SteamRuntimeFiles.Failure.conflict
+            }
+            LogStore.shared.log("[steam-prefix] initializing fresh Windows environment before client preparation")
+            madeira_seed_prefix_if_needed(prefix.path)
+        }
+        for name in names {
+            let file = prefix.appendingPathComponent(name)
+            guard fm.fileExists(atPath: file.path) else {
+                LogStore.shared.log("[steam-prefix] registry missing after initialization: " + name)
+                throw SteamRuntimeFiles.Failure.prefixMissing
+            }
+            let header = try FileHandle(forReadingFrom: file)
+            defer { try? header.close() }
+            let bytes = try header.read(upToCount: 64) ?? Data()
+            guard String(decoding: bytes, as: UTF8.self).hasPrefix("WINE REGISTRY Version 2") else {
+                LogStore.shared.log("[steam-prefix] registry header invalid; existing file preserved: " + name)
+                throw SteamRuntimeFiles.Failure.prefixMissing
+            }
+        }
+    }
+
     /// Discovery keys follow the selected client before a session starts.
     /// Preserve the previous hives; never alter login/cache/license values.
     static func registerClientPath() throws {
-        let fm = FileManager.default, prefix = LibraryModel.drive.deletingLastPathComponent()
+        try prepareWindowsPrefix()
+        let fm = FileManager.default, prefix = LibraryModel.prefix
         let backup = UUID().uuidString
         var changes: [(URL, String, String)] = []
         for (name, machine) in [("system.reg", true), ("user.reg", false)] {
@@ -261,6 +300,7 @@ enum SteamClient {
             for (file, old, _) in changes { try? old.write(to: file, atomically: true, encoding: .utf8) }
             throw error
         }
+        LogStore.shared.log("[steam-prefix] Steam discovery paths registered for " + architecture.rawValue + "-bit client")
     }
 
     @MainActor static func prepare64BitBootstrap() async throws {
