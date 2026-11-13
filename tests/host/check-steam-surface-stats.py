@@ -210,6 +210,6 @@ assert surface.count('winios_surface_stats_finish') == 4, 'allocation failure, n
 assert 'winios_surface_stats_configure' not in source[source.index('void winios_window_census_enable('):source.index('int winios_window_census(')]
 assert bridge.index('unsetenv("MADEIRA_STEAM_SURFACE_STATS")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
 assert bridge.index('winios_surface_stats_configure(e && *e && strcmp(e, "0"));') > bridge.index('dup2(logfd, STDERR_FILENO);')
-assert re.search(r'g_wine_running = 0;\s+winios_surface_stats_configure\(0\);', bridge)
+assert len(re.findall(r'winios_surface_stats_configure\(0\);\s+g_wine_running = 0;', bridge)) == 2, 'normal and rejected-argument exits stop sampling'
 assert 'python3 tests/host/check-steam-surface-stats.py' in workflow
 print('PASS integration: independent lifecycle, all surface exits accounted for, environment precedence and checks-only workflow')

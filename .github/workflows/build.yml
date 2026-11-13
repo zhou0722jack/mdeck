@@ -43,6 +43,8 @@ jobs:
       - name: Check native frontend integration
         run: |
           python3 tests/host/check-native-deck.py
+          python3 tests/host/check-steam-surface-stats.py
+          python3 tests/host/check-runtime-settings.py
           python3 tests/host/check-deck-startup.py
           python3 tests/host/check-steam-loading-artwork.py
           python3 tests/host/check-app-entry-jit.py
@@ -71,8 +73,6 @@ jobs:
           python3 tests/host/check-frontend.py
           python3 tests/host/check-real-suspend-game.py
           python3 tests/host/check-game-recommendations.py
-          python3 tests/host/check-runtime-settings.py
-          python3 tests/host/check-steam-surface-stats.py
           python3 tests/host/check-desktop-button-click.py
           python3 tests/host/check-desktop-applications.py
           python3 tests/host/check-chinese-fonts.py

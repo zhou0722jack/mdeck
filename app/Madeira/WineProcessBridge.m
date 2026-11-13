@@ -2731,8 +2731,8 @@ static void *wine_process_thread(void *arg) {
             }
         }
 
-        g_wine_running = 0;
         winios_surface_stats_configure(0);
+        g_wine_running = 0;
         /* ml1184: these belong to the launch that just ended; a later session in this app
          * run gets its own from its game, or madeira.cfg's. */
         unsetenv("MADEIRA_FASTSYNC"); unsetenv("MADEIRA_FASTSYNC_SEM");
