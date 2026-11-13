@@ -428,9 +428,9 @@ static int ios_pool_skip_pieces( size_t lo, size_t hi, size_t h1_off, size_t h1_
  * them too. What still has to know about C is everything that asks "is this
  * address in the pool?" for code: the signal and Mach handlers, NtContinue's
  * native resume, the carve free and lookup, the warmer, Wine's free-area scan and
- * the tripwires; they call ios_jit_low_contains / ios_jit_low_rw_contains. WoW64
- * processes never get a C carve: their FEX refuses an executable allocation
- * outside [WINE_IOS_JIT_RX, +SIZE) (AllocatorHooks.h). Without the env var the
+ * the tripwires; they call ios_jit_low_contains / ios_jit_low_rw_contains. The
+ * Madeira FEX patch validates C as a separate allowed RX interval for WoW64 too.
+ * Without the env var the
  * size is 0 and every test below is false. */
 uintptr_t ios_jit_low_rx_global, ios_jit_low_rw_global;
 size_t ios_jit_low_size_global;
@@ -18990,7 +18990,7 @@ static inline int mprotect_exec( void *base, size_t size, int unix_prot )
                             ios_jit_low_size_global = (size_t)lsz;
                             dprintf( 2, "[pool-low] madeira-bcd region C RX [0x%llx,0x%llx) RW [%p,%p) (%llu MB) at the "
                                      "pool's RX->RW distance: FEX code buffers are carved here first, the pool "
-                                     "tail takes over when it is full; WoW64 processes keep the tail\n",
+                                     "tail takes over when it is full; ARM64EC and WoW64 use C\n",
                                      (unsigned long long)lrx, (unsigned long long)(lrx + lsz), (void *)lrw,
                                      (void *)(lrw + (uintptr_t)lsz), (unsigned long long)(lsz >> 20) );
                         }
@@ -34431,9 +34431,9 @@ NTSTATUS WINAPI NtAllocateVirtualMemoryEx( HANDLE process, PVOID *ret, SIZE_T *s
         size_t alloc_size = (*size_ptr + 0x3FFF) & ~0x3FFFUL;
         /* madeira-bcd pool-low: region C (ios_jit_low_rx_global) serves this carve
          * first when it still has room; the pool's budget cap below only applies to
-         * what goes to the tail. Never for a WoW64 process: its FEX refuses an
-         * executable allocation outside the pool span. */
-        int low_ok = ios_jit_low_size_global && !ios_wow_base();
+         * what goes to the tail. Both FEX paths validate C as a separate region
+         * with the pool's RX-to-RW distance (build/fex-patches). */
+        int low_ok = ios_jit_low_size_global != 0;
         int low_fits = low_ok && alloc_size <= IOS_POOL_LOW_CARVE_MAX &&
                        alloc_size <= ios_jit_low_size_global &&
                        ios_jit_low_reserved <= ios_jit_low_size_global - alloc_size;

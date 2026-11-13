@@ -1,0 +1,190 @@
+diff --git a/FEXCore/include/FEXCore/Utils/IOSJITRegions.h b/FEXCore/include/FEXCore/Utils/IOSJITRegions.h
+--- /dev/null
++++ b/FEXCore/include/FEXCore/Utils/IOSJITRegions.h
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: MIT
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++#include <limits>
++
++namespace FEXCore::Allocator::IOSJIT {
++struct Range {
++  uintptr_t Base {};
++  size_t Size {};
++
++  bool Valid() const {
++    return Base && Size && Size <= std::numeric_limits<uintptr_t>::max() - Base;
++  }
++
++  bool Contains(uintptr_t Address, size_t Bytes) const {
++    return Valid() && Bytes && Bytes <= Size && Address >= Base && Address - Base <= Size - Bytes;
++  }
++};
++
++inline bool Allowed(Range Main, Range Low, uintptr_t Address, size_t Bytes) {
++  return Main.Contains(Address, Bytes) || Low.Contains(Address, Bytes);
++}
++
++inline bool Hex(const char*& Text, uintptr_t& Value) {
++  Value = 0;
++  if (Text[0] == '0' && (Text[1] == 'x' || Text[1] == 'X')) Text += 2;
++  unsigned Digits = 0;
++  for (;;) {
++    const unsigned char C = *Text;
++    const unsigned Digit = C >= '0' && C <= '9' ? C - '0' :
++                           C >= 'a' && C <= 'f' ? C - 'a' + 10 :
++                           C >= 'A' && C <= 'F' ? C - 'A' + 10 : 16;
++    if (Digit == 16) return Digits != 0;
++    if (++Digits > sizeof(uintptr_t) * 2 || Value > (std::numeric_limits<uintptr_t>::max() - Digit) / 16) return false;
++    Value = Value * 16 + Digit;
++    ++Text;
++  }
++}
++
++// C is a separate RX interval below the main pool, with the same RX-to-RW
++// distance. Never widen the main interval across the executable window.
++inline bool ParseLow(const char* Text, Range Main, uintptr_t MainRW, Range& Low) {
++  Low = {};
++  if (!Text || !*Text) return true;
++  uintptr_t Base = 0, Size = 0;
++  if (!Main.Valid() || !Range {MainRW, Main.Size}.Valid() ||
++      !Hex(Text, Base) || *Text++ != ':' || !Hex(Text, Size) || *Text) return false;
++  const Range Candidate {Base, Size};
++  if (!Candidate.Valid() || Base < 0x100000000ULL || (Base & 0x3fff) || (Size & 0x3fff) || Size < 0x1000000 ||
++      Base >= Main.Base || Size > Main.Base - Base || MainRW < Main.Base - Base) return false;
++  if (!Range {MainRW - (Main.Base - Base), Size}.Valid()) return false;
++  Low = Candidate;
++  return true;
++}
++}
+diff --git a/FEXCore/include/FEXCore/Utils/AllocatorHooks.h b/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
+--- a/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
++++ b/FEXCore/include/FEXCore/Utils/AllocatorHooks.h
+@@ -3,6 +3,7 @@
+ #include <FEXCore/Utils/CompilerDefs.h>
+ #include <FEXCore/Utils/EnumOperators.h>
+ #include <FEXCore/Utils/LogManager.h>
++#include <FEXCore/Utils/IOSJITRegions.h>
+ 
+ #ifdef _WIN32
+ // Windows
+@@ -66,6 +67,7 @@
+  * WOW64 module at process init (zero until then). See the executable-allocation check below. */
+ extern uintptr_t ios_fex_jit_pool_rx;
+ extern uintptr_t ios_fex_jit_pool_end;
++extern IOSJIT::Range ios_fex_jit_low_region;
+ #endif
+ }
+ 
+@@ -154,14 +156,14 @@
+ #if defined(FEX_IOS_HOST) && !defined(ARCHITECTURE_arm64ec)
+   void* Ret = ::VirtualAlloc2(nullptr, Base, Size, Flags, Execute ? PAGE_EXECUTE_READWRITE : PAGE_READWRITE,
+                               Execute ? &Parameter : nullptr, Execute ? 1 : 0);
+-  /* An executable allocation outside the JIT pool is unusable, and silently so: it is not
+-   * executable on iOS and its `+ WriteOffset` alias does not exist, so the first emit would store
+-   * into nothing. Refuse it here, at the one place every code buffer comes from. */
++  /* Accept only the published main RX interval or the independently validated C
++   * interval. Ordinary memory and a range crossing the executable window remain
++   * invalid even when its endpoints happen to touch two allowed intervals. */
+   if (Execute && Ret && ios_fex_jit_pool_rx) {
+     const uintptr_t Addr = reinterpret_cast<uintptr_t>(Ret);
+-    if (Addr < ios_fex_jit_pool_rx || Addr + Size > ios_fex_jit_pool_end) {
+-      LogMan::Msg::EFmt("[jit-pool] exec allocation outside the pool: [{:#x}, {:#x}) is not in [{:#x}, {:#x}) - refusing", Addr,
+-                        Addr + Size, ios_fex_jit_pool_rx, ios_fex_jit_pool_end);
++    const IOSJIT::Range Main {ios_fex_jit_pool_rx, ios_fex_jit_pool_end - ios_fex_jit_pool_rx};
++    if (!IOSJIT::Allowed(Main, ios_fex_jit_low_region, Addr, Size)) {
++      LogMan::Msg::EFmt("[jit-pool] exec allocation outside main/C regions: address={:#x} size={:#x} - refusing", Addr, Size);
+       ::VirtualFree(Ret, 0, MEM_RELEASE);
+       return nullptr;
+     }
+diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
+--- a/Source/Windows/WOW64/Module.cpp
++++ b/Source/Windows/WOW64/Module.cpp
+@@ -17,6 +17,7 @@
+ #include <FEXCore/HLE/SyscallHandler.h>
+ #include <FEXCore/Config/Config.h>
+ #include <FEXCore/Utils/Allocator.h>
++#include <FEXCore/Utils/IOSJITRegions.h>
+ #include <FEXCore/Utils/LogManager.h>
+ #include <FEXCore/Utils/Threads.h>
+ #include <FEXCore/Utils/Profiler.h>
+@@ -168,6 +169,9 @@
+  * FEXCore::DualMap::WriteOffset, from the same two environment variables. */
+ extern "C" uintptr_t ios_fex_jit_pool_rx;
+ extern "C" uintptr_t ios_fex_jit_pool_end;
++extern "C" {
++FEXCore::Allocator::IOSJIT::Range ios_fex_jit_low_region {};
++}
+ #endif
+ 
+ namespace ControlBits {
+@@ -1282,20 +1286,26 @@
+                                rw_env ? rw_env : "(null)", rx_env ? rx_env : "(null)");
+     }
+     FEXCore::DualMap::WriteOffset = static_cast<int64_t>(rw - rx);
+-    /* MADEIRA: publish the pool's RX range for FEXCore::Allocator::VirtualAlloc, which refuses an
+-     * executable allocation outside it. The write offset alone is not enough to detect the SIXTH
+-     * DEVICE RUN failure - it is applied unconditionally, to whatever buffer it is handed, so a
+-     * buffer allocated outside the pool produces an unmapped write target instead of an error.
+-     * A missing size disables the check rather than failing the launch: the offset, which is
+-     * mandatory, is validated above. */
++    /* Publish the main pool and optional C as separate allowed intervals. The
++     * host has already verified C's executable mapping and its matching RW alias.
++     * A malformed C declaration must stop initialization before InitCore emits. */
+     if (pool_size) {
++      if (!FEXCore::Allocator::IOSJIT::Range {static_cast<uintptr_t>(rx), static_cast<size_t>(pool_size)}.Valid()) {
++        IOS_WOW64_REPORT_AND_DIE("[FEX-iOS][wow64] invalid main JIT pool range");
++      }
+       ios_fex_jit_pool_rx = static_cast<uintptr_t>(rx);
+       ios_fex_jit_pool_end = static_cast<uintptr_t>(rx + pool_size);
+     }
++    const char* low_env = getenv("WINE_IOS_JIT_TAIL_REGION");
++    if (!FEXCore::Allocator::IOSJIT::ParseLow(low_env, {static_cast<uintptr_t>(rx), static_cast<size_t>(pool_size)},
++                                            static_cast<uintptr_t>(rw), ios_fex_jit_low_region)) {
++      IOS_WOW64_REPORT_AND_DIE("[FEX-iOS][wow64] invalid region C; JIT initialization refused");
++    }
+     LogMan::Msg::EFmt("[FEX-iOS][wow64] fast-write enabled (WriteOffset={:#x} RW={:#x} RX={:#x} pool=[{:#x}, {:#x})) guest_window={:#x}",
+                       FEXCore::DualMap::WriteOffset, rw, rx, ios_fex_jit_pool_rx, ios_fex_jit_pool_end, GuestWindow::Base);
+-    IosRawReport("E [jit-pool] wow64 exec allocations restricted to RX [{:#x}, {:#x}) (WriteOffset={:#x}, SIZE={})",
+-                 ios_fex_jit_pool_rx, ios_fex_jit_pool_end, FEXCore::DualMap::WriteOffset, size_env ? size_env : "(null)");
++    IosRawReport("E [jit-pool] wow64 main RX [{:#x}, {:#x}); region C RX [{:#x}, {:#x}) (WriteOffset={:#x})",
++                 ios_fex_jit_pool_rx, ios_fex_jit_pool_end, ios_fex_jit_low_region.Base,
++                 ios_fex_jit_low_region.Base + ios_fex_jit_low_region.Size, FEXCore::DualMap::WriteOffset);
+   }
+ #endif
+ 
+diff --git a/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp b/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp
+--- a/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp
++++ b/FEXCore/Source/Utils/ArchHelpers/Arm64.cpp
+@@ -10,6 +10,7 @@
+ #include <FEXCore/Utils/Telemetry.h>
+ #include <FEXCore/Utils/ArchHelpers/Arm64.h>
+ #include <FEXCore/Utils/DualMap.h>
++#include <FEXCore/Utils/IOSJITRegions.h>
+ 
+ #include <atomic>
+ #include <cstdint>
+@@ -410,6 +411,7 @@
+    * forwarded because they are WINE-prefixed). Read once. */
+   static uint64_t RxBase = 0;
+   static uint64_t RxSize = 0;
++  static FEXCore::Allocator::IOSJIT::Range LowRX {};
+   static bool Probed = false;
+   if (!Probed) {
+     Probed = true;
+@@ -417,9 +419,12 @@
+     const char* SzEnv = getenv("WINE_IOS_JIT_SIZE");
+     RxBase = RxEnv ? strtoull(RxEnv, nullptr, 16) : 0;
+     RxSize = SzEnv ? strtoull(SzEnv, nullptr, 16) : 0;
++    const char* RwEnv = getenv("WINE_IOS_JIT_RW");
++    const uint64_t MainRW = RwEnv ? strtoull(RwEnv, nullptr, 16) : 0;
++    FEXCore::Allocator::IOSJIT::ParseLow(getenv("WINE_IOS_JIT_TAIL_REGION"), {RxBase, RxSize}, MainRW, LowRX);
+   }
+   /* ml656: not the fixed pool -> try the anonymous alias table before giving up. */
+-  if (!RxBase || !RxSize || Addr < RxBase || Addr >= RxBase + RxSize) {
++  if (!FEXCore::Allocator::IOSJIT::Allowed({RxBase, RxSize}, LowRX, Addr, Size ? Size : 16)) {
+     const uint64_t Rw = IosMonoResolveRW(Addr, Size ? Size : 16);
+     if (Rw) {
+       static unsigned n;

@@ -26,7 +26,7 @@ the split-pool helpers) with AddressSanitizer/UBSan and checks:
     alone it would fall back to layout 1;
   - a build-374-shaped model: without C the tail carves eat the pool's head room and
     the head fails; with C every carve lands in C, the head gets the whole span, and
-    WoW64 carves still go to the tail;
+    ARM64EC and WoW64 carves both use C;
 and textually that every "is this JIT code?" decision in virtual_ios.c,
 signal_arm64_ios.c and server_ios.c that the audit found asks about region C, and that
 the app takes C only on request and exports it only when it has it.
@@ -64,10 +64,10 @@ assert native.index('const char *big = getenv( "MADEIRA_POOL_BIG_SLOT_MB" );') <
 
 ec = native[native.index('size_t alloc_size = (*size_ptr + 0x3FFF) & ~0x3FFFUL;'):]
 ec = ec[:ec.index('size_t pool_tail_off = ios_jit_pool_size_global - reserve_offset - alloc_size;')]
-assert 'int low_ok = ios_jit_low_size_global && !ios_wow_base();' in ec, 'WoW64 never gets a C carve'
+assert 'int low_ok = ios_jit_low_size_global != 0;' in ec, 'both paths may use a validated C region'
 assert 'if (alloc_size > cap && !low_fits) {' in ec, 'the tail cap does not refuse what C can take'
 assert ec.count('(low_ok || !ios_tail_carve_in_low( ios_tail_carves[') == 2, \
-    'a freed C carve is neither reused by nor counted for a WoW64 process'
+    'free C carves participate in reuse and budget accounting when C is enabled'
 low_carve = ec[ec.index('if (low_ok)\n'):]
 assert ec.index('/* ml438 (#74): serve from the free-list first') < ec.index('if (low_ok)\n') < \
     ec.index('size_t reserve_offset, tail_added, tail_skipped = 0;'), 'reuse first, then C, then the tail'
@@ -225,7 +225,8 @@ static unsigned low_carves, tail_carves;
 static int code_alloc( size_t size, int wow )
 {
     size_t loff, cur = tail_resv, start, off;
-    int low_ok = ios_jit_low_size_global && !wow;
+    int low_ok = ios_jit_low_size_global != 0;
+    (void)wow;
     if (low_ok && size <= IOS_POOL_LOW_CARVE_MAX &&
         ios_pool_low_take( &ios_jit_low_reserved, ios_jit_low_size_global, size, &loff ))
     {
@@ -350,9 +351,9 @@ int main( void )
         if (lc != 7 || tc != 0) FAIL("with C: %u C carves, %u tail carves\n", low_carves, tail_carves);
         if (with < without + 7 * 16 - 16) FAIL("head %zu MB with C vs %zu MB without\n", with, without);
         wow = gta374( 1, 2 );
-        if (low_carves != 3 || tail_carves != 4) FAIL("WoW64 carves went to C (%u C, %u tail)\n", low_carves, tail_carves);
+        if (low_carves != 7 || tail_carves != 0) FAIL("mixed ARM64EC/WoW64 carves did not use C (%u C, %u tail)\n", low_carves, tail_carves);
         printf("PASS: build 374 shape: head %zu MB without region C, %zu MB with it (%zu C carves, %zu tail); "
-               "WoW64 carves stay in the tail (head %zu MB)\n", without, with, lc, tc, wow);
+               "mixed ARM64EC/WoW64 carves use C (head %zu MB)\n", without, with, lc, tc, wow);
     }
     return 0;
 }

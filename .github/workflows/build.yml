@@ -5,12 +5,18 @@ on:
     branches: [main, 'codex/pr-build-*']
   pull_request:
   workflow_dispatch:
+    inputs:
+      build_ipa:
+        description: 'Compile and package an IPA (only when explicitly requested)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ipa-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ipa-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.build_ipa && 'build' || 'check' }}
   cancel-in-progress: true
 
 # A complete IPA cache is scoped by the checked-out tree and build environment.
@@ -21,14 +27,15 @@ jobs:
   plan:
     runs-on: xcode-27
     outputs:
+      build: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ipa && 'true' || 'false' }}
       ipa: ${{ steps.key.outputs.ipa }}
       reuse: ${{ steps.ipa.outputs.cache-hit }}
       sdk: ${{ steps.sdk.outputs.key }}
       ipaenv: ${{ steps.sdk.outputs.ipa }}
     steps:
       - uses: actions/checkout@v4
-      - name: Fetch pinned Wine diagnostic sources
-        run: git submodule update --init --depth 1 wine
+      - name: Fetch pinned runtime sources for checks
+        run: git submodule update --init --depth 1 wine FEX
       - name: Check Simplified Chinese localization
         run: python3 tests/host/check-localization.py
       - name: Check bundled Steam installer
@@ -41,6 +48,9 @@ jobs:
           python3 tests/host/check-app-entry-jit.py
           python3 tests/host/check-abc-jit-probe.py
           python3 tests/host/check-entry-jit-pool.py
+          python3 tests/host/check-wow64-region-c.py
+          python3 tests/host/check-pool-low.py
+          python3 tests/host/check-ci-check-only.py
           python3 tests/host/check-wine-diagnostic-startup.py
           python3 tests/host/check-crt-callsite-diagnostics.py
           python3 tests/host/check-opengl-wow64-teb.py
@@ -84,6 +94,7 @@ jobs:
       - id: key
         run: echo "ipa=ipa-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.sdk.outputs.ipa }}-$(git rev-parse 'HEAD^{tree}')" >> "$GITHUB_OUTPUT"
       - id: ipa
+        if: github.event_name == 'workflow_dispatch' && inputs.build_ipa
         uses: actions/cache/restore@v4
         with:
           key: ${{ steps.key.outputs.ipa }}
@@ -92,7 +103,7 @@ jobs:
 
   reuse:
     needs: plan
-    if: needs.plan.outputs.reuse == 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse == 'true'
     runs-on: xcode-27
     env:
       MADEIRA_PLANNED_SDK: ${{ needs.plan.outputs.sdk }}
@@ -121,7 +132,7 @@ jobs:
 
   llvm:
     needs: plan
-    if: needs.plan.outputs.reuse != 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse != 'true'
     runs-on: xcode-27
     env:
       MADEIRA_PLANNED_SDK: ${{ needs.plan.outputs.sdk }}
@@ -161,7 +172,7 @@ jobs:
 
   fex:
     needs: plan
-    if: needs.plan.outputs.reuse != 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse != 'true'
     runs-on: xcode-27
     env:
       MADEIRA_PLANNED_SDK: ${{ needs.plan.outputs.sdk }}
@@ -201,7 +212,7 @@ jobs:
 
   i386:
     needs: plan
-    if: needs.plan.outputs.reuse != 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse != 'true'
     runs-on: xcode-27
     env:
       MADEIRA_PLANNED_SDK: ${{ needs.plan.outputs.sdk }}
@@ -251,7 +262,7 @@ jobs:
 
   runtime:
     needs: [plan, llvm]
-    if: needs.plan.outputs.reuse != 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse != 'true'
     runs-on: xcode-27
     timeout-minutes: 360
     strategy:
@@ -296,7 +307,7 @@ jobs:
 
   app:
     needs: [plan, llvm, fex, i386, runtime]
-    if: needs.plan.outputs.reuse != 'true'
+    if: needs.plan.outputs.build == 'true' && needs.plan.outputs.reuse != 'true'
     runs-on: xcode-27
     env:
       MADEIRA_PLANNED_SDK: ${{ needs.plan.outputs.sdk }}
