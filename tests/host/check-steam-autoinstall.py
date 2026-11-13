@@ -236,6 +236,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-setup-') as tmp:
                     '-I',str(ROOT/'build/win32u-unix'),str(file)],check=True)
     method=source[source.index('    static func configureSession('):source.index('    static func cancelPreparation(')]
     preferences=source[source.index('    static let bigPictureKey ='):source.index('    /// One controller owns')]
+    architecture=source[source.index('    enum Architecture:'):source.index('    static let installerID')]
     swift=Path(tmp)/'Session.swift'
     swift.write_text('''import Foundation
 struct LibraryEntry { var id: Int; var steamClientAppID: Int?; var steamAppID: Int?; var arguments = ""; var desktop: Bool? }
@@ -246,14 +247,15 @@ enum SteamClient {
     static let clientID=2
     static let clientArguments="-no-cef-sandbox -cef-disable-gpu -language schinese"
     static func owns(_ entry:LibraryEntry)->Bool { entry.id==1 || entry.id==2 }
-''' + preferences + method + r'''}
+''' + architecture + preferences + method + r'''}
 @main struct Check {
     static func main() {
         let defaults=UserDefaults.standard
-        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClientRuntimeFailure.runKey]
+        let keys=[SteamClient.bigPictureKey,SteamClient.argumentsKey,SteamClient.architectureKey,SteamClientRuntimeFailure.runKey]
         let saved=keys.map{defaults.object(forKey:$0)}
         defer{for (key,value) in zip(keys,saved){defaults.set(value,forKey:key)}}
         defaults.set(false,forKey:SteamClient.bigPictureKey)
+        defaults.set("64",forKey:SteamClient.architectureKey)
         defaults.set(SteamClient.clientArguments,forKey:SteamClient.argumentsKey)
         unsetenv("MADEIRA_CHILD_ARGS"); unsetenv("MADEIRA_STEAM_AUTOINSTALL"); unsetenv("MADEIRA_STEAM_RUN_ID")
         SteamClient.configureSession(LibraryEntry(id:3))
@@ -285,6 +287,13 @@ enum SteamClient {
         precondition(SteamClient.compatibilityArguments(flags)==flags)
         let nested=SteamClient.compatibilityArguments("-name \"x -cef-disable-gpu y\"")
         precondition(nested.hasSuffix(" -no-cef-sandbox -cef-disable-gpu"))
+        defaults.set("32",forKey:SteamClient.architectureKey)
+        SteamClient.configureSession(LibraryEntry(id:2))
+        let x86Args=String(cString:getenv("MADEIRA_CHILD_ARGS"))
+        precondition(x86Args.contains("-cef-force-32bit") && x86Args.contains("-nobootstrapperupdate"))
+        defaults.set("64",forKey:SteamClient.architectureKey)
+        SteamClient.configureSession(LibraryEntry(id:2))
+        precondition(!String(cString:getenv("MADEIRA_CHILD_ARGS")).contains("-cef-force-32bit"))
         print("PASS: production Swift config guarantees Steam compatibility flags and controlled setup, scopes non-Steam entries and deduplicates switches")
     }
 }
