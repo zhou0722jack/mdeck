@@ -5,11 +5,12 @@ diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interfa
  
 +#include <FEXCore/Utils/SteamCompileReason.h>
  #include "Common/JitSymbols.h"
-@@ -416,2 +417,3 @@
+@@ -416,3 +417,4 @@
    [[nodiscard]]
 -  GenerateIRResult GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst);
 +  GenerateIRResult GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst,
 +                              FEXCore::CompileReason::Capture* Reason = nullptr);
+ 
 diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
 --- a/FEXCore/Source/Interface/Core/Core.cpp
 +++ b/FEXCore/Source/Interface/Core/Core.cpp
