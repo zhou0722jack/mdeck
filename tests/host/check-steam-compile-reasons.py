@@ -223,6 +223,9 @@ int main(void){
  sr_fingerprint_block(&f,0x10000);sr_fingerprint_inst(&f,0x10000,code,1);
  struct sr_ticket ticket=sr_begin(cr_bridge,1,0xe8,0x23c,1);
  assert(sr_finish(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,10,SR_GENERATED,24000));
+ sr_buffer_record(cr_bridge,(struct sr_buffer_event){.epoch=epoch,.instance=1,.owner=5,.generation=10,
+     .reason=SR_BUFFER_INITIAL,.ticks=cr_bridge->started_ticks});
+ assert(cr_bridge->buffer_count==1);
  cr_report(epoch,cr_started,cr_begun_start,cr_dropped_start,"fixture-complete");
  struct cr_report r;assert(cr_snapshot(cr_bridge,epoch,&r)&&r.kind[SR_FIRST].count==1);
  assert(sr_lock(cr_bridge));assert(!cr_snapshot(cr_bridge,epoch,&r));sr_unlock(cr_bridge);
