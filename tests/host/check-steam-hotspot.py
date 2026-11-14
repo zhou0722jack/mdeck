@@ -78,11 +78,6 @@ static int f_dladdr(const void*,Dl_info*);
 static int f_lock(pthread_mutex_t*);
 static int f_log(int,const char*,...);
 static int f_create(pthread_t*,const pthread_attr_t*,void*(*)(void*),void*);
-pthread_key_t ios_teb_tls_key;
-void *ios_jit_rx_base_global=(void*)0x140000000ull;
-size_t ios_jit_pool_size_global=0x10000000;
-int ios_jit_low_contains(uintptr_t a){assert(!held);return a>=0x120000000ull&&a<0x130000000ull;}
-int ios_jit_pool_image_pc(uintptr_t a,uintptr_t *out){assert(!held);if(a==0x140010000ull){*out=0x7200100000ull;return 1;}return 0;}
 #define task_threads f_tasks
 #define thread_info f_info
 #define thread_suspend f_suspend
@@ -101,6 +96,11 @@ int ios_jit_pool_image_pc(uintptr_t a,uintptr_t *out){assert(!held);if(a==0x1400
 #include "steam_hotspot.c"
 #undef pthread_mutex_lock
 #undef dprintf
+pthread_key_t ios_teb_tls_key;
+void *ios_jit_rx_base_global=(void*)0x140000000ull;
+size_t ios_jit_pool_size_global=0x10000000;
+int ios_jit_low_contains(uintptr_t a){assert(!held);return a>=0x120000000ull&&a<0x130000000ull;}
+int ios_jit_pool_image_pc(uintptr_t a,uintptr_t *out){assert(!held);if(a==0x140010000ull){*out=0x7200100000ull;return 1;}return 0;}
 static kern_return_t f_tasks(task_t task,thread_act_array_t *out,mach_msg_type_number_t *n){(void)task;assert(!held);static thread_t list[]={1,2,3,4,5,6};*out=list;*n=6;round_no++;return 0;}
 static kern_return_t f_info(thread_act_t t,thread_flavor_t flavor,thread_info_t out,mach_msg_type_number_t *n){(void)n;assert(!held);
  if(flavor==THREAD_IDENTIFIER_INFO){thread_identifier_info_t i=(void*)out;memset(i,0,sizeof(*i));i->thread_id=100+t;return 0;}
