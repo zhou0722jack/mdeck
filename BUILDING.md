@@ -59,6 +59,24 @@ includes component pins and build scripts. A reused IPA must pass the ZIP and
 bundle-layout checks before upload. GitHub's branch and PR cache access rules
 still apply; an unrelated branch's cache is not a shared artifact store.
 
+The `plan` job only calculates environment/IPA keys and looks up the IPA cache;
+it does not fetch Wine/FEX or run the host suite. Host checks run in three
+parallel `checks` groups (frontend, runtime, build), alongside the native
+component jobs. Both final app packaging and cached IPA delivery depend on
+all check groups succeeding. A failed group blocks delivery even if a component
+has already finished building. Automatic/check-only runs still skip product
+compilation; only a manual request with `build_ipa=true` enables it.
+
+Each check group saves a small pass receipt only after every listed check
+succeeds. An exact Git tree (including tests, recipes and submodule pins),
+build environment, macOS version, Swift compiler and Python version match can
+reuse it; there are no prefix fallbacks. Restored receipts are validated against
+the current tree and complete group list before accepting them. Changes to any
+tracked file invalidate the receipts. Set the manual `rerun_checks` input to
+force a fresh run. On a cache miss each check logs its elapsed time and adds a
+timing table to the workflow summary. Check groups and ordering are declared in
+`tools/build/ci-check-groups.json`; no previous preflight check was removed.
+
 On an IPA cache miss, the workflow builds the native stages in parallel. Their
 cache keys include the relevant source pins, recipes and build environment.
 Unrelated workflow edits do not invalidate LLVM or FEX. CI accepts a complete
