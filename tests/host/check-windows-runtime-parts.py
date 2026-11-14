@@ -36,6 +36,7 @@ class PartTests(unittest.TestCase):
         self.previous = parts.ROOT
         parts.ROOT = self.root
         self.write('tools/build/runtime-components.json', json.dumps(real_contract).encode())
+        self.write('.gitignore', b'wine/\ndxmt/\n.runtime-cache/\n')
         for file in ['tools/build/runtime-components.py', 'tools/check-wine-media-dlls.py',
                      'build/windows-runtime/parts.py', 'build/windows-runtime/targets.py']:
             self.write(file, (ROOT / file).read_bytes())
