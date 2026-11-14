@@ -125,7 +125,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-stages-') as tmp:
     subprocess.run(['git','-C',str(work),'apply','--reverse','--check',str(patches/'0003-steam-hotspot-stages.patch')],check=True)
     dep = work/'FEXCore/include/FEXCore/Utils'
     dep.mkdir(parents=True,exist_ok=True)
-    for header in ['SteamProbe.h','steam_probe_abi.h']:
+    for header in ['SteamProbe.h','steam_probe_abi.h','SteamCompileReason.h','steam_compile_reason_abi.h']:
         shutil.copyfile(patches/header,dep/header)
     # Executable control fixture uses the shipped header in both PE macro paths.
     src=work/'probe.cpp';src.write_text(program)

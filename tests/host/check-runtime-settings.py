@@ -175,6 +175,18 @@ expect(allocationOff.components(separatedBy: SteamAllocationLogSettings.key).cou
        && allocationOff.contains("# keep me") && allocationOff.contains("pool=1152")
        && !SteamAllocationLogSettings.enabled(global: [SteamAllocationLogSettings.key: "1"], profile: allocationOff),
        "allocation switch deduplicates its own key, preserves unrelated settings and overrides global on")
+expect(!SteamCompileReasonSettings.enabled(global: [:], profile: ""), "compilation reason logging defaults off")
+let reasonOn = SteamCompileReasonSettings.text("# keep\npool=1152\nenv.MADEIRA_STEAM_COMPILE_REASONS=0\nenv.MADEIRA_STEAM_COMPILE_REASONS=1\n", enabled: true)
+expect(SteamCompileReasonSettings.enabled(global: [:], profile: reasonOn)
+       && reasonOn.components(separatedBy: SteamCompileReasonSettings.key).count == 2
+       && reasonOn.contains("# keep") && reasonOn.contains("pool=1152"), "compilation log key deduplicates and preserves unrelated options")
+expect(SteamCompileReasonSettings.text(reasonOn, enabled: true) == reasonOn, "compilation logging writes are idempotent")
+expect(!SteamCompileReasonSettings.enabled(global: [SteamCompileReasonSettings.key:"1"], profile: SteamCompileReasonSettings.text(reasonOn, enabled: false)), "compilation logging profile off overrides global")
+expect(!SteamHotspotSettings.enabled(global: [:], profile: reasonOn)
+       && !SteamAllocationLogSettings.enabled(global: [:], profile: reasonOn)
+       && !SteamSurfaceLogSettings.enabled(global: [:], profile: reasonOn), "compile reason logging is independent of hotspot/window/allocation switches")
+expect(SteamCompileReasonSettings.enabled(global: [SteamCompileReasonSettings.key:"1"], profile:""), "global compilation logging is inherited")
+expect(!SteamCompileReasonSettings.enabled(global: [SteamCompileReasonSettings.key:"true"], profile:""), "compilation logger accepts exact 1 only")
 expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
 let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
 expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)

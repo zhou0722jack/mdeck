@@ -1,6 +1,22 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Compilation reason logging": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "编译原因日志" } } }
+    },
+    "Stop compilation reason logging": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "停止编译原因日志" } } }
+    },
+    "The compilation logging setting could not be saved.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法保存编译原因日志设置。" } } }
+    },
+    "Off by default. On the next Steam launch, log first observed compilations, changed code and matching code compiled into a new generation for up to 45 seconds. Independent of CEF hotspot capture; unavailable history is reported as unknown.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "默认关闭。下次启动 Steam 后，记录首次观察到的编译、代码内容变化，以及相同内容编入新一代的情况，最多持续 45 秒。独立于 CEF 热点检测；历史信息不足时显示为无法判定。" } } }
+    },
     "The cache lookup setting could not be saved.": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法保存缓存查找设置。" } } }

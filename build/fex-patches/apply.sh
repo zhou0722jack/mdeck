@@ -26,10 +26,12 @@ if [ "${1:-}" = --revert ]; then
     done
     rm -f "$F/FEXCore/include/FEXCore/Utils/SteamProbe.h" "$F/FEXCore/include/FEXCore/Utils/steam_probe_abi.h"
     rm -f "$F/FEXCore/include/FEXCore/Utils/L1CacheIndex.h" "$F/FEXCore/include/FEXCore/Utils/L1CacheIndexEmitter.h"
+    rm -f "$F/FEXCore/include/FEXCore/Utils/SteamCompileReason.h" "$F/FEXCore/include/FEXCore/Utils/steam_compile_reason_abi.h"
     exit 0
 fi
 cp "$R/build/fex-patches/SteamProbe.h" "$R/build/fex-patches/steam_probe_abi.h" "$F/FEXCore/include/FEXCore/Utils/"
 cp "$R/build/fex-patches/L1CacheIndex.h" "$R/build/fex-patches/L1CacheIndexEmitter.h" "$F/FEXCore/include/FEXCore/Utils/"
+cp "$R/build/fex-patches/SteamCompileReason.h" "$R/build/fex-patches/steam_compile_reason_abi.h" "$F/FEXCore/include/FEXCore/Utils/"
 for p in "${patches[@]}"; do
     if git -C "$F" apply --reverse --check "$p" 2>/dev/null; then
         echo "fex-patches: $(basename "$p") already applied"

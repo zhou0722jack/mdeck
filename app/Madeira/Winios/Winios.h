@@ -96,6 +96,7 @@ void winios_allocation_stats_configure(int enabled);
 /* Independent finite CEF PC capture; prepare on App.init's main thread. */
 void winios_hotspot_prepare(void);
 void winios_hotspot_stop(void);
+void winios_compile_reason_stop(void);
 /* Ends a Dock session: explorer's desktop is asked to close (its own thread posts WM_CLOSE). */
 void winios_close_desktop(void);
 int winios_desktop_point_from_window(double wx, double wy, int *px, int *py);

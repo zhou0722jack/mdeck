@@ -1,0 +1,105 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -3,2 +3,3 @@
+ 
++#include <FEXCore/Utils/SteamCompileReason.h>
+ #include "Common/JitSymbols.h"
+@@ -416,2 +417,3 @@
+   [[nodiscard]]
+-  GenerateIRResult GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst);
++  GenerateIRResult GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst,
++                              FEXCore::CompileReason::Capture* Reason = nullptr);
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -879,2 +879,3 @@
+-ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst) {
++ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst,
++                        FEXCore::CompileReason::Capture* Reason) {
+   FEXCORE_PROFILE_SCOPED("GenerateIR");
+@@ -975,2 +976,3 @@
+       const FEXCore::Frontend::Decoder::DecodedBlocks& Block = CodeBlocks->at(j);
++      if (Reason) Reason->Block(Block.Entry);
+ 
+@@ -1016,2 +1018,3 @@
+         DecodedInfo = &Block.DecodedInstructions[i];
++        if (Reason) Reason->Instruction(InstAddress, DecodedInfo->InstBytes, DecodedInfo->InstSize);
+ 
+@@ -1208,2 +1211,3 @@
+   IR::IREmitter* IREmitter = Thread->OpDispatcher.get();
++  if (Reason && HasCustomIR) Reason->Unsupported();
+ 
+@@ -1240,2 +1244,5 @@
+   // [iOS-Madeira] verbose CompileCode logs suppressed — flooding log faster than splash
++  MDECK_COMPILE_CAPTURE(Reason, Thread, GuestRIP, MaxInst,
++      ((uint64_t)Config.Is64BitMode() << 1) | !!Thread->CurrentFrame->State.flags[X86State::RFLAG_TF_RAW_LOC],
++      FEXCore::Utils::WritePriorityMutex::IosUnpublishedCompileActive());
+ 
+@@ -1251,2 +1258,2 @@
+-    GenerateIR(Thread, GuestRIP, Config.GDBSymbols(), MaxInst);
++    GenerateIR(Thread, GuestRIP, Config.GDBSymbols(), MaxInst, Reason.Active() ? &Reason : nullptr);
+   if (!IRView) {
+@@ -1268,2 +1275,3 @@
+       // Raced to compile, release the OpDispatcher IR.
++      Reason.Finish(0, SR_RACED);
+       FEX_MadeiraIRCapClear(); // ml623
+@@ -1284,2 +1292,7 @@
+   auto CompiledCode = Thread->CPUBackend->CompileCode(GuestRIP, Length, TotalInstructions == 1, &*IRView, DebugData.get(), TFSet);
++  if (Reason.Active()) {
++    const auto ReasonEntry = CompiledCode.EntryPoints.find(GuestRIP);
++    Reason.Finish(CompiledCode.MDeckReasonGeneration,
++        CompiledCode.BlockBegin && ReasonEntry != CompiledCode.EntryPoints.end() && ReasonEntry->second ? SR_GENERATED : SR_FAILED);
++  }
+ 
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interface/Core/CPUBackend.h
+--- a/FEXCore/Source/Interface/Core/CPUBackend.h
++++ b/FEXCore/Source/Interface/Core/CPUBackend.h
+@@ -9,2 +9,3 @@
+ #pragma once
++#include <FEXCore/Utils/SteamCompileReason.h>
+ 
+@@ -56,2 +57,3 @@
+     size_t AllocatedSize; // including guard page; see UsableSize()
++    uint64_t MDeckReasonGeneration = 0;
+ 
+@@ -85,2 +87,3 @@
+   public:
++    const uint64_t MDeckReasonOwner = FEXCore::CompileReason::NextId();
+     // Get the CodeBuffer that was most recently allocated.
+@@ -131,2 +134,3 @@
+       size_t Size;
++      uint64_t MDeckReasonGeneration = 0;
+     };
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+--- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
++++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+@@ -588,2 +588,3 @@
+     auto Buffer = fextl::make_shared<CodeBuffer>(Size);
++    Buffer->MDeckReasonGeneration = FEXCore::CompileReason::NextId();
+ 
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -1370,2 +1370,3 @@
+       CodeBuffers.LatestOffset = GetCursorOffset();
++      CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;
+     }
+diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
+--- a/Source/Windows/WOW64/Module.cpp
++++ b/Source/Windows/WOW64/Module.cpp
+@@ -1315,2 +1315,5 @@
+   Context::HandlerConfig.emplace(*CTX);
++#ifdef FEX_IOS_HOST
++  FEXCore::CompileReason::Initialize(getenv("MADEIRA_COMPILE_REASON_BRIDGE"), 1);
++#endif
+   // The tracker speaks host addresses to the OS and converts at its calls into FEXCore.
+diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
+--- a/Source/Windows/ARM64EC/Module.cpp
++++ b/Source/Windows/ARM64EC/Module.cpp
+@@ -1215,2 +1215,5 @@
+   Exception::HandlerConfig.emplace(*CTX);
++#ifdef FEX_IOS_HOST
++  FEXCore::CompileReason::Initialize(getenv("MADEIRA_COMPILE_REASON_BRIDGE"), 2);
++#endif
+ #ifdef FEX_IOS_HOST

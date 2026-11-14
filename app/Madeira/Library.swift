@@ -5009,6 +5009,25 @@ struct LibraryDetail: View {
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Diagnostics") {
+                Toggle("Compilation reason logging", isOn: Binding(get: {
+                    SteamCompileReasonSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamCompileReasonSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The compilation logging setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-compile-reason-logging")
+                Text("Off by default. On the next Steam launch, log first observed compilations, changed code and matching code compiled into a new generation for up to 45 seconds. Independent of CEF hotspot capture; unavailable history is reported as unknown.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if model.current != nil {
+                    Button("Stop compilation reason logging") { winios_compile_reason_stop() }
+                        .accessibilityIdentifier("steam-compile-reason-stop")
+                }
                 Toggle("Steam performance diagnostics", isOn: Binding(get: {
                     SteamSurfaceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
                 }, set: { enabled in

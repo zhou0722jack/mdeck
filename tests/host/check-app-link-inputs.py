@@ -79,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
     archive_head = 'ar rcs "$OBJ_DIR/libntdll_unix.a"'
     archive_command = archive_head + native_build.split(archive_head, 1)[1].split('\n\n', 1)[0]
     members = re.findall(r'"\$OBJ_DIR/([^"/]+\.o)"', archive_command)
-    for member in ['steam_cef_guard.o', 'steam_cef_pools.o', 'steam_hotspot.o']:
+    for member in ['steam_cef_guard.o', 'steam_cef_pools.o', 'steam_hotspot.o', 'steam_compile_log.o']:
         assert members.count(member) == 1, (member, 'required once in production archive')
     export_check = native_build.split('# Verify CEF APIs in the archive,', 1)[1]
     export_check = export_check[export_check.index('cef_symbols='):export_check.index('# End CEF export check.')]
@@ -90,7 +90,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
                    input='void fixture_unused_archive_member(void) {}\n', text=True, check=True)
     for member in members:
         shutil.copyfile(empty, cef / member)
-    for module in ['steam_cef_guard', 'steam_cef_pools', 'steam_hotspot']:
+    for module in ['steam_cef_guard', 'steam_cef_pools', 'steam_hotspot', 'steam_compile_log']:
         subprocess.run(['xcrun', 'clang', '-O2', '-fvisibility=hidden', '-c',
                         str(root / 'build/ntdll-unix' / (module + '.c')), '-o', str(cef / (module + '.o'))], check=True)
     subprocess.run(['bash', '-c', archive_probe, 'cef-archive', str(cef)], check=True)
@@ -101,6 +101,7 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
 #include "steam_cef_guard.h"
 #include "steam_cef_pools.h"
 #include "steam_hotspot.h"
+#include "steam_compile_log.h"
 void madeira_steam_cef_address_failure(const char *run) { (void)run; }
 void madeira_steam_initial_window_failure(const char *run) { (void)run; }
 /* Runtime owners are deliberately placeholders in this archive fixture.
@@ -114,7 +115,8 @@ static volatile const uintptr_t required[] = {
     (uintptr_t)ios_steam_cef_allocation_result, (uintptr_t)ios_steam_cef_process_exit,
     (uintptr_t)ios_steam_cef_spawn_blocked, (uintptr_t)ios_steam_cef_pool_forget,
     (uintptr_t)ios_steam_cef_pool_image, (uintptr_t)ios_steam_cef_pool_reserve,
-    (uintptr_t)ios_steam_hotspot_set_main, (uintptr_t)ios_steam_hotspot_set_active, (uintptr_t)ios_steam_hotspot_configure
+    (uintptr_t)ios_steam_hotspot_set_main, (uintptr_t)ios_steam_hotspot_set_active, (uintptr_t)ios_steam_hotspot_configure,
+    (uintptr_t)ios_steam_compile_log_configure, (uintptr_t)ios_steam_compile_log_set_active
 };
 int main(void) { for (unsigned i=0;i<sizeof(required)/sizeof(required[0]);i++) assert(required[i]); return 0; }
 ''')
@@ -122,14 +124,14 @@ int main(void) { for (unsigned i=0;i<sizeof(required)/sizeof(required[0]);i++) a
                     str(cef / 'libntdll_unix.a'), '-o', str(cef / 'linked')]
     subprocess.run(link_command, check=True)
     subprocess.run([str(cef / 'linked')], check=True)
-    for missing in ['steam_cef_guard.o', 'steam_cef_pools.o', 'steam_hotspot.o']:
+    for missing in ['steam_cef_guard.o', 'steam_cef_pools.o', 'steam_hotspot.o', 'steam_compile_log.o']:
         subprocess.run(['xcrun', 'ar', '-d', str(cef / 'libntdll_unix.a'), missing], check=True)
         absent = subprocess.run(['bash', '-c', export_probe, 'cef-export', str(cef)], capture_output=True, text=True)
         assert absent.returncode != 0 and 'is missing ios_steam_' in absent.stderr, absent.stderr
         absent = subprocess.run(link_command, capture_output=True, text=True)
         assert absent.returncode != 0 and 'Undefined symbols' in absent.stderr, absent.stderr
         subprocess.run(['bash', '-c', archive_probe, 'cef-archive', str(cef)], check=True)
-    print('PASS real production archive contains CEF and hotspot objects and links all nine APIs; omitting any owner fails export and link checks')
+    print('PASS real production archive contains CEF, hotspot and compile-log objects and links all APIs; omitting any owner fails export and link checks')
 
     def run_probe(name, source, flags=()):
         path = folder / name
