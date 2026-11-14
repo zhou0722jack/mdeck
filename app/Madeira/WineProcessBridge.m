@@ -42,6 +42,7 @@
 extern void madeira_prepare_desktop_applications(const char *prefix) __attribute__((weak));
 extern void winios_surface_stats_configure(int enabled);
 extern void winios_allocation_stats_configure(int enabled);
+extern void ios_steam_hotspot_configure(int enabled);
 
 /* Write end of the pipe on fd 0, or -1 when stdin was left alone. The app's
  * host writes the guest's keystrokes here. */
@@ -1885,6 +1886,7 @@ static void *wine_process_thread(void *arg) {
             {
                 unsetenv("MADEIRA_STEAM_SURFACE_STATS"); /* absent in a new profile means off */
                 unsetenv("MADEIRA_STEAM_ALLOC_STATS");
+                unsetenv("MADEIRA_STEAM_HOTSPOT");
                 /* ml1095: "env.NAME = value" lines of madeira.cfg; the legacy
                  * madeira-env.txt (KEY=VALUE lines) only when madeira.cfg is absent. */
                 NSString *text = nil;
@@ -2058,6 +2060,8 @@ static void *wine_process_thread(void *arg) {
             winios_surface_stats_configure(e && *e && strcmp(e, "0"));
             e = getenv("MADEIRA_STEAM_ALLOC_STATS");
             winios_allocation_stats_configure(e && *e && strcmp(e, "0"));
+            e = getenv("MADEIRA_STEAM_HOTSPOT");
+            ios_steam_hotspot_configure(e && *e && strcmp(e, "0"));
         }
 
         /* madeira-stdout-pipe: hand the guest's stdout to a pipe, and leave
@@ -2581,6 +2585,7 @@ static void *wine_process_thread(void *arg) {
         if (extra_argc < 0) {
             dprintf(STDERR_FILENO, "[WineProc] launch rejected: invalid or oversized arguments (parser=%d)\n", extra_argc);
             wine_launched_process_did_exit((int)0xc000000d); /* STATUS_INVALID_PARAMETER */
+            ios_steam_hotspot_configure(0);
             winios_allocation_stats_configure(0);
             winios_surface_stats_configure(0);
             g_wine_running = 0;
@@ -2736,6 +2741,7 @@ static void *wine_process_thread(void *arg) {
             }
         }
 
+        ios_steam_hotspot_configure(0);
         winios_allocation_stats_configure(0);
         winios_surface_stats_configure(0);
         g_wine_running = 0;

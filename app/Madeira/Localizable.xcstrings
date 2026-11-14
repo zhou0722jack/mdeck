@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "CEF hotspot capture": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "CEF 热点检测" } } }
+    },
+    "Stop CEF hotspot capture": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "停止 CEF 热点检测" } } }
+    },
+    "Off by default. On the next Steam start, wait 15 seconds, then sample selected busy CEF and unnamed native threads for up to 30 seconds. Sampling briefly pauses each selected thread; the main thread is excluded. Stops at its sampling budget, when the app becomes inactive, or when the session ends. Sample counts are not CPU percentages.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "默认关闭。下次启动 Steam 后先等待 15 秒，再对选中的 CEF 忙线程和未命名原生线程采样，最多持续 30 秒。采样会短暂暂停选中线程，不采样主线程。达到采样预算、App 失去活动状态或会话结束时自动停止。样本数量不代表 CPU 占比。" } } }
+    },
     "Steam performance diagnostics": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "Steam 专用性能检测" } } }

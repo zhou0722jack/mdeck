@@ -5022,6 +5022,25 @@ struct LibraryDetail: View {
                 .accessibilityIdentifier("steam-allocation-performance-logging")
                 Text("Measure allocation requests, address conflicts, retries and low-address fallback once a second, grouped by thread and request size. Independent of window diagnostics and CPU performance logging. Off by default; takes effect the next time Steam starts.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Toggle("CEF hotspot capture", isOn: Binding(get: {
+                    SteamHotspotSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamHotspotSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The performance logging setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-cef-hotspot-capture")
+                Text("Off by default. On the next Steam start, wait 15 seconds, then sample selected busy CEF and unnamed native threads for up to 30 seconds. Sampling briefly pauses each selected thread; the main thread is excluded. Stops at its sampling budget, when the app becomes inactive, or when the session ends. Sample counts are not CPU percentages.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                if model.current != nil {
+                    Button("Stop CEF hotspot capture") { winios_hotspot_stop() }
+                        .accessibilityIdentifier("steam-cef-hotspot-stop")
+                }
                 Toggle("Performance logging", isOn: Binding(get: {
                     PerformanceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
                 }, set: { enabled in

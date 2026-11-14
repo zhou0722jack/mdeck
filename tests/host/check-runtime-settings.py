@@ -144,6 +144,7 @@ let deduped = SteamSurfaceLogSettings.text(duplicates, enabled: true)
 expect(deduped.components(separatedBy: SteamSurfaceLogSettings.key).count == 2
        && deduped.contains("# keep me") && deduped.contains("pool=1152"), "surface switch removes duplicate keys while keeping notes and unrelated settings")
 expect(!SteamAllocationLogSettings.enabled(global: [:], profile: steamSurface), "existing window diagnostics do not enable allocation timing")
+expect(!SteamHotspotSettings.enabled(global: [:], profile: steamSurface), "CEF hotspot capture defaults off even with window diagnostics")
 for cpuEnabled in [false, true] {
     for windowEnabled in [false, true] {
         for allocationEnabled in [false, true] {
@@ -156,6 +157,15 @@ for cpuEnabled in [false, true] {
                    "CPU, window and allocation switches retain independent values: \(cpuEnabled)/\(windowEnabled)/\(allocationEnabled)")
             expect(SteamAllocationLogSettings.text(independent, enabled: allocationEnabled) == independent,
                    "allocation switch writes are idempotent")
+            for hotspotEnabled in [false, true] {
+                let capture = SteamHotspotSettings.text(independent, enabled: hotspotEnabled)
+                expect(SteamHotspotSettings.enabled(global: [:], profile: capture) == hotspotEnabled
+                       && PerformanceLogSettings.enabled(global: quiet, profile: capture) == cpuEnabled
+                       && SteamSurfaceLogSettings.enabled(global: [:], profile: capture) == windowEnabled
+                       && SteamAllocationLogSettings.enabled(global: [:], profile: capture) == allocationEnabled,
+                       "hotspot switch is independent: \(cpuEnabled)/\(windowEnabled)/\(allocationEnabled)/\(hotspotEnabled)")
+                expect(SteamHotspotSettings.text(capture, enabled: hotspotEnabled) == capture, "hotspot writes are idempotent")
+            }
         }
     }
 }
@@ -165,6 +175,11 @@ expect(allocationOff.components(separatedBy: SteamAllocationLogSettings.key).cou
        && allocationOff.contains("# keep me") && allocationOff.contains("pool=1152")
        && !SteamAllocationLogSettings.enabled(global: [SteamAllocationLogSettings.key: "1"], profile: allocationOff),
        "allocation switch deduplicates its own key, preserves unrelated settings and overrides global on")
+let hotspotOff = SteamHotspotSettings.text("# preserve\npool=1152\nenv.MADEIRA_STEAM_HOTSPOT=1\nenv.MADEIRA_STEAM_HOTSPOT=0\n", enabled: false)
+expect(hotspotOff.components(separatedBy: SteamHotspotSettings.key).count == 2
+       && hotspotOff.contains("# preserve") && hotspotOff.contains("pool=1152")
+       && !SteamHotspotSettings.enabled(global: [SteamHotspotSettings.key: "1"], profile: hotspotOff),
+       "hotspot key deduplicates, preserves unrelated settings and profile off overrides global on")
 try! profiling.write(to: fresh, atomically: true, encoding: .utf8)
 expect(!MadeiraConfig.installPerformanceLogDefaults(at: fresh) && (try! String(contentsOf: fresh, encoding: .utf8)) == profiling,
        "upgrade preserves manually selected performance logging")
@@ -222,6 +237,10 @@ check('Toggle("Steam allocation and retry diagnostics"' in detail
       and 'SteamAllocationLogSettings.text(file.text, enabled: enabled)' in detail
       and '.accessibilityIdentifier("steam-allocation-performance-logging")' in detail,
       'Steam advanced settings expose independent allocation/retry diagnostics')
+check('Toggle("CEF hotspot capture"' in detail and 'SteamHotspotSettings.text(file.text, enabled: enabled)' in detail
+      and '.accessibilityIdentifier("steam-cef-hotspot-capture")' in detail
+      and 'Button("Stop CEF hotspot capture") { winios_hotspot_stop() }' in detail,
+      'Steam advanced settings expose finite hotspot capture and a manual stop action')
 app_source = (root / 'app/Madeira/MadeiraApp.swift').read_text()
 check(app_source.index('MadeiraConfig.installMdeckRuntimeDefaults()') < app_source.index('MadeiraConfig.installPerformanceLogDefaults()')
       < app_source.index('SteamClientSignInSync.shared.start()'), 'sampling defaults initialize before runtime startup')

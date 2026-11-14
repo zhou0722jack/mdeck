@@ -40,6 +40,7 @@
 #include "Winios.h"
 #include "VulkanLayerGeometry.h"
 #include "WiniosSurfaceStats.h"
+#include "../../../build/ntdll-unix/steam_hotspot.h"
 
 static pthread_mutex_t steam_setup_progress_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct winios_steam_setup_progress steam_setup_progress = {0, -1, 0};
@@ -1585,6 +1586,7 @@ void winios_note_game_metal_hwnd(void *hwnd) {
 /* Called at every Wine session start (WineProcessBridge): a game session
  * starts with no overlay windows and no known Metal windows. */
 void winios_session_reset(void) {
+    ios_steam_hotspot_configure(0);
     winios_allocation_stats_configure(0);
     winios_surface_stats_configure(0);
     atomic_fetch_add(&g_desktop_ready_generation, 1);
@@ -1600,6 +1602,22 @@ void winios_session_reset(void) {
         winios_metal_hud_pick();   /* the window-level layer's HUD follows the session kind */
     });
 }
+
+/* Main thread at App.init, before Wine starts. Capture only the identity and
+ * register cancellation: no target is sampled here or on the UIKit thread. */
+void winios_hotspot_prepare(void) {
+    if (!NSThread.isMainThread) return;
+    uint64_t id = 0; pthread_threadid_np(NULL, &id); ios_steam_hotspot_set_main(id);
+    ios_steam_hotspot_set_active(UIApplication.sharedApplication.applicationState == UIApplicationStateActive);
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationWillResignActiveNotification
+            object:nil queue:nil usingBlock:^(NSNotification *note) { (void)note; ios_steam_hotspot_set_active(0); }];
+        [[NSNotificationCenter defaultCenter] addObserverForName:UIApplicationDidBecomeActiveNotification
+            object:nil queue:nil usingBlock:^(NSNotification *note) { (void)note; ios_steam_hotspot_set_active(1); }];
+    });
+}
+void winios_hotspot_stop(void) { ios_steam_hotspot_configure(0); }
 
 /* main thread only */
 static void winios_ensure_compositor(void) {

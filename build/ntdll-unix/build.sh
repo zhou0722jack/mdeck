@@ -76,6 +76,7 @@ compile_one() {
 CRYPTO_DIR="$REPO_ROOT/build/crypto-unix"
 compile_one "$BUILD_DIR/steam_cef_guard.c" "steam_cef_guard"
 compile_one "$BUILD_DIR/steam_cef_pools.c" "steam_cef_pools"
+compile_one "$BUILD_DIR/steam_hotspot.c" "steam_hotspot"
 GNUTLS_PREFIX="$REPO_ROOT/toolchains/gnutls-ios"
 compile_unixlib() {
     local src=$1 name=$2 prefix=$3
@@ -297,7 +298,7 @@ fi
 echo ""
 echo "=== Building libntdll_unix.a ==="
 ar rcs "$OBJ_DIR/libntdll_unix.a" \
-    "$OBJ_DIR/steam_cef_guard.o" "$OBJ_DIR/steam_cef_pools.o" \
+    "$OBJ_DIR/steam_cef_guard.o" "$OBJ_DIR/steam_cef_pools.o" "$OBJ_DIR/steam_hotspot.o" \
     "$OBJ_DIR/audio_null_ios.o" "$OBJ_DIR/madsync.o" "$OBJ_DIR/nsi_unixlib_ios.o" \
     "$OBJ_DIR/nsi_network_ios.o" "$OBJ_DIR/nsi_ndis.o" "$OBJ_DIR/nsi_ip.o" \
     "$OBJ_DIR/gnutls_symtab_ios.o" "$OBJ_DIR/ws2_32_unixlib.o" \
@@ -315,7 +316,8 @@ ar rcs "$OBJ_DIR/libntdll_unix.a" \
 # Verify CEF APIs in the archive, not only their standalone object files.
 cef_symbols=$(xcrun nm -gU "$OBJ_DIR/libntdll_unix.a")
 for symbol in ios_steam_cef_allocation_result ios_steam_cef_process_exit ios_steam_cef_spawn_blocked \
-              ios_steam_cef_pool_forget ios_steam_cef_pool_image ios_steam_cef_pool_reserve; do
+              ios_steam_cef_pool_forget ios_steam_cef_pool_image ios_steam_cef_pool_reserve \
+              ios_steam_hotspot_set_main ios_steam_hotspot_set_active ios_steam_hotspot_configure; do
     if ! grep -Eq "[[:space:]]_${symbol}$" <<<"$cef_symbols"; then
         echo "ERROR: libntdll_unix.a is missing $symbol" >&2
         exit 1
