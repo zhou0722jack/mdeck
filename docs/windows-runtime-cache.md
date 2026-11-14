@@ -1,11 +1,12 @@
 # Windows 运行库分组件缓存
 
 GitHub Actions 继续使用 `runtime (windows)` 作为最终组装任务，但编译和二进制缓存
-按七个来源分别管理，不再因修改 FEX 就从 Wine 开始重新编译整组。
+按来源分别管理，不再因修改 FEX 就从 Wine 开始重新编译整组。
 
 | 单元 | 输出 | 影响缓存的主要输入 |
 | --- | --- | --- |
 | wine | ARM64EC/AArch64 Wine DLL，以及 winevulkan | Wine pin、Wine PE 配方、补丁、输出清单 |
+| wine_imports | 原闭包步骤补齐的 14 个 Wine 依赖 DLL | Wine 键、明确的依赖清单和补充配方 |
 | fex32 | aarch64-windows/xtajit.dll | FEX pin、WoW64 配方、共享 FEX 补丁 |
 | fex64 | arm64ec-windows/xtajit64.dll | FEX pin、ARM64EC 配方、共享 FEX 补丁 |
 | dxmt | DXMT 的 D3D9/10/11、DXGI、winemetal、NVAPI DLL | DXMT pin/补丁、配方、Wine 依赖键 |
@@ -20,7 +21,7 @@ DXMT，再传递到 D3D12，因为它们需要匹配的 Wine/DXMT 导入库。
 
 只有界面变化且运行库输入不变时，应直接复用整组 Windows 成品缓存。整组成品未
 命中时，各单元独立校验/恢复/重建，再组装新的 Windows 清单。第一次采用此结构时
-需要建立七份新缓存；不把旧整组缓存冒充成具有独立来源证明的新缓存。
+需要建立各来源的新缓存；不把旧整组缓存冒充成具有独立来源证明的新缓存。
 
 ## 新 runner 上的构建依赖
 
@@ -40,7 +41,7 @@ workflow 每编完一个单元就立即保存独立缓存，因此后面的 FEX 
 - 最终组装仍检查所有 Wine DLL 导入闭包，不因拆分跳过依赖校验。
 - 出现缺失 DLL 时直接报错，修正 Wine 输出清单后重建；不会在快照之后偷偷编译并
   混入无法追踪来源的文件。
-- App 包内新增 `windows-runtime-parts.json` 记录七个单元的键、依赖和输出哈希；
+- App 包内新增 `windows-runtime-parts.json` 记录各单元的键、依赖和输出哈希；
   外层 `runtime-build.json` 继续绑定完整源树、SDK、运行文件校验值。
 
 验证通过 GitHub Actions 执行。测试使用生产缓存代码和受控的构建命令，验证选择性

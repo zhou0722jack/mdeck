@@ -111,7 +111,7 @@ class PartTests(unittest.TestCase):
             'build/fex-wow64/build.sh': {'fex32'},
             'build/fex-arm64ec/build.sh': {'fex64'},
             'build/dxmt-patches/example.patch': {'dxmt', 'd3d12'},
-            'build/windows-runtime/patches/example.patch': {'wine', 'dxmt', 'd3d12'},
+            'build/windows-runtime/patches/example.patch': {'wine', 'wine_imports', 'dxmt', 'd3d12'},
             'build/faultrep/faultrep.c': {'helpers'},
             'build/luajit-x64/build.sh': {'luajit'},
             'madeira-d3d12/src/pe/test.c': {'d3d12'},
@@ -126,7 +126,7 @@ class PartTests(unittest.TestCase):
             self.assertEqual(changed, expected, path)
             self.write(path, original)
         self.assertTrue(all(k != before[p] for p, k in self.keys('other-sdk').items()))
-        for pin, expected in [('FEX', {'fex32','fex64'}), ('wine', {'wine','dxmt','d3d12'}), ('dxmt', {'dxmt','d3d12'})]:
+        for pin, expected in [('FEX', {'fex32','fex64'}), ('wine', {'wine','wine_imports','dxmt','d3d12'}), ('dxmt', {'dxmt','d3d12'})]:
             self.git('commit', '--allow-empty', '-qm', 'changed pin')
             other = self.git('rev-parse', 'HEAD')
             self.git('update-index', '--cacheinfo', f'160000,{other},{pin}')
@@ -207,7 +207,7 @@ class PartTests(unittest.TestCase):
         self.assertEqual(before, self.keys())
         self.write('app/Madeira/arm64ec-windows/newwine.dll', helpers.pe(0x8664))
         self.git('add', 'app/Madeira/arm64ec-windows/newwine.dll')
-        self.assertEqual({n for n,k in self.keys().items() if k != before[n]}, {'wine','dxmt','d3d12'})
+        self.assertEqual({n for n,k in self.keys().items() if k != before[n]}, {'wine','wine_imports','dxmt','d3d12'})
 
     def test_full_assembly_closure_and_receipt(self):
         self.snapshots()
@@ -220,6 +220,7 @@ class PartTests(unittest.TestCase):
         self.git('add', 'app/Madeira/arm64ec-windows/caller.dll')
         # The producer snapshot validates its files, final assembly checks imports.
         parts.snapshot('wine', self.sdk)
+        parts.snapshot('wine_imports', self.sdk)
         parts.snapshot('dxmt', self.sdk)
         parts.snapshot('d3d12', self.sdk)
         with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'):

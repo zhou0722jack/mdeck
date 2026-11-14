@@ -319,6 +319,7 @@ jobs:
           key: ${{ steps.windows-parts.outputs.wine }}
           path: .runtime-cache/windows-parts/wine
       - name: Restore 32-bit FEX runtime
+        # Source owners below do not invalidate the base Wine cache.
         id: cache-win-fex32
         if: matrix.component == 'windows'
         uses: actions/cache/restore@v4
@@ -360,6 +361,13 @@ jobs:
         with:
           key: ${{ steps.windows-parts.outputs.luajit }}
           path: .runtime-cache/windows-parts/luajit
+      - name: Restore supplemental Wine imports
+        id: cache-win-wine-imports
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.wine_imports }}
+          path: .runtime-cache/windows-parts/wine_imports
       - name: Build or reuse Wine
         if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
         run: python3 build/windows-runtime/parts.py build wine
@@ -369,6 +377,15 @@ jobs:
         with:
           key: ${{ steps.windows-parts.outputs.wine }}
           path: .runtime-cache/windows-parts/wine
+      - name: Build or reuse supplemental Wine imports
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build wine_imports
+      - name: Save completed supplemental Wine imports
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-wine-imports.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.wine_imports }}
+          path: .runtime-cache/windows-parts/wine_imports
       - name: Build or reuse 32-bit FEX
         if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
         run: python3 build/windows-runtime/parts.py build fex32

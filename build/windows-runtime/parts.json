@@ -7,6 +7,14 @@
     "dependencies": [],
     "recipe": "build/windows-runtime/parts/wine.sh"
   },
+  "wine_imports": {
+    "pins": ["wine"],
+    "inputs": ["build/windows-runtime/parts/wine-imports.sh"],
+    "outputs": ["arm64ec-windows/advpack.dll", "arm64ec-windows/bluetoothapis.dll", "arm64ec-windows/evr.dll", "aarch64-windows/advpack.dll", "aarch64-windows/cabinet.dll", "aarch64-windows/cryptsp.dll", "aarch64-windows/dxva2.dll", "aarch64-windows/evr.dll", "aarch64-windows/gdiplus.dll", "aarch64-windows/glu32.dll", "aarch64-windows/inetcomm.dll", "aarch64-windows/mlang.dll", "aarch64-windows/shdocvw.dll", "aarch64-windows/winspool.drv"],
+    "support": [],
+    "dependencies": ["wine"],
+    "recipe": "build/windows-runtime/parts/wine-imports.sh"
+  },
   "fex32": {
     "pins": ["FEX"],
     "inputs": ["tools/build/setup-llvm-mingw.sh", "build/fex-wow64/**", "build/fex-patches/**", "build/windows-runtime/parts/fex32.sh"],
