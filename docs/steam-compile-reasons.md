@@ -59,7 +59,7 @@ Steam 根据保存的开关重新启用。本功能不暂停任何线程。
 留在其所在阶段。因此不能据 `backend_ms`、`decode_ir_ms` 或 `output_ms` 推导 CPU
 占用，也不能声称已经测到所有锁等待。与热点检测的包含式计时不可直接相加。
 
-## GenerateIR 内部分段（当前 ABI v4）
+## GenerateIR 内部分段（当前 ABI v5）
 
 沿用同一个开关、45 秒窗口和完成事件预算。没有给每条 guest 指令增加时钟读取；
 使用调用栈上的 Capture 指针传递上下文，不使用 TLS 或全局“当前编译”指针。
@@ -110,9 +110,9 @@ GenerateIR 总时间。`pass_manager_ms - pass_sum_ms` 是管理/检查/计时�
 新增统计在现有完成事件的 try-lock 内汇总，不增加每个 pass 的共享锁。线程本地
 Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读取新增时钟，不扫描 IR。
 新增每秒输出和快照复制仍有成本，快照放在报告线程堆上，避免扩大工作线程栈占用。
-宿主和 WoW64/ARM64EC 使用 ABI v4 配套 magic/大小，不支持混用旧版本。
+宿主和 WoW64/ARM64EC 使用 ABI v5 配套 magic/大小，不支持混用旧版本。
 
-## RA 抽样分段（ABI v4）
+## RA 抽样分段（ABI v5）
 
 同一开关下，每个 RA pass 实例每 64 次有效调用抽样一次，记录 setup、链校验与修复、
 反向分析、正向分配、cleanup 五段。`[steam-compile-ra]` 的 `samples/returned`、阶段
@@ -121,7 +121,11 @@ Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读
 不能相加或按 64 倍当作精确全量成本。`[steam-compile-ra-work]` 沿现有扫描计数，
 不额外遍历 IR；关闭或非样本不读分段时钟，但仍有条件判断开销。
 
-DFE 临时存储复用不依赖日志开关。容量限制、状态清理、采样边界与验收细节见
+`[steam-compile-ra-detail]` 增加抽样内的溢出 block、spill/fill 请求与实际 IR 发出、
+常量重生成、next-use 扫描节点、合并尝试/成功计数；`[steam-compile-ra-next-use]`
+记录 CalculateNextUses 调用次数及嵌套 wall 时间。它是 forward 子项，不能重复相加。
+
+DFE 临时存储复用由独立的 `env.MADEIRA_FEX_DFE_REUSE` 控制，默认开启，精确 `0` 关闭；不依赖日志开关。容量限制、状态清理、采样边界与验收细节见
 [DFE/RA 说明](steam-dfe-ra.md)。当前版本没有改变 RA 分配算法或移除安全校验。
 
 ## 代码身份、指纹与实例配额

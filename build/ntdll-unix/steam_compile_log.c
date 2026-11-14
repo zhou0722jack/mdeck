@@ -148,6 +148,22 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
             "format=total-max-samples sampled-only=1 reverse-and-forward-may-differ=1 cumulative=1\n",
             (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
             CR_WORK(ra->slots),CR_WORK(ra->blocks),CR_WORK(ra->reverse_nodes),CR_WORK(ra->forward_nodes),CR_WORK(ra->suspect_blocks));
+        dprintf(2,"[steam-compile-ra-detail] session=%llu t+%.3f scope=%s instance=%llu tid=%04x samples=%llu "
+            "spilled_blocks=%llu/%llu/%llu spill_requests=%llu/%llu/%llu spills=%llu/%llu/%llu "
+            "fill_requests=%llu/%llu/%llu fills=%llu/%llu/%llu remats=%llu/%llu/%llu "
+            "next_use_nodes=%llu/%llu/%llu merge_attempts=%llu/%llu/%llu merge_successes=%llu/%llu/%llu "
+            "format=total-max-samples sampled-only=1 spill-fill=emitted-IR cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,(unsigned long long)ra->sampled,
+            CR_WORK(ra->spilled_blocks),CR_WORK(ra->spill_requests),CR_WORK(ra->spills),
+            CR_WORK(ra->fill_requests),CR_WORK(ra->fills),CR_WORK(ra->remats),
+            CR_WORK(ra->next_use_nodes),CR_WORK(ra->merge_attempts),CR_WORK(ra->merge_successes));
+        dprintf(2,"[steam-compile-ra-next-use] session=%llu t+%.3f scope=%s instance=%llu tid=%04x "
+            "calls=%llu returned=%llu total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f "
+            "parent=forward sampled-only=1 max=per-scan nodes=inspected-including-until cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
+            (unsigned long long)ra->next_uses.count,(unsigned long long)ra->next_use_returned,
+            ra->next_uses.ticks*scale,ra->next_uses.count?ra->next_uses.ticks*scale/ra->next_uses.count:0,
+            ra->next_uses.max_ticks*scale);
     }
 #undef CR_WORK
 }

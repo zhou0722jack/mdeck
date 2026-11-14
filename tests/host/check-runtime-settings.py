@@ -187,6 +187,23 @@ expect(!SteamHotspotSettings.enabled(global: [:], profile: reasonOn)
        && !SteamSurfaceLogSettings.enabled(global: [:], profile: reasonOn), "compile reason logging is independent of hotspot/window/allocation switches")
 expect(SteamCompileReasonSettings.enabled(global: [SteamCompileReasonSettings.key:"1"], profile:""), "global compilation logging is inherited")
 expect(!SteamCompileReasonSettings.enabled(global: [SteamCompileReasonSettings.key:"true"], profile:""), "compilation logger accepts exact 1 only")
+expect(SteamDFEScratchSettings.enabled(global: [:], profile: ""), "DFE reuse defaults on")
+let dfeOff = SteamDFEScratchSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_DFE_REUSE=1\nenv.MADEIRA_FEX_DFE_REUSE=0\n", enabled: false)
+expect(!SteamDFEScratchSettings.enabled(global: [SteamDFEScratchSettings.key:"1"], profile: dfeOff)
+       && dfeOff.components(separatedBy: SteamDFEScratchSettings.key).count == 2
+       && dfeOff.contains("# preserve") && dfeOff.contains("pool=1152"), "DFE profile off wins, preserves settings and deduplicates")
+expect(SteamDFEScratchSettings.text(dfeOff, enabled: false) == dfeOff, "DFE setting is idempotent")
+expect(!SteamDFEScratchSettings.enabled(global: [SteamDFEScratchSettings.key:"0"], profile:""), "DFE global off is inherited")
+expect(SteamDFEScratchSettings.enabled(global: [SteamDFEScratchSettings.key:"0"], profile:SteamDFEScratchSettings.text(dfeOff, enabled:true)), "DFE profile on overrides global off")
+for value in ["", "1", "true", "00", "false"] {
+    expect(SteamDFEScratchSettings.enabled(global: [SteamDFEScratchSettings.key:value], profile:""), "DFE runtime and UI disable only for exact zero")
+}
+for reuse in [false,true] { for logging in [false,true] {
+    let combination = SteamCompileReasonSettings.text(SteamDFEScratchSettings.text("", enabled:reuse), enabled:logging)
+    expect(SteamDFEScratchSettings.enabled(global:[:],profile:combination)==reuse
+           && SteamCompileReasonSettings.enabled(global:[:],profile:combination)==logging
+           && !SteamCacheLookupSettings.enabled(global:[:],profile:combination), "DFE, RA capture and L1 choices are independent")
+} }
 expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
 let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
 expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)

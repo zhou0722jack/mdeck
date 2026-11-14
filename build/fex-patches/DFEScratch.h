@@ -4,6 +4,25 @@
 #include <optional>
 #include <utility>
 
+namespace FEXCore::MDeckDFE {
+// Each PE instance freezes its choice before InitCore creates any passes.
+// Exact 0 disables; absent/other values preserve the Build 41 default.
+inline unsigned Policy {}; // 0=unselected, 1=legacy allocation, 2=reuse
+inline constexpr bool Parse(const char* value) {
+  return !(value && value[0] == '0' && value[1] == 0);
+}
+inline bool Configure(const char* value) {
+  unsigned expected = 0;
+  __atomic_compare_exchange_n(&Policy, &expected, Parse(value) ? 2u : 1u,
+                              false, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+  return __atomic_load_n(&Policy, __ATOMIC_ACQUIRE) == 2;
+}
+inline bool Enabled() {
+  const unsigned current = __atomic_load_n(&Policy, __ATOMIC_ACQUIRE);
+  return current ? current == 2 : Configure(nullptr);
+}
+}
+
 namespace FEXCore::IR {
 // Container types are supplied by the caller (fextl in production). The deque
 // operations and their ordering stay unchanged. A nested invocation owns a
@@ -42,20 +61,24 @@ public:
     Storage* Data;
     bool Borrowed;
   public:
-    explicit Lease(DFEScratch& Owner) : Owner(Owner), Borrowed(!Owner.Busy) {
-      if (Borrowed) { Owner.Busy = true; Data = &Owner.Data; }
-      else Data = &Fallback.emplace();
+    explicit Lease(DFEScratch& Owner, bool Reuse = true) : Owner(Owner), Borrowed(Reuse && !Owner.Busy) {
+      if (Borrowed) {
+        // Lazily construct even the cached deque: off mode owns no idle scratch.
+        Data = Owner.Data ? &*Owner.Data : &Owner.Data.emplace();
+        Owner.Busy = true;
+      } else Data = &Fallback.emplace();
     }
     ~Lease() {
-      Data->Reset();
-      if (Borrowed) Owner.Busy = false;
+      if (Borrowed) { Data->Reset(); Owner.Busy = false; }
+      // Fresh/off and reentrant fallback storage is destroyed normally. No
+      // extra cleanup walk is needed when none of its capacity is retained.
     }
     Storage& Get() { return *Data; }
     Lease(const Lease&) = delete;
     Lease& operator=(const Lease&) = delete;
   };
 private:
-  Storage Data;
+  std::optional<Storage> Data;
   bool Busy {};
 };
 }

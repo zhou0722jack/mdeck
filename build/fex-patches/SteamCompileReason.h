@@ -143,6 +143,12 @@ public:
     sr_work_add(&ra.slots,sample.slots);sr_work_add(&ra.blocks,sample.blocks);
     sr_work_add(&ra.reverse_nodes,sample.reverse_nodes);sr_work_add(&ra.forward_nodes,sample.forward_nodes);
     sr_work_add(&ra.suspect_blocks,sample.suspect_blocks);
+    sr_work_add(&ra.spilled_blocks,sample.spilled_blocks);sr_work_add(&ra.spill_requests,sample.spill_requests);
+    sr_work_add(&ra.spills,sample.spills);sr_work_add(&ra.fill_requests,sample.fill_requests);
+    sr_work_add(&ra.fills,sample.fills);sr_work_add(&ra.remats,sample.remats);
+    sr_work_add(&ra.next_use_nodes,sample.next_use_nodes);
+    sr_work_add(&ra.merge_attempts,sample.merge_attempts);sr_work_add(&ra.merge_successes,sample.merge_successes);
+    sr_metric_merge(&ra.next_uses,&sample.next_uses);ra.next_use_returned+=sample.next_use_returned;
   }
   void Output(sr_output value) {output=value;}
   void Finish(uint64_t generation,unsigned outcome) {
@@ -196,10 +202,31 @@ public:
   void ReverseNode(){if(begin)sample.reverse_nodes++;}
   void ForwardNode(){if(begin)sample.forward_nodes++;}
   void SuspectBlock(){if(begin)sample.suspect_blocks++;}
+  void SpillRequest(bool first_in_block){if(begin){sample.spill_requests++;sample.spilled_blocks+=first_in_block;}}
+  void Spill(){if(begin)sample.spills++;}
+  void FillRequest(){if(begin)sample.fill_requests++;}
+  void Fill(){if(begin)sample.fills++;}
+  void Remat(){if(begin)sample.remats++;}
+  void MergeAttempt(){if(begin)sample.merge_attempts++;}
+  void MergeSuccess(){if(begin)sample.merge_successes++;}
+  void NextUseNode(){if(begin)sample.next_use_nodes++;}
+  uint64_t NextUseBegin() const {return begin?Capture::RAClock():0;}
+  void NextUseEnd(uint64_t start,bool returned){if(!start)return;const auto end=Capture::RAClock();
+    sr_add(&sample.next_uses,end>=start?end-start:0);sample.next_use_returned+=returned;}
   void Complete(){if(begin)sample.returned=1;}
   ~RAScope(){if(begin){const auto end=Capture::RAClock();Close(end);sample.total=end>=begin?end-begin:0;capture->RAEnd(sample);}}
   RAScope(const RAScope&)=delete;
   RAScope& operator=(const RAScope&)=delete;
+};
+// One nested scan, including setup and partial C++ unwind; never added to phases.
+class RANextUseScope {
+  RAScope& ra;uint64_t begin;bool returned=false;
+public:
+  explicit RANextUseScope(RAScope& ra):ra(ra),begin(ra.NextUseBegin()){}
+  void Complete(){returned=true;}
+  ~RANextUseScope(){ra.NextUseEnd(begin,returned);}
+  RANextUseScope(const RANextUseScope&)=delete;
+  RANextUseScope& operator=(const RANextUseScope&)=delete;
 };
 // Stack-owned; no TLS or global current-capture pointer. Unwinding still records
 // an entered pass, with no output workload sample when Run did not return.

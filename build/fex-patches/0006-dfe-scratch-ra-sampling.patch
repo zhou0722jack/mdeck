@@ -9,16 +9,17 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
  #include <FEXCore/fextl/deque.h>
  #include <FEXCore/fextl/vector.h>
 
-@@ -105,7 +106,7 @@
+@@ -105,20 +106,27 @@
  };
 
  struct ControlFlowGraph {
 -  fextl::vector<BlockInfo> BlockMap;
 +  fextl::vector<BlockInfo>& BlockMap;
    IRListView& IR;
++  bool Reuse {true};
 
    void Init(fextl::deque<uint32_t>& Worklist, uint32_t BlockCount) {
-@@ -113,12 +114,13 @@
+     BlockMap.resize(BlockCount);
 
      for (unsigned ID = 0; ID < BlockCount; ++ID) {
        // Add the block with conservative flags and already in the worklist.
@@ -28,35 +29,41 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 -      Info.Predecessors.reserve(2);
 -
 -      BlockMap[ID] = std::move(Info);
-+      auto& Info = BlockMap[ID];
-+      Info.Predecessors.clear();
-+      Info.Node = nullptr;
-+      Info.Flags = FLAG_ALL;
-+      Info.InWorklist = true;
-+      // Keep old predecessor capacity; allocate only for actual incoming edges.
-+      // Zero-predecessor blocks no longer each allocate reserve(2).
++      if (Reuse) {
++        auto& Info = BlockMap[ID];
++        Info.Predecessors.clear();
++        Info.Node = nullptr;
++        Info.Flags = FLAG_ALL;
++        Info.InWorklist = true;
++      } else {
++        // Original per-block allocation, including zero-predecessor blocks.
++        auto Info = BlockInfo {{}, nullptr, FLAG_ALL, true};
++        Info.Predecessors.reserve(2);
++        BlockMap[ID] = std::move(Info);
++      }
        /* ⛔ ml621: the ml611 AllocWatch registration was REMOVED here. See
         * AllocWatch.h — it produced 71.9M events / 17.2M slot collisions and its
         * 512-line drain corrupted the exception record, killing ml620. */
-@@ -204,6 +206,8 @@
+@@ -204,6 +212,8 @@
      }
 
      const size_t Idx = Info->Predecessors.size();
 +    // Reserve the common two-edge case only when this block first gets an edge.
-+    if (Info->Predecessors.capacity() < 2) Info->Predecessors.reserve(2);
++    if (Reuse && Info->Predecessors.capacity() < 2) Info->Predecessors.reserve(2);
      Info->Predecessors.push_back(From);
 
      if (FromValid && Info->Predecessors[Idx] != From && EdgeReports < 4) {
-@@ -252,6 +256,8 @@
+@@ -252,6 +262,9 @@
    void Run(IREmitter* IREmit) override;
 
  private:
 +  using Scratch = DFEScratch<fextl::vector<BlockInfo>, fextl::vector<uint8_t>, fextl::deque<uint32_t>>;
++  const bool ReuseScratch = FEXCore::MDeckDFE::Enabled();
 +  Scratch ScratchData;
    FlagInfo Classify(IROp_Header* Node);
    unsigned FlagsForCondClassType(CondClass Cond);
    bool EliminateDeadCode(IREmitter* IREmit, Ref CodeNode, IROp_Header* IROp);
-@@ -830,10 +836,12 @@
+@@ -830,10 +843,12 @@
    FEXCORE_PROFILE_SCOPED("PassManager::DFE");
 
    auto CurrentIR = IREmit->ViewIR();
@@ -64,21 +71,22 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 -
 -  // Initialize CFG
 -  ControlFlowGraph CFG {.IR = CurrentIR};
-+  Scratch::Lease Lease {ScratchData};
++  Scratch::Lease Lease {ScratchData, ReuseScratch};
 +  auto& Storage = Lease.Get();
 +  auto& Worklist = Storage.Worklist;
 +
 +  // Invocation-local CFG counters and sentinel; only empty storage is reused.
-+  ControlFlowGraph CFG {.BlockMap = Storage.BlockMap, .IR = CurrentIR};
++  ControlFlowGraph CFG {.BlockMap = Storage.BlockMap, .IR = CurrentIR, .Reuse = ReuseScratch};
    CFG.Init(Worklist, CurrentIR.GetHeader()->BlockCount);
 
    // Gather CFG
-@@ -896,7 +904,8 @@
+@@ -896,7 +911,9 @@
      // pointer that ProcessBlock will actually dereference.
      uint32_t DupIDs = 0, MissingIDs = 0, NullNodes = 0, BadWorklistIDs = 0;
      {
 -      fextl::vector<uint8_t> Seen(CFG.BlockMap.size(), 0);
-+      auto& Seen = Storage.SeenIDs;
++      fextl::vector<uint8_t> LocalSeen;
++      auto& Seen = ReuseScratch ? Storage.SeenIDs : LocalSeen;
 +      Seen.assign(CFG.BlockMap.size(), 0);
        for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
          auto Block = BlockHeader->C<IROp_CodeBlock>();
@@ -86,7 +94,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
 --- a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
 +++ b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
-@@ -58,10 +58,12 @@
+@@ -58,10 +58,18 @@
    explicit ConstrainedRAPass(const FEXCore::CPUIDEmu* CPUID)
      : CPUID {CPUID} {}
    void Run(IREmitter* IREmit) override;
@@ -96,10 +104,108 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
 
  private:
 +  uint64_t ReasonSequence {};
++  bool TryPostRAMergeWithReason(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
++    Timing.MergeAttempt();
++    const bool Merged = TryPostRAMerge(LastNode, CodeNode, IROp);
++    if (Merged) Timing.MergeSuccess();
++    return Merged;
++  }
    RegisterClassData Classes[IR::NumClasses];
 
    IREmitter* IREmit {};
-@@ -566,17 +568,25 @@
+@@ -90,14 +98,17 @@
+     return IROp->Op == OP_CONSTANT;
+   }
+
+-  Ref InsertFill(Ref Node) {
++  Ref InsertFill(Ref Node, FEXCore::CompileReason::RAScope& Timing) {
++    Timing.FillRequest();
+     IROp_Header* IROp = IR->GetOp<IROp_Header>(Node);
+
+     // Remat if we can
+     if (Rematerializable(IROp)) {
+       const auto Op = IROp->C<IR::IROp_Constant>();
+       uint64_t Const = Op->Constant;
+-      return IREmit->_Constant(Const, Op->Pad, Op->MaxBytes);
++      auto Result = IREmit->_Constant(Const, Op->Pad, Op->MaxBytes);
++      Timing.Remat();
++      return Result;
+     }
+
+     // Otherwise fill from stack
+@@ -105,7 +116,9 @@
+     LOGMAN_THROW_A_FMT(SlotPlusOne >= 1, "Node must have been spilled");
+
+     const auto RegClass = GetRegClassFromNode(IR, IROp);
+-    return IREmit->_FillRegister(IROp->Size, IROp->ElementSize, SlotPlusOne - 1, RegClass);
++    auto Result = IREmit->_FillRegister(IROp->Size, IROp->ElementSize, SlotPlusOne - 1, RegClass);
++    Timing.Fill();
++    return Result;
+   };
+
+   // IP of next-use of each source. IPs are measured from the end of the
+@@ -226,7 +239,8 @@
+   // the next set bit and then clearing on each iteration.
+ #define foreach_bit(b, x) for (uint32_t __x = (x), b; ((b) = __builtin_ffs(__x) - 1, __x); __x &= ~(1 << (b)))
+
+-  void CalculateNextUses(IROp_CodeBlock* BlockIROp, IROp_Header* Until) {
++  void CalculateNextUses(IROp_CodeBlock* BlockIROp, IROp_Header* Until, FEXCore::CompileReason::RAScope& Timing) {
++    FEXCore::CompileReason::RANextUseScope ScanTiming(Timing);
+     SourcesNextUses.clear();
+     NextUses.resize(IR->GetSSACount(), 0);
+
+@@ -239,6 +253,7 @@
+
+     while (1) {
+       auto [CodeNode, IROp] = CodeLast();
++      Timing.NextUseNode(); // Includes the inspected Until boundary, if reached.
+       if (IROp == Until) {
+         break;
+       }
+@@ -268,12 +283,14 @@
+     }
+
+     SourceIndex = SourcesNextUses.size();
++    ScanTiming.Complete();
+   }
+
+-  void SpillReg(RegisterClassData* Class, IROp_CodeBlock* Block, IROp_Header* Exclude) {
++  void SpillReg(RegisterClassData* Class, IROp_CodeBlock* Block, IROp_Header* Exclude, FEXCore::CompileReason::RAScope& Timing) {
++    Timing.SpillRequest(!AnySpilled);
+     // We're about to use next-use information, so calculate it.
+     if (!AnySpilled) {
+-      CalculateNextUses(Block, Exclude);
++      CalculateNextUses(Block, Exclude, Timing);
+     }
+
+     // Find the best node to spill according to the "furthest-first" heuristic.
+@@ -333,6 +350,7 @@
+
+       // We must map here in case we're spilling something we shuffled.
+       auto SpillOp = IREmit->_SpillRegister(OrderedNodeWrapper::FromImmediate(Reg.Raw), Slot, Reg.AsRegClass());
++      Timing.Spill();
+       SpillOp.first->Header.Size = Header->Size;
+       SpillOp.first->Header.ElementSize = Header->ElementSize;
+       SpillSlots[Value] = Slot + 1;
+@@ -367,7 +385,7 @@
+   };
+
+   // Assign a register for a given Node, spilling if necessary.
+-  void AssignReg(IROp_Header* IROp, IROp_CodeBlock* Block, Ref CodeNode, IROp_Header* Pivot) {
++  void AssignReg(IROp_Header* IROp, IROp_CodeBlock* Block, Ref CodeNode, IROp_Header* Pivot, FEXCore::CompileReason::RAScope& Timing) {
+     const uint32_t Node = IR->GetID(CodeNode).Value;
+
+     // Prioritize preferred registers.
+@@ -426,7 +444,7 @@
+     // Spill to make room in the register file.
+     if (!Class->Available) {
+       IREmit->SetWriteCursorBefore(CodeNode);
+-      SpillReg(Class, Block, Pivot);
++      SpillReg(Class, Block, Pivot, Timing);
+     }
+
+     // Assign a free register in the appropriate class.
+@@ -566,17 +584,25 @@
  }
 
  void ConstrainedRAPass::Run(IREmitter* IREmit_) {
@@ -125,7 +231,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // Spilling is local, so reset this per-block
      AnySpilled = false;
 
-@@ -603,12 +613,15 @@
+@@ -603,12 +629,15 @@
      // whereas walking a cyclic chain would set kill bits on nodes belonging to
      // other blocks and free their registers early -- a miscompile.
      // ml599b: cheap backward-only check here; full diagnosis only when it trips.
@@ -141,7 +247,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // Backwards pass: analyze kill bits and SRA affinities
      if (BackwardPassSafe) {
        // Reverse iteration is not yet working with the iterators
-@@ -630,6 +643,7 @@
+@@ -630,6 +659,7 @@
            break;
          }
          auto [CodeNode, IROp] = CodeLast();
@@ -149,7 +255,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
          // End of iteration gunk
 
          // Record preferred registers for SRA. We also record the Node accessing
-@@ -680,6 +694,7 @@
+@@ -680,6 +710,7 @@
        }
      }
 
@@ -157,7 +263,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // NextUses currently contains first use distances, the exact initialization
      // assumed by the forward pass. Do not reset it.
 
-@@ -688,6 +703,7 @@
+@@ -688,6 +719,7 @@
 
      // Forward pass: Assign registers, spilling & optimizing as we go.
      for (auto [CodeNode, IROp] : IR->GetCode(BlockNode)) {
@@ -165,7 +271,45 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        bool AnySpilledBeforeThisInstruction = AnySpilled;
 
        // These do not read or write registers, and must be skipped for merging.
-@@ -807,6 +823,7 @@
+@@ -723,7 +755,7 @@
+             }
+
+             FreeReg(Reg);
+-            AssignReg(IR->GetOp<IROp_Header>(Copy), BlockIROp, Copy, IROp);
++            AssignReg(IR->GetOp<IROp_Header>(Copy), BlockIROp, Copy, IROp, Timing);
+             RemapReg(Old, PhysicalRegister(Copy));
+           }
+         }
+@@ -756,9 +788,9 @@
+             IREmit->SetWriteCursorBefore(CodeNode);
+             LastNode = nullptr;
+
+-            Ref Fill = InsertFill(Old);
+-
+-            AssignReg(IR->GetOp<IROp_Header>(Fill), BlockIROp, Fill, IROp);
++            Ref Fill = InsertFill(Old, Timing);
++
++            AssignReg(IR->GetOp<IROp_Header>(Fill), BlockIROp, Fill, IROp, Timing);
+             RemapReg(Old, PhysicalRegister(Fill));
+           }
+         }
+@@ -787,13 +819,13 @@
+
+       // Assign destinations.
+       if (GetHasDest(IROp->Op) && PhysicalRegister(CodeNode).IsInvalid()) {
+-        AssignReg(IROp, BlockIROp, CodeNode, IROp);
++        AssignReg(IROp, BlockIROp, CodeNode, IROp, Timing);
+       }
+
+       if (IsTrivial(CodeNode, IROp)) {
+         // Delete instructions that only exist for RA
+         IREmit->RemovePostRA(CodeNode);
+-      } else if (LastNode && TryPostRAMerge(LastNode, CodeNode, IROp)) {
++      } else if (LastNode && TryPostRAMergeWithReason(LastNode, CodeNode, IROp, Timing)) {
+         // Merge adjacent instructions
+         IREmit->RemovePostRA(LastNode);
+         LastNode = nullptr;
+@@ -807,6 +839,7 @@
      }
    }
 
@@ -173,7 +317,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
    PreferredReg.clear();
    SSAToReg.clear();
    SpillSlots.clear();
-@@ -814,6 +831,7 @@
+@@ -814,6 +847,7 @@
    Seen.clear();
 
    IR->GetHeader()->PostRA = true;

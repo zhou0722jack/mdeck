@@ -153,6 +153,11 @@ int main(void){
  sr_add(&ir.ra.total,3);sr_add(&ir.ra.total,4);
  sr_add(&ir.ra.phases[SR_RA_CHECK],2);sr_add(&ir.ra.phases[SR_RA_FORWARD],5);
  sr_work_add(&ir.ra.reverse_nodes,10);sr_work_add(&ir.ra.reverse_nodes,20);
+ sr_work_add(&ir.ra.spilled_blocks,1);sr_work_add(&ir.ra.spilled_blocks,0);
+ sr_work_add(&ir.ra.spill_requests,2);sr_work_add(&ir.ra.spills,1);
+ sr_work_add(&ir.ra.fill_requests,3);sr_work_add(&ir.ra.fills,2);sr_work_add(&ir.ra.remats,1);
+ sr_work_add(&ir.ra.next_use_nodes,4);sr_work_add(&ir.ra.merge_attempts,3);sr_work_add(&ir.ra.merge_successes,1);
+ sr_add(&ir.ra.next_uses,1);sr_add(&ir.ra.next_uses,2);ir.ra.next_use_returned=1;
  sr_work_add(&ir.decoded_instructions,7);sr_work_add(&ir.decoded_blocks,2);
  sr_work_add(&ir.ssa_before,100);sr_work_add(&ir.ssa_after,120);
  sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],100);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],120);
@@ -173,6 +178,13 @@ int main(void){
  assert(b->frontend.ra.total.ticks==14&&b->frontend.ra.total.max_ticks==4);
  assert(b->frontend.ra.reverse_nodes.total==60&&b->frontend.ra.reverse_nodes.max==20);
  assert(b->instances[SR_ORDINARY_INSTANCES].frontend.ra.eligible==65);
+ assert(b->frontend.ra.spilled_blocks.total==2&&b->frontend.ra.spilled_blocks.max==1&&b->frontend.ra.spilled_blocks.count==4);
+ assert(b->frontend.ra.spill_requests.total==4&&b->frontend.ra.spills.total==2);
+ assert(b->frontend.ra.fill_requests.total==6&&b->frontend.ra.fills.total==4&&b->frontend.ra.remats.total==2);
+ assert(b->frontend.ra.next_use_nodes.total==8&&b->frontend.ra.merge_attempts.total==6&&b->frontend.ra.merge_successes.total==2);
+ assert(b->frontend.ra.next_uses.count==4&&b->frontend.ra.next_uses.ticks==6&&b->frontend.ra.next_uses.max_ticks==2&&b->frontend.ra.next_use_returned==2);
+ assert(b->instances[SR_ORDINARY_INSTANCES].frontend.ra.next_uses.count==2);
+ assert(b->instances[0].frontend.ra.spills.total==1);
  free(b);puts("PASS compile classification: first/changed/new-generation/same-generation, shape uncertainty, instance/owner/mode isolation, failed/raced/delivery exclusion, epoch cancellation, bounded overflow, concurrent reconciliation");
 }
 '''
@@ -217,7 +229,14 @@ int main(){
       RAScope ra(&r,sequence);assert(ra.Active()==(i%SR_RA_STRIDE==0));
       ra.Slots(9);ra.Block();ra.Stage(SR_RA_CHECK);ra.SuspectBlock();
       ra.Stage(SR_RA_REVERSE);ra.ReverseNode();ra.ReverseNode();
-      ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.Stage(SR_RA_CLEANUP);
+      ra.Stage(SR_RA_FORWARD);ra.ForwardNode();
+      ra.SpillRequest(true);ra.Spill();ra.SpillRequest(false);
+      ra.FillRequest();ra.Fill();ra.FillRequest();ra.Remat();
+      {RANextUseScope scan(ra);ra.NextUseNode();ra.NextUseNode();scan.Complete();}
+      ra.Block();ra.SpillRequest(true);
+      try {RANextUseScope scan(ra);ra.NextUseNode();throw 1;} catch(int) {} // partial scan survives unwind
+      ra.MergeAttempt();ra.MergeSuccess();ra.MergeAttempt();
+      ra.Stage(SR_RA_CLEANUP);
       if(i!=128)ra.Complete(); // final sampled invocation exits without return
     }
     assert(sequence==129);p.Complete(9);
@@ -232,6 +251,13 @@ int main(){
  assert(ra_sum==b->frontend.ra.total.ticks&&ra_sum<=b->frontend.passes[SR_PASS_RA].ticks);
  assert(b->frontend.ra.reverse_nodes.total==6&&b->frontend.ra.forward_nodes.total==3);
  assert(b->frontend.ra.slots.total==27&&b->frontend.ra.suspect_blocks.total==3);
+ assert(b->frontend.ra.blocks.total==6&&b->frontend.ra.spilled_blocks.total==6);
+ assert(b->frontend.ra.spilled_blocks.count==3&&b->frontend.ra.spilled_blocks.max==2);
+ assert(b->frontend.ra.spill_requests.total==9&&b->frontend.ra.spills.total==3);
+ assert(b->frontend.ra.fill_requests.total==6&&b->frontend.ra.fills.total==3&&b->frontend.ra.remats.total==3);
+ assert(b->frontend.ra.next_use_nodes.total==9&&b->frontend.ra.next_uses.count==6&&b->frontend.ra.next_use_returned==3);
+ assert(b->frontend.ra.next_uses.ticks<=b->frontend.ra.phases[SR_RA_FORWARD].ticks);
+ assert(b->frontend.ra.merge_attempts.total==6&&b->frontend.ra.merge_successes.total==3);
  uint64_t ir_sum=0;for(unsigned i=0;i<SR_IR_PHASES;i++)ir_sum+=b->frontend.phases[i].ticks;
  assert(ir_sum==b->stages[SR_DECODE_IR].ticks);
  assert(b->frontend.passes[SR_PASS_X87].ticks+b->frontend.passes[SR_PASS_DFE].ticks<=b->frontend.phases[SR_IR_PASSES].ticks);
@@ -262,8 +288,11 @@ int main(){
  assert(b->attempts==before);
  {Capture r(1,0x10000,0,0,false);r.Stage(SR_DECODE_IR);r.IRStage(SR_IR_DECODE);
   PassScope p(&r,SR_PASS_RA,7);p.Complete(9);r.Decoded(5,1);r.IRReturned(9);
-   uint64_t seq=0;RAScope ra(&r,seq);ra.Stage(SR_RA_CHECK);ra.ReverseNode();ra.Complete();assert(!seq&&!ra.Active());}
- assert(b->attempts==before&&b->frontend.calls==2);
+   uint64_t seq=0;RAScope ra(&r,seq);ra.Stage(SR_RA_CHECK);ra.ReverseNode();
+   ra.SpillRequest(true);ra.Spill();ra.FillRequest();ra.Fill();ra.Remat();ra.MergeAttempt();ra.MergeSuccess();
+   {RANextUseScope scan(ra);ra.NextUseNode();scan.Complete();}
+   ra.Complete();assert(!seq&&!ra.Active());}
+ assert(b->attempts==before&&b->frontend.calls==2&&b->frontend.ra.next_uses.count==6&&b->frontend.ra.spills.total==3);
  free(b);puts("PASS actual PE producer: default off, independent shared bridge, decoder fingerprint, output generation, RAII failure, races, delivery and stop");
 }
 '''
@@ -293,6 +322,10 @@ int main(void){
  ir.ra.eligible=65;ir.ra.sampled=ir.ra.returned=1;
  sr_add(&ir.ra.total,3000);sr_add(&ir.ra.phases[SR_RA_CHECK],1000);sr_add(&ir.ra.phases[SR_RA_FORWARD],2000);
  sr_work_add(&ir.ra.slots,9);sr_work_add(&ir.ra.reverse_nodes,7);sr_work_add(&ir.ra.forward_nodes,6);
+ sr_work_add(&ir.ra.spilled_blocks,2);sr_work_add(&ir.ra.spill_requests,3);sr_work_add(&ir.ra.spills,1);
+ sr_work_add(&ir.ra.fill_requests,2);sr_work_add(&ir.ra.fills,1);sr_work_add(&ir.ra.remats,1);
+ sr_work_add(&ir.ra.next_use_nodes,9);sr_work_add(&ir.ra.merge_attempts,6);sr_work_add(&ir.ra.merge_successes,2);
+ sr_add(&ir.ra.next_uses,240);sr_add(&ir.ra.next_uses,480);ir.ra.next_use_returned=1;
  assert(sr_finish_full(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,10,SR_GENERATED,24000,&time,(struct sr_output){0},&ir));
  sr_buffer_record(cr_bridge,(struct sr_buffer_event){.epoch=epoch,.instance=1,.owner=5,.generation=10,
      .reason=SR_BUFFER_INITIAL,.ticks=cr_bridge->started_ticks});
@@ -336,11 +369,16 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert 'reason=fixture-complete' in result.stderr
                 assert 'kind=first-observed count=1 total_wall_ms=1.000000' in result.stderr
                 assert 'first_observed=1' in result.stderr and 'reason=worker-create-failed' in result.stderr
-                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass','steam-compile-ra','steam-compile-ra-work']:
+                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass','steam-compile-ra','steam-compile-ra-work','steam-compile-ra-detail','steam-compile-ra-next-use']:
                     assert '['+prefix+']' in result.stderr
                 assert 'parent_ticks=24000 accounted_ticks=24000' in result.stderr
                 assert 'parent_ticks=3000 accounted_ticks=3000' in result.stderr
                 assert 'eligible=65 samples=1 returned=1 stride=64' in result.stderr
+                assert 'spilled_blocks=2/2/1 spill_requests=3/3/1 spills=1/1/1' in result.stderr
+                assert 'fill_requests=2/2/1 fills=1/1/1 remats=1/1/1' in result.stderr
+                assert 'next_use_nodes=9/9/1 merge_attempts=6/6/1 merge_successes=2/2/1' in result.stderr
+                assert 'calls=2 returned=1 total_wall_ms=0.030000 mean_wall_ms=0.015000 max_wall_ms=0.020000' in result.stderr
+                assert re.search(r'\[steam-compile-ra-detail\].*scope=thread instance=1 tid=023c samples=1',result.stderr)
                 assert re.search(r'\[steam-compile-ir\].*scope=thread instance=1 tid=023c calls=1',result.stderr)
                 assert re.search(r'\[steam-compile-ir-pass\].*pass=x87-stack calls=1',result.stderr)
     # Real iPhoneOS compiler sees the complete standalone source.
@@ -386,9 +424,34 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
         assert 'CompileReason::Initialize(ReasonBridge,' in text
         assert text.index('CompileReason::Initialize(ReasonBridge,')<text.index('CTX->InitCore();')
         assert 'CompileReason::IsCEFImage' in text
+        assert '#include <FEXCore/Utils/DFEScratch.h>' in text
+        assert text.index('MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE"))')<text.index('CTX->InitCore();')
+        assert text.index('MDeckDFE::Configure(')<text.index('if (const char* ReasonBridge'), 'DFE choice must not depend on logging'
+        assert '[fex-dfe] path=' in text
+
         assert '#include <FEXCore/Utils/SteamCompileReason.h>' in text, 'PE initializer needs its direct declaration'
+    ra_text=(source/'FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp').read_text()
+    # Actual call-site coverage: all assignment and fill paths carry the stack scope.
+    assert ra_text.count('AssignReg(')==4 and ra_text.count('SpillReg(')==2
+    assert ra_text.count('InsertFill(')==2 and ra_text.count('CalculateNextUses(')==2
+    for args in ['Copy, IROp, Timing);','Fill, IROp, Timing);','CodeNode, IROp, Timing);',
+                 'SpillReg(Class, Block, Pivot, Timing);','InsertFill(Old, Timing);','CalculateNextUses(Block, Exclude, Timing);']:
+        assert args in ra_text
+    scan=ra_text[ra_text.index('  void CalculateNextUses('):ra_text.index('  void SpillReg(')]
+    assert scan.index('RANextUseScope ScanTiming(Timing)')<scan.index('SourcesNextUses.clear()')
+    assert scan.index('Timing.NextUseNode()')<scan.index('if (IROp == Until)')
+    assert scan.index('ScanTiming.Complete()')>scan.index('SourceIndex = SourcesNextUses.size()')
+    spill=ra_text[ra_text.index('  void SpillReg('):ra_text.index('  void RemapReg(')]
+    assert spill.index('Timing.SpillRequest(!AnySpilled)')<spill.index('if (!AnySpilled)')
+    assert spill.index('Timing.Spill()')>spill.index('IREmit->_SpillRegister(')
+    fill=ra_text[ra_text.index('  Ref InsertFill('):ra_text.index('  // IP of next-use')]
+    assert fill.index('Timing.Remat()')>fill.index('IREmit->_Constant(')
+    assert fill.index('Timing.Fill()')>fill.index('IREmit->_FillRegister(')
+    assert 'LastNode && TryPostRAMergeWithReason(LastNode, CodeNode, IROp, Timing)' in ra_text
+    assert 'const bool Merged = TryPostRAMerge(LastNode, CodeNode, IROp);' in ra_text
+    assert 'if (Merged) Timing.MergeSuccess();' in ra_text
     # Native builds must not gain PE symbol dependencies from the header.
-    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);uint64_t seq=0;FEXCore::CompileReason::RAScope ra(&r,seq);ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.Complete();r.Finish(0,SR_FAILED);}\n')
+    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);uint64_t seq=0;FEXCore::CompileReason::RAScope ra(&r,seq);ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.SpillRequest(true);ra.Spill();ra.FillRequest();ra.Fill();ra.Remat();ra.MergeAttempt();ra.MergeSuccess();{FEXCore::CompileReason::RANextUseScope scan(ra);ra.NextUseNode();scan.Complete();}ra.Complete();r.Finish(0,SR_FAILED);}\n')
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-I'+str(deps),str(noop),'-o',str(work/'noop')],check=True)
     subprocess.run([str(work/'noop')],check=True)
 

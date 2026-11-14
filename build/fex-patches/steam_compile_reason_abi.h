@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#define SR_MAGIC UINT64_C(0x4d4452434d503034)
+#define SR_MAGIC UINT64_C(0x4d4452434d503035)
 /* Private banks: ordinary startup can never consume a CEF bank. */
 #define SR_ORDINARY_INSTANCES 16
 #define SR_CEF_INSTANCES 2
@@ -80,9 +80,16 @@ struct sr_ra {
     uint64_t eligible, sampled, returned;
     struct sr_metric total, phases[SR_RA_PHASES];
     struct sr_work slots, blocks, reverse_nodes, forward_nodes, suspect_blocks;
+    struct sr_work spilled_blocks, spill_requests, spills, fill_requests, fills, remats;
+    struct sr_work next_use_nodes, merge_attempts, merge_successes;
+    struct sr_metric next_uses; /* Nested in forward, per entered scan, including partial exits. */
+    uint64_t next_use_returned;
 };
 struct sr_ra_sample {
     uint64_t ticks[SR_RA_PHASES], total, slots, blocks, reverse_nodes, forward_nodes, suspect_blocks;
+    uint64_t spilled_blocks, spill_requests, spills, fill_requests, fills, remats;
+    uint64_t next_use_nodes, merge_attempts, merge_successes, next_use_returned;
+    struct sr_metric next_uses;
     unsigned returned;
 };
 struct sr_frontend {
@@ -233,6 +240,12 @@ static inline void sr_ra_merge(struct sr_ra *dst,const struct sr_ra *src) {
     sr_work_merge(&dst->slots,&src->slots);sr_work_merge(&dst->blocks,&src->blocks);
     sr_work_merge(&dst->reverse_nodes,&src->reverse_nodes);sr_work_merge(&dst->forward_nodes,&src->forward_nodes);
     sr_work_merge(&dst->suspect_blocks,&src->suspect_blocks);
+    sr_work_merge(&dst->spilled_blocks,&src->spilled_blocks);sr_work_merge(&dst->spill_requests,&src->spill_requests);
+    sr_work_merge(&dst->spills,&src->spills);sr_work_merge(&dst->fill_requests,&src->fill_requests);
+    sr_work_merge(&dst->fills,&src->fills);sr_work_merge(&dst->remats,&src->remats);
+    sr_work_merge(&dst->next_use_nodes,&src->next_use_nodes);
+    sr_work_merge(&dst->merge_attempts,&src->merge_attempts);sr_work_merge(&dst->merge_successes,&src->merge_successes);
+    sr_metric_merge(&dst->next_uses,&src->next_uses);dst->next_use_returned+=src->next_use_returned;
 }
 static inline void sr_frontend_merge(struct sr_frontend *dst,const struct sr_frontend *src) {
     if(!src)return;

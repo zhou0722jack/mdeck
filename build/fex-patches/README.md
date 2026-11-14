@@ -16,7 +16,7 @@ These patches are for Madeira only and are not to be sent to FEX-Emu.
 | `0003-steam-hotspot-stages.patch` | Opt-in CEF translation/cache stage timing in both PE paths. `apply.sh` also installs the shared `SteamProbe.h` and `steam_probe_abi.h` headers. No FEX submodule pin change. |
 | `0004-ios-l1-cache-index.patch` | Opt-in L1 address mixing in every C++ and emitted ARM64 reader, writer and invalidation path. Uses the existing cache capacity; the immutable per-PE selection is made before InitCore. See `docs/steam-cache-lookup.md`. |
 | `0005-steam-compile-reasons.patch` | Independent opt-in compilation observations using decoder byte snapshots, process/manager identity and the actual output buffer serial. Bounded host-owned history, no guest reads and no code-cache policy change. See `docs/steam-compile-reasons.md`. |
-| `0006-dfe-scratch-ra-sampling.patch` | Per-pass DFE scratch reuse with bounded vector retention and unchanged CFG/propagation guards; opt-in 1/64 RA invocation timing for setup/check/reverse/forward/cleanup. `apply.sh` installs `DFEScratch.h`. See `docs/steam-dfe-ra.md`. |
+| `0006-dfe-scratch-ra-sampling.patch` | Independently switchable per-pass DFE scratch reuse (MADEIRA_FEX_DFE_REUSE, default on; PE initialization in 0005), with bounded vector retention and unchanged CFG/propagation guards; opt-in 1/64 RA invocation timing for setup/check/reverse/forward/cleanup. `apply.sh` installs `DFEScratch.h`. See `docs/steam-dfe-ra.md`. |
 
 A patch must apply on the current FEX pin. When the pin moves, rebase the
 patches onto it (or drop a patch the new pin already covers).

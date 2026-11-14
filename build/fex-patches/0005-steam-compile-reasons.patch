@@ -559,21 +559,24 @@ diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Co
 diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
 --- a/Source/Windows/ARM64EC/Module.cpp
 +++ b/Source/Windows/ARM64EC/Module.cpp
-@@ -51,6 +51,7 @@
+@@ -51,6 +51,8 @@
  #include "Windows/Common/SHMStats.h"
 
  #include <cstdint>
 +#include <FEXCore/Utils/SteamCompileReason.h>
++#include <FEXCore/Utils/DFEScratch.h>
  #include <cstdio>
  #include <type_traits>
  #include <FEXCore/Utils/L1CacheIndex.h>
-@@ -1206,6 +1207,13 @@
+@@ -1206,6 +1208,15 @@
      const char* CallRetOpt = getenv("MADEIRA_FEX_CALLRET_ELIDE");
      IosCallRetStackElided = !(CallRetOpt && strcmp(CallRetOpt, "0") == 0);
      LogMan::Msg::IFmt("FEX: callret-elide-v1 madeira-bcd enabled={}", IosCallRetStackElided != 0);
 +  }
 +#endif
 +#ifdef FEX_IOS_HOST
++  LogMan::Msg::IFmt("[fex-dfe] path=arm64ec mode={}",
++      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");
 +  if (const char* ReasonBridge = getenv("MADEIRA_COMPILE_REASON_BRIDGE")) {
 +    const auto* ReasonParams = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
 +    FEXCore::CompileReason::Initialize(ReasonBridge, 2, ReasonParams &&
@@ -584,19 +587,22 @@ diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.c
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp
 +++ b/Source/Windows/WOW64/Module.cpp
-@@ -40,6 +40,7 @@
+@@ -40,6 +40,8 @@
  #include "Common/Exception.h"
  #include "Common/TSOHandlerConfig.h"
  #include "Common/ImageTracker.h"
 +#include <FEXCore/Utils/SteamCompileReason.h>
++#include <FEXCore/Utils/DFEScratch.h>
  #include "Common/InvalidationTracker.h"
  #include "Common/OvercommitTracker.h"
  #include "Common/CPUFeatures.h"
-@@ -1311,6 +1312,13 @@
+@@ -1311,6 +1313,15 @@
    }
  #endif
 
 +#ifdef FEX_IOS_HOST
++  LogMan::Msg::IFmt("[fex-dfe] path=wow64 mode={}",
++      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");
 +  if (const char* ReasonBridge = getenv("MADEIRA_COMPILE_REASON_BRIDGE")) {
 +    const auto* ReasonParams = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
 +    FEXCore::CompileReason::Initialize(ReasonBridge, 1, ReasonParams &&

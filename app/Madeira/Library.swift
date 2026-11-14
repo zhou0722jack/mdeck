@@ -5007,6 +5007,21 @@ struct LibraryDetail: View {
                 .accessibilityIdentifier("steam-cache-lookup-optimization")
                 Text("Changes how translated code is found without increasing cache capacity. Off by default; takes effect on the next Steam launch. Turn it off to compare performance. Steam games following this profile inherit the choice.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Toggle("DFE temporary storage reuse", isOn: Binding(get: {
+                    SteamDFEScratchSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamDFEScratchSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The DFE optimization setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-dfe-scratch-reuse")
+                Text("Reuse temporary storage during code translation. On by default; turn it off to compare performance. Independent of diagnostic logging. Takes effect on the next Steam launch; games following this profile inherit the choice.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Diagnostics") {
                 Toggle("Compilation reason logging", isOn: Binding(get: {
