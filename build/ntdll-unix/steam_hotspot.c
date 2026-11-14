@@ -17,11 +17,12 @@
 #include <unistd.h>
 #include <sys/qos.h>
 
-extern pthread_key_t ios_teb_tls_key __attribute__((weak));
-extern void *ios_jit_rx_base_global __attribute__((weak));
-extern size_t ios_jit_pool_size_global __attribute__((weak));
-extern int ios_jit_low_contains(uintptr_t) __attribute__((weak));
-extern int ios_jit_pool_image_pc(uintptr_t, uintptr_t *) __attribute__((weak));
+/* Required owners are signal_arm64_ios.c and virtual_ios.c in this archive. */
+extern pthread_key_t ios_teb_tls_key;
+extern void *ios_jit_rx_base_global;
+extern size_t ios_jit_pool_size_global;
+extern int ios_jit_low_contains(uintptr_t);
+extern int ios_jit_pool_image_pc(uintptr_t, uintptr_t *);
 
 #define SH_THREADS 32
 #define SH_BUCKETS 24
@@ -63,7 +64,7 @@ static int sh_read(uint64_t address, void *out, size_t size) {
 static long sh_tsd_offset = -1;
 static void sh_calibrate(void) {
     pthread_key_t key;
-    if (!&ios_teb_tls_key || pthread_key_create(&key, NULL)) return;
+    if (pthread_key_create(&key, NULL)) return;
     uintptr_t marker = (uintptr_t)&key;
     if (!pthread_setspecific(key, (void *)marker)) {
         for (long offset = 0; offset < 8192; offset += 8) {
@@ -77,7 +78,7 @@ static void sh_calibrate(void) {
 }
 static uint64_t sh_teb(pthread_t thread) {
     uint64_t teb = 0;
-    if (sh_tsd_offset < 0 || !thread || !&ios_teb_tls_key) return 0;
+    if (sh_tsd_offset < 0 || !thread) return 0;
     sh_read((uintptr_t)thread + sh_tsd_offset + (uint64_t)ios_teb_tls_key * 8, &teb, sizeof(teb));
     return teb && !(teb & 0xfff) ? teb : 0;
 }
@@ -155,12 +156,12 @@ static int sh_module_desc(uint64_t pc, struct sh_module *modules, unsigned count
     return 0;
 }
 static enum sh_kind sh_describe(struct sh_candidate candidate, struct sh_registers regs, char out[176]) {
-    uint64_t ab = &ios_jit_rx_base_global ? (uintptr_t)ios_jit_rx_base_global : 0;
-    uint64_t size = &ios_jit_pool_size_global ? ios_jit_pool_size_global : 0;
-    int in_c = ios_jit_low_contains && ios_jit_low_contains((uintptr_t)regs.pc);
+    uint64_t ab = (uintptr_t)ios_jit_rx_base_global;
+    uint64_t size = ios_jit_pool_size_global;
+    int in_c = ios_jit_low_contains((uintptr_t)regs.pc);
     uintptr_t pe = 0;
     int copied = !in_c && ab && regs.pc >= ab && regs.pc - ab < size &&
-        ios_jit_pool_image_pc && ios_jit_pool_image_pc((uintptr_t)regs.pc, &pe);
+        ios_jit_pool_image_pc((uintptr_t)regs.pc, &pe);
     struct sh_module modules[128];
     unsigned count = candidate.teb ? sh_modules(candidate.teb, modules) : 0;
     char pe_desc[100] = "", hint[100] = "";

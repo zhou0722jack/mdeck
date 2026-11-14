@@ -97,11 +97,19 @@ with tempfile.TemporaryDirectory(prefix='madeira-app-link-') as folder:
     link_source = cef / 'Link.c'
     link_source.write_text('''#include <stdint.h>
 #include <assert.h>
+#include <pthread.h>
 #include "steam_cef_guard.h"
 #include "steam_cef_pools.h"
 #include "steam_hotspot.h"
 void madeira_steam_cef_address_failure(const char *run) { (void)run; }
 void madeira_steam_initial_window_failure(const char *run) { (void)run; }
+/* Runtime owners are deliberately placeholders in this archive fixture.
+ * Supply their real dependency surface; the sampler itself is production. */
+pthread_key_t ios_teb_tls_key;
+void *ios_jit_rx_base_global;
+size_t ios_jit_pool_size_global;
+int ios_jit_low_contains(uintptr_t pc) { (void)pc; return 0; }
+int ios_jit_pool_image_pc(uintptr_t pc, uintptr_t *out) { (void)pc; (void)out; return 0; }
 static volatile const uintptr_t required[] = {
     (uintptr_t)ios_steam_cef_allocation_result, (uintptr_t)ios_steam_cef_process_exit,
     (uintptr_t)ios_steam_cef_spawn_blocked, (uintptr_t)ios_steam_cef_pool_forget,
