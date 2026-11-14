@@ -18,7 +18,7 @@ struct sr_fingerprint {
     unsigned invalid;
 };
 static inline struct sr_fingerprint sr_fingerprint_init(void) {
-    struct sr_fingerprint f = {0};
+    struct sr_fingerprint f = {0,0,0,0,0,0};
     f.shape = UINT64_C(14695981039346656037);
     f.content_a = UINT64_C(14695981039346656037);
     f.content_b = UINT64_C(0x9e3779b97f4a7c15);
@@ -113,10 +113,10 @@ static inline enum sr_kind sr_classify(struct sr_bridge *b,struct sr_ticket t,st
     b->history_full++;return SR_UNKNOWN;
 }
 static inline struct sr_ticket sr_begin(struct sr_bridge *b,uint64_t instance,unsigned pid,unsigned tid,unsigned path) {
-    struct sr_ticket t={0};
+    struct sr_ticket t={0,0,0,0,0,0,0};
     if (!b||!instance||!pid||!tid) return t;
     t.epoch=__atomic_load_n(&b->active_epoch,__ATOMIC_ACQUIRE);
-    if (!t.epoch) return (struct sr_ticket){0};
+    if (!t.epoch) return t;
     t.instance=instance;t.pid=pid;t.tid=tid;t.path=path;
     t.order=__atomic_fetch_add(&b->begun,1,__ATOMIC_RELAXED)+1;
     return t;
