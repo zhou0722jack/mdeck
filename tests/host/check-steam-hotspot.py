@@ -217,7 +217,11 @@ with tempfile.TemporaryDirectory() as folder:
         src.write_text(text)
         subprocess.run(['xcrun','clang','-std=c11','-Wall','-Wextra','-Werror','-Wno-unused-function',
                         '-fsanitize=address,undefined','-pthread','-I'+str(native),str(src),'-o',str(exe)],check=True)
-        result = subprocess.run([str(exe)],text=True,capture_output=True,check=True,timeout=30)
+        result = subprocess.run([str(exe)],text=True,capture_output=True,timeout=30)
+        if result.returncode:
+            print(result.stdout, end='')
+            print(result.stderr, end='')
+            result.check_returncode()
         print(result.stdout,end='')
         if name == 'backend':
             assert 'reason=fixture-complete' in result.stderr and 'jit_C=1' in result.stderr and 'host=1' in result.stderr

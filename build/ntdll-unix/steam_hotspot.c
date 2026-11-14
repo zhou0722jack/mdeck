@@ -138,7 +138,7 @@ static int sh_state(void *context, uintptr_t thread, struct sh_registers *out) {
          * Register-derived data is untrusted even when the state read worked. */
         if (frame[0] >= 0x100000000ull && !(frame[0] & 3) &&
             frame[0] <= UINT64_MAX - 0x200000 && sh_read(frame[0], &offset, 4) &&
-            offset >= 4 && offset <= 0x100000 &&
+            offset >= 4 && offset <= 0x100000 && out->pc >= frame[0] + 4 && out->pc < frame[0] + offset &&
             sh_read(frame[0] + offset, &tail, sizeof(tail)) &&
             sh_block_valid(frame[0], out->pc, offset, tail.size, tail.rip, tail.guest_size) &&
             sh_read(frame[0], &again, 4) && again == offset) out->block_rip = tail.rip;
