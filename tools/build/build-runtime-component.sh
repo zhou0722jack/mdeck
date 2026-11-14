@@ -27,6 +27,9 @@ case "${1:-}" in
     ;;
   dock) git -C "$ROOT" submodule update --init madeira-dock ;;
 esac
+if [[ "${2:-}" == --prepare-only ]]; then
+  exit 0
+fi
 case "${1:-}" in
   dock) bash "$ROOT/build/madeira-dock/build.sh" --check ;;
   windows) bash "$ROOT/build/windows-runtime/build.sh" ;;

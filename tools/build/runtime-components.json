@@ -56,7 +56,8 @@
       "vulkan/arm64ec-windows/winevulkan.dll",
       "vulkan/arm64ec-windows/vulkan-1.dll",
       "compat/love/*",
-      "licenses/LuaJIT-MIT.txt"
+      "licenses/LuaJIT-MIT.txt",
+      "windows-runtime-parts.json"
     ],
     "required": [
       "arm64ec-windows/ntdll.dll",
@@ -75,7 +76,8 @@
       "compat/love/lua51.dll",
       "licenses/LuaJIT-MIT.txt",
       "arm64ec-windows/wineios.drv",
-      "arm64ec-windows/tftrace-x64.dll"
+      "arm64ec-windows/tftrace-x64.dll",
+      "windows-runtime-parts.json"
     ],
     "prebuilt": [
       "aarch64-windows/child-test.exe",

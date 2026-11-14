@@ -99,6 +99,10 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp
 +++ b/Source/Windows/WOW64/Module.cpp
+@@ -39,2 +39,3 @@
+ #include "Common/ImageTracker.h"
++#include <FEXCore/Utils/SteamCompileReason.h>
+ #include "Common/InvalidationTracker.h"
 @@ -1315,2 +1315,5 @@
    Context::HandlerConfig.emplace(*CTX);
 +#ifdef FEX_IOS_HOST
@@ -108,6 +112,10 @@ diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
 --- a/Source/Windows/ARM64EC/Module.cpp
 +++ b/Source/Windows/ARM64EC/Module.cpp
+@@ -53,2 +53,3 @@
+ #include <cstdint>
++#include <FEXCore/Utils/SteamCompileReason.h>
+ #include <cstdio>
 @@ -1215,2 +1215,5 @@
    Exception::HandlerConfig.emplace(*CTX);
 +#ifdef FEX_IOS_HOST

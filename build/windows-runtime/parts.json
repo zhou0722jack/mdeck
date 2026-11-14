@@ -1,0 +1,58 @@
+{
+  "wine": {
+    "pins": ["wine"],
+    "inputs": ["tools/build/build-wine.sh", "tools/build/setup-llvm-mingw.sh", "build/windows-runtime/targets.py", "build/windows-runtime/apply-patches.sh", "build/windows-runtime/patches/**", "build/wine-pe/**", "build/windows-runtime/parts/wine.sh"],
+    "outputs": ["arm64ec-windows/*", "aarch64-windows/*", "vulkan/arm64ec-windows/winevulkan.dll", "vulkan/arm64ec-windows/vulkan-1.dll"],
+    "support": ["wine/build-arm64ec/tools/winebuild/winebuild", "wine/build-arm64ec/libs/winecrt0/arm64ec-windows/libwinecrt0.a", "wine/build-arm64ec/dlls/ntdll/arm64ec-windows/libntdll.a", "wine/build-arm64ec/dlls/dbghelp/arm64ec-windows/libdbghelp.a", "wine/build-macos/tools/winebuild/winebuild", "wine/build-macos/libs/winecrt0/aarch64-windows/libwinecrt0.a", "wine/build-macos/dlls/ntdll/aarch64-windows/libntdll.a", "wine/build-macos/dlls/dbghelp/aarch64-windows/libdbghelp.a"],
+    "dependencies": [],
+    "recipe": "build/windows-runtime/parts/wine.sh"
+  },
+  "fex32": {
+    "pins": ["FEX"],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "build/fex-wow64/**", "build/fex-patches/**", "build/windows-runtime/parts/fex32.sh"],
+    "outputs": ["aarch64-windows/xtajit.dll"],
+    "support": [],
+    "dependencies": [],
+    "recipe": "build/windows-runtime/parts/fex32.sh"
+  },
+  "fex64": {
+    "pins": ["FEX"],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "build/fex-arm64ec/**", "build/fex-patches/**", "build/windows-runtime/parts/fex64.sh"],
+    "outputs": ["arm64ec-windows/xtajit64.dll"],
+    "support": [],
+    "dependencies": [],
+    "recipe": "build/windows-runtime/parts/fex64.sh"
+  },
+  "dxmt": {
+    "pins": ["dxmt"],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "tools/build/build-shader-headers.sh", "build/dxmt-patches/**", "build/windows-runtime/parts/dxmt.sh"],
+    "outputs": ["arm64ec-windows/d3d9.dll", "arm64ec-windows/d3d10core.dll", "arm64ec-windows/d3d11.dll", "arm64ec-windows/dxgi.dll", "arm64ec-windows/winemetal.dll", "arm64ec-windows/nvapi64.dll", "aarch64-windows/d3d11.dll", "aarch64-windows/dxgi.dll", "aarch64-windows/winemetal.dll"],
+    "support": ["dxmt/build-arm64ec/src/winemetal/libwinemetal.dll.a"],
+    "dependencies": ["wine"],
+    "recipe": "build/windows-runtime/parts/dxmt.sh"
+  },
+  "d3d12": {
+    "pins": ["dxmt"],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "tools/build/build-llvm-ios.sh", "tools/build/build-shader-headers.sh", "build/madeira-d3d12/build-pe.sh", "build/dxmt-ios/build.sh", "madeira-d3d12/src/**", "madeira-d3d12/tests/windows/**", "madeira-d3d12/third_party/**", "app/Madeira/d3d12/**", "build/windows-runtime/parts/d3d12.sh"],
+    "outputs": ["arm64ec-windows/madeira_d3d12.dll", "arm64ec-windows/d3d12.dll", "arm64ec-windows/d3d12core.dll"],
+    "support": [],
+    "dependencies": ["dxmt"],
+    "recipe": "build/windows-runtime/parts/d3d12.sh"
+  },
+  "helpers": {
+    "pins": [],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "build/faultrep/**", "build/wineios-drv/**", "build/tftrace/*.c", "build/windows-runtime/parts/helpers.sh"],
+    "outputs": ["arm64ec-windows/faultrep.dll", "arm64ec-windows/wineios.drv", "arm64ec-windows/tftrace-x64.dll"],
+    "support": [],
+    "dependencies": [],
+    "recipe": "build/windows-runtime/parts/helpers.sh"
+  },
+  "luajit": {
+    "pins": [],
+    "inputs": ["tools/build/setup-llvm-mingw.sh", "build/luajit-x64/**", "build/windows-runtime/parts/luajit.sh"],
+    "outputs": ["compat/love/*", "licenses/LuaJIT-MIT.txt"],
+    "support": [],
+    "dependencies": [],
+    "recipe": "build/windows-runtime/parts/luajit.sh"
+  }
+}

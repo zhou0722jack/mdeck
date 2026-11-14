@@ -219,6 +219,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     for path in ['WOW64','ARM64EC']:
         text=(source/f'Source/Windows/{path}/Module.cpp').read_text()
         assert 'CompileReason::Initialize(getenv("MADEIRA_COMPILE_REASON_BRIDGE"),' in text
+        assert '#include <FEXCore/Utils/SteamCompileReason.h>' in text, 'PE initializer needs its direct declaration'
     # Native builds must not gain PE symbol dependencies from the header.
     noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.Finish(0,SR_FAILED);}\n')
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-I'+str(deps),str(noop),'-o',str(work/'noop')],check=True)

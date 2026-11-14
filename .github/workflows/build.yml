@@ -90,6 +90,7 @@ jobs:
           python3 tests/host/check-clean-bootstrap.py
           python3 tests/host/check-app-link-inputs.py
           python3 tests/host/check-runtime-components.py
+          python3 tests/host/check-windows-runtime-parts.py
       - name: Check touch control layouts and editor
         run: python3 tests/host/check-control-presets.py
       - name: Check Steam connection recovery
@@ -285,7 +286,8 @@ jobs:
         run: bash tools/build/ci-input-key.sh
       - id: key
         run: python3 tools/build/runtime-components.py key '${{ matrix.component }}' >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - id: runtime-cache
+        uses: actions/cache@v4
         with:
           key: ${{ steps.key.outputs.key }}
           path: .runtime-cache/${{ matrix.component }}
@@ -300,7 +302,130 @@ jobs:
           name: native-llvm-${{ needs.plan.outputs.sdk }}
           path: toolchains
       - name: Build or verify runtime component
+        if: matrix.component != 'windows'
+        # Windows restores each source owner independently before assembling.
         run: python3 tools/build/runtime-components.py build '${{ matrix.component }}'
+      - id: windows-parts
+        if: matrix.component == 'windows'
+        run: python3 build/windows-runtime/parts.py keys >> "$GITHUB_OUTPUT"
+      - name: Prepare Windows runtime tools and pinned sources
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: bash tools/build/build-runtime-component.sh windows --prepare-only
+      - name: Restore Wine runtime and link support
+        id: cache-win-wine
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.wine }}
+          path: .runtime-cache/windows-parts/wine
+      - name: Restore 32-bit FEX runtime
+        id: cache-win-fex32
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.fex32 }}
+          path: .runtime-cache/windows-parts/fex32
+      - name: Restore 64-bit FEX runtime
+        id: cache-win-fex64
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.fex64 }}
+          path: .runtime-cache/windows-parts/fex64
+      - name: Restore DXMT runtime and link support
+        id: cache-win-dxmt
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.dxmt }}
+          path: .runtime-cache/windows-parts/dxmt
+      - name: Restore D3D12 runtime
+        id: cache-win-d3d12
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.d3d12 }}
+          path: .runtime-cache/windows-parts/d3d12
+      - name: Restore auxiliary runtime DLLs
+        id: cache-win-helpers
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.helpers }}
+          path: .runtime-cache/windows-parts/helpers
+      - name: Restore LuaJIT compatibility runtime
+        id: cache-win-luajit
+        if: matrix.component == 'windows'
+        uses: actions/cache/restore@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.luajit }}
+          path: .runtime-cache/windows-parts/luajit
+      - name: Build or reuse Wine
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build wine
+      - name: Save completed Wine
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-wine.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.wine }}
+          path: .runtime-cache/windows-parts/wine
+      - name: Build or reuse 32-bit FEX
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build fex32
+      - name: Save completed 32-bit FEX
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-fex32.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.fex32 }}
+          path: .runtime-cache/windows-parts/fex32
+      - name: Build or reuse 64-bit FEX
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build fex64
+      - name: Save completed 64-bit FEX
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-fex64.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.fex64 }}
+          path: .runtime-cache/windows-parts/fex64
+      - name: Build or reuse DXMT
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build dxmt
+      - name: Save completed DXMT
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-dxmt.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.dxmt }}
+          path: .runtime-cache/windows-parts/dxmt
+      - name: Build or reuse D3D12
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build d3d12
+      - name: Save completed D3D12
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-d3d12.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.d3d12 }}
+          path: .runtime-cache/windows-parts/d3d12
+      - name: Build or reuse auxiliary DLLs
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build helpers
+      - name: Save completed auxiliary DLLs
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-helpers.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.helpers }}
+          path: .runtime-cache/windows-parts/helpers
+      - name: Build or reuse LuaJIT
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
+        run: python3 build/windows-runtime/parts.py build luajit
+      - name: Save completed LuaJIT
+        if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true' && steps.cache-win-luajit.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: ${{ steps.windows-parts.outputs.luajit }}
+          path: .runtime-cache/windows-parts/luajit
+      - name: Build or assemble Windows runtime owners
+        if: matrix.component == 'windows'
+        run: python3 tools/build/runtime-components.py build windows
       # Each completed component survives a failure in another component or app.
       - uses: actions/upload-artifact@v4
         with:
