@@ -47,6 +47,7 @@ backend = r'''
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <mach/mach_vm.h>
+#include <mach/thread_policy.h>
 #include <mach/arm/thread_status.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -68,6 +69,7 @@ static kern_return_t f_info(thread_act_t,thread_flavor_t,thread_info_t,mach_msg_
 static kern_return_t f_suspend(thread_act_t);
 static kern_return_t f_resume(thread_act_t);
 static kern_return_t f_state(thread_act_t,thread_state_flavor_t,thread_state_t,mach_msg_type_number_t*);
+static kern_return_t f_policy(thread_t,thread_policy_flavor_t,thread_policy_t,mach_msg_type_number_t*,boolean_t*);
 static kern_return_t f_free(ipc_space_t,mach_port_name_t);
 static kern_return_t f_array(vm_map_t,vm_address_t,vm_size_t);
 static pthread_t f_pthread(mach_port_t);
@@ -83,6 +85,7 @@ static int f_create(pthread_t*,const pthread_attr_t*,void*(*)(void*),void*);
 #define thread_suspend f_suspend
 #define thread_resume f_resume
 #define thread_get_state f_state
+#define thread_policy_get f_policy
 #define mach_port_deallocate f_free
 #define vm_deallocate f_array
 #define pthread_from_mach_thread_np f_pthread
@@ -101,19 +104,20 @@ void *ios_jit_rx_base_global=(void*)0x140000000ull;
 size_t ios_jit_pool_size_global=0x10000000;
 int ios_jit_low_contains(uintptr_t a){assert(!held);return a>=0x120000000ull&&a<0x130000000ull;}
 int ios_jit_pool_image_pc(uintptr_t a,uintptr_t *out){assert(!held);if(a==0x140010000ull){*out=0x7200100000ull;return 1;}return 0;}
-static kern_return_t f_tasks(task_t task,thread_act_array_t *out,mach_msg_type_number_t *n){(void)task;assert(!held);static thread_t list[]={1,2,3,4,5,6};*out=list;*n=6;round_no++;return 0;}
+static kern_return_t f_tasks(task_t task,thread_act_array_t *out,mach_msg_type_number_t *n){(void)task;assert(!held);static thread_t list[]={1,2,3,4,5,6,7};*out=list;*n=7;round_no++;return 0;}
 static kern_return_t f_info(thread_act_t t,thread_flavor_t flavor,thread_info_t out,mach_msg_type_number_t *n){(void)n;assert(!held);
  if(flavor==THREAD_IDENTIFIER_INFO){thread_identifier_info_t i=(void*)out;memset(i,0,sizeof(*i));i->thread_id=100+t;return 0;}
  thread_basic_info_t b=(void*)out;memset(b,0,sizeof(*b));b->run_state=TH_STATE_RUNNING;b->suspend_count=t==5;
  b->user_time.microseconds=1000+round_no*(t==3?16000:t==4?12000:50000);return 0;}
-static kern_return_t f_suspend(thread_act_t t){assert(!held&&t!=1&&t!=2&&t!=5&&t!=6);held=t;selected[t]++;suspend_calls++;return 0;}
+static kern_return_t f_suspend(thread_act_t t){assert(!held&&t!=1&&t!=2&&t!=5&&t!=6&&t!=7);held=t;selected[t]++;suspend_calls++;return 0;}
 static kern_return_t f_resume(thread_act_t t){assert(held==t);held=0;resume_calls++;return 0;}
 static kern_return_t f_state(thread_act_t t,thread_state_flavor_t flavor,thread_state_t out,mach_msg_type_number_t *n){(void)flavor;(void)n;assert(held==t);
  fake_time+=slow_capture?SH_ONE_HOLD_NS+1:100000;if(cancel_capture){atomic_store(&sh_enabled,0);atomic_fetch_add(&sh_epoch,1);}
  if(read_error&&t==3)return KERN_FAILURE;
  arm_thread_state64_t *s=(void*)out;memset(s,0,sizeof(*s));__darwin_arm_thread_state64_set_pc_fptr(*s,(void*)(uintptr_t)(t==3?0x120001000ull:0x100001000ull));return 0;}
 static kern_return_t f_free(ipc_space_t task,mach_port_name_t port){(void)task;(void)port;assert(!held);ports_freed++;return 0;}
-static kern_return_t f_array(vm_map_t task,vm_address_t address,vm_size_t size){(void)task;(void)address;assert(size==6*sizeof(thread_t)&&!held);arrays_freed++;return 0;}
+static kern_return_t f_array(vm_map_t task,vm_address_t address,vm_size_t size){(void)task;(void)address;assert(size==7*sizeof(thread_t)&&!held);arrays_freed++;return 0;}
+static kern_return_t f_policy(thread_t t,thread_policy_flavor_t flavor,thread_policy_t out,mach_msg_type_number_t *count,boolean_t *get_default){(void)flavor;(void)out;(void)count;assert(!held);*get_default=t!=7;return 0;}
 static pthread_t f_pthread(mach_port_t p){assert(!held);return(pthread_t)(uintptr_t)p;}
 static int f_name(pthread_t p,char *out,size_t n){assert(!held);unsigned t=(unsigned)(uintptr_t)p;snprintf(out,n,"%s",t==3||t==5?"Chrome_InProcRendererThread":t==6?"AudioIO":"");return 0;}
 static int f_id(pthread_t p,uint64_t *id){(void)p;assert(!held);*id=101;return 0;}
@@ -126,7 +130,7 @@ static struct sh_run fresh(void){round_no=ports_freed=arrays_freed=suspend_calls
 int main(void){
  struct sh_run r=fresh();assert(!sh_tick(&r)&&!r.attempts);fake_time+=SH_TICK_NS;assert(!sh_tick(&r));
  assert(r.attempts==2&&r.success==2&&suspend_calls==2&&resume_calls==2&&!held);
- assert(selected[3]==1&&selected[4]==1&&ports_freed==12&&arrays_freed==2);
+ assert(selected[3]==1&&selected[4]==1&&ports_freed==14&&arrays_freed==2);
  assert(r.threads_used==2&&r.threads[0].states[SH_JIT_C]==1&&r.threads[1].states[SH_HOST]==1);
  sh_report(&r,"fixture-complete");
  char desc[176];struct sh_candidate c={0};
@@ -134,8 +138,8 @@ int main(void){
  assert(sh_describe(c,(struct sh_registers){.pc=0x140010000ull},desc)==SH_PE);
  assert(sh_describe(c,(struct sh_registers){.pc=0x130001000ull},desc)==SH_UNKNOWN);
  r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;read_error=1;assert(!sh_tick(&r));assert(r.state_failed==1&&r.success==1&&resume_calls==2&&!held);
- r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;slow_capture=1;assert(!strcmp(sh_tick(&r),"single-hold-budget"));assert(r.attempts==1&&resume_calls==1&&!held&&ports_freed==12);
- r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;cancel_capture=1;assert(!sh_tick(&r));assert(r.attempts==1&&!r.success&&resume_calls==1&&!held&&ports_freed==12);
+ r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;slow_capture=1;assert(!strcmp(sh_tick(&r),"single-hold-budget"));assert(r.attempts==1&&resume_calls==1&&!held&&ports_freed==14);
+ r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;cancel_capture=1;assert(!sh_tick(&r));assert(r.attempts==1&&!r.success&&resume_calls==1&&!held&&ports_freed==14);
  r=fresh();sh_tick(&r);fake_time+=SH_TICK_NS;r.attempts=SH_MAX_SAMPLES;assert(!sh_tick(&r)&&!suspend_calls);
  r=fresh();ios_steam_hotspot_set_active(0);assert(!atomic_load(&sh_enabled));ios_steam_hotspot_set_active(1);assert(!atomic_load(&sh_enabled));
  ios_steam_hotspot_configure(0);uint64_t e=atomic_load(&sh_epoch);assert(!atomic_load(&sh_enabled));

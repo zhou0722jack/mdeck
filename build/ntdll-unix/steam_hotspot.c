@@ -4,7 +4,7 @@
 #include "steam_hotspot.h"
 #include <mach/mach.h>
 #include <mach/mach_time.h>
-#include <mach/mach_vm.h>
+#include <mach/thread_policy.h>
 #include <mach/arm/thread_status.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -54,9 +54,9 @@ static uint64_t sh_now(void) {
     return (uint64_t)((__uint128_t)mach_absolute_time() * sh_timebase.numer / sh_timebase.denom);
 }
 static int sh_read(uint64_t address, void *out, size_t size) {
-    mach_vm_size_t got = 0;
+    vm_size_t got = 0;
     return address > 0x10000 && address <= UINT64_MAX - size &&
-        mach_vm_read_overwrite(mach_task_self(), address, size, (mach_vm_address_t)out, &got) == KERN_SUCCESS && got == size;
+        vm_read_overwrite(mach_task_self(), (vm_address_t)address, size, (vm_address_t)out, &got) == KERN_SUCCESS && got == size;
 }
 /* Self-calibrate a private pthread key; never borrow the legacy sampler's
  * mutable maps or scan the suspended thread's pthread structure. */
@@ -222,7 +222,7 @@ static void sh_report(struct sh_run *run, const char *reason) {
         printed[best] = 1; struct sh_thread *t = &run->threads[best];
         dprintf(STDERR_FILENO, "[steam-hotspot-thread] session=%llu mach_tid=%llu pid=%04x tid=%04x group=%s name=%s samples=%u "
             "jit_AB=%u jit_C=%u pe=%u host=%u unknown=%u blocked_at_selection=%u selected_cpu_ms=%.3f bucket_overflow=%u\n",
-            (unsigned long long)run->epoch, (unsigned long long)t->id, t->pid, t->tid, t->group == 1 ? "cef-name" : "unnamed-native", t->name,
+            (unsigned long long)run->epoch, (unsigned long long)t->id, t->pid, t->tid, t->group == 1 ? "cef-name" : "unnamed-no-teb", t->name,
             t->samples, t->states[0], t->states[1], t->states[2], t->states[3], t->states[4], t->blocked, t->selected_cpu_ms, t->bucket_overflow);
         /* Bounded heavy hitters, with their approximation error exposed. */
         unsigned bucket_printed[SH_BUCKETS] = {0};
@@ -258,6 +258,12 @@ static const char *sh_tick(struct sh_run *run) {
         if (!pt || pthread_getname_np(pt, name, sizeof(name))) { run->query_failed++; continue; }
         uint64_t teb = sh_teb(pt); unsigned group = sh_cef_name(name) ? 1 : (!teb && !name[0] ? 2 : 0);
         if (!group || cpu <= best[group-1].cpu_ms) continue;
+        thread_time_constraint_policy_data_t policy;
+        mach_msg_type_number_t pc = THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t default_policy = 0;
+        if (thread_policy_get(threads[i], THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&policy, &pc, &default_policy) != KERN_SUCCESS) {
+            run->query_failed++; continue;
+        }
+        if (!default_policy) continue; /* Core Audio and other realtime work. */
         struct sh_candidate c = {.id = id.thread_id, .teb = teb, .group = group, .index = i, .cpu_ms = cpu, .run_state = bi.run_state};
         if (teb) { sh_read(teb+0x40, &c.pid, 4); sh_read(teb+0x48, &c.tid, 4); }
         snprintf(c.name, sizeof(c.name), "%s", name); best[group-1] = c;
