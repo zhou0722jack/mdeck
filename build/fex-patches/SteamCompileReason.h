@@ -72,6 +72,13 @@ class Capture {
   unsigned stage=SR_OTHER;
   sr_timing timing {};
   sr_output output {};
+  sr_frontend frontend; // Initialized only for an enrolled diagnostic call.
+  uint64_t ir_last {};
+  unsigned ir_phase=SR_IR_OTHER;
+  void CloseIRPhase(uint64_t now) {
+    if(now>=ir_last)sr_add(&frontend.phases[ir_phase],now-ir_last);
+    ir_last=now;
+  }
   unsigned fallback=SR_FAILED;
 public:
   Capture(uint64_t owner,uint64_t rip,uint64_t max_inst,uint64_t mode,bool delivery) {
@@ -81,7 +88,7 @@ public:
     const auto* ids=reinterpret_cast<const uint64_t*>(teb+0x40);
     ticket=sr_begin(bridge,Instance,(unsigned)ids[0],(unsigned)ids[1],Path);ticket.cef=CEF;
     key={ticket.instance,owner,rip,max_inst,mode};fallback=delivery?SR_DELIVERY:SR_FAILED;
-    if(ticket.epoch)start=last=Clock();
+    if(ticket.epoch){frontend={};start=last=Clock();}
   }
   bool Active() const { return ticket.epoch&&fallback!=SR_DELIVERY; }
   void Block(uint64_t address) {if(Active())sr_fingerprint_block(&fingerprint,address);}
@@ -89,15 +96,48 @@ public:
   void Unsupported() {fingerprint.invalid=1;}
   void Stage(unsigned next) {
     if(!Active()||next>=SR_STAGES)return;
-    const auto now=Clock();if(now>=last)timing.ticks[stage]+=now-last;last=now;stage=next;
+    const auto now=Clock();
+    if(stage==SR_DECODE_IR)CloseIRPhase(now);
+    if(now>=last)timing.ticks[stage]+=now-last;
+    last=now;stage=next;
+    if(next==SR_DECODE_IR){frontend.calls++;ir_last=now;ir_phase=SR_IR_OTHER;}
+  }
+  void IRStage(unsigned next) {
+    if(!Active()||stage!=SR_DECODE_IR||next>=SR_IR_PHASES||next==ir_phase)return;
+    CloseIRPhase(Clock());ir_phase=next;
+  }
+  void Decoded(uint64_t instructions,uint64_t blocks) {
+    if(!Active())return;
+    sr_work_add(&frontend.decoded_instructions,instructions);sr_work_add(&frontend.decoded_blocks,blocks);
+  }
+  void Emitted(uint64_t instructions,uint64_t slots,bool custom) {
+    if(!Active())return;
+    sr_work_add(&frontend.emitted_instructions,instructions);sr_work_add(&frontend.ssa_before,slots);
+    frontend.custom+=custom;
+  }
+  void IRReturned(uint64_t slots) {
+    if(!Active())return;
+    frontend.returned++;sr_work_add(&frontend.ssa_after,slots);
+  }
+  uint64_t PassBegin(unsigned pass,uint64_t slots) {
+    if(!Active()||stage!=SR_DECODE_IR)return 0;
+    if(pass>=SR_IR_PASSES_COUNT)pass=SR_PASS_OTHER;
+    sr_work_add(&frontend.pass_ssa_in[pass],slots);return Clock();
+  }
+  void PassEnd(unsigned pass,uint64_t begin,bool completed,uint64_t slots) {
+    if(!begin)return;
+    const auto end=Clock();if(pass>=SR_IR_PASSES_COUNT)pass=SR_PASS_OTHER;
+    if(end>=begin)sr_add(&frontend.passes[pass],end-begin);
+    if(completed)sr_work_add(&frontend.pass_ssa_out[pass],slots);
   }
   void Output(sr_output value) {output=value;}
   void Finish(uint64_t generation,unsigned outcome) {
     if(!ticket.epoch)return;
     const uint64_t end=Clock();
+    if(stage==SR_DECODE_IR)CloseIRPhase(end);
     if(end>=last)timing.ticks[stage]+=end-last;
-    sr_finish_detail(bridge,ticket,key,fingerprint,generation,fallback==SR_DELIVERY?SR_DELIVERY:outcome,
-                     end>=start?end-start:0,&timing,output);
+    sr_finish_full(bridge,ticket,key,fingerprint,generation,fallback==SR_DELIVERY?SR_DELIVERY:outcome,
+                     end>=start?end-start:0,&timing,output,&frontend);
     ticket.epoch=0;
   }
   ~Capture(){Finish(0,fallback);}
@@ -113,10 +153,28 @@ public:
   void Instruction(uint64_t,const uint8_t*,unsigned){}
   void Unsupported(){}
    void Stage(unsigned){}
+   void IRStage(unsigned){}
+   void Decoded(uint64_t,uint64_t){}
+   void Emitted(uint64_t,uint64_t,bool){}
+   void IRReturned(uint64_t){}
+   uint64_t PassBegin(unsigned,uint64_t){return 0;}
+   void PassEnd(unsigned,uint64_t,bool,uint64_t){}
    void Output(sr_output){}
   void Finish(uint64_t,unsigned){}
 };
 #endif
+// Stack-owned; no TLS or global current-capture pointer. Unwinding still records
+// an entered pass, with no output workload sample when Run did not return.
+class PassScope {
+  Capture* capture;unsigned pass;uint64_t begin;
+public:
+  PassScope(Capture* capture,unsigned pass,uint64_t slots):capture(capture),pass(pass),
+    begin(capture?capture->PassBegin(pass,slots):0){}
+  void Complete(uint64_t slots){if(capture)capture->PassEnd(pass,begin,true,slots);begin=0;}
+  ~PassScope(){if(capture)capture->PassEnd(pass,begin,false,0);}
+  PassScope(const PassScope&)=delete;
+  PassScope& operator=(const PassScope&)=delete;
+};
 }
 #if defined(FEX_IOS_HOST) && defined(_WIN32)
 #define MDECK_COMPILE_CAPTURE(name,thread,rip,maxinst,mode,delivery) \

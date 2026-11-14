@@ -129,7 +129,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    } else {
      // Clear L1+L2 cache of this thread, and clear L3 cache across any threads using it
      auto lk = Thread->LookupCache->AcquireWriteLock();
-@@ -876,7 +876,8 @@
+@@ -876,8 +876,10 @@
  extern "C" uint64_t FEX_MadeiraIRCapCurrentRIP();
 
  ContextImpl::GenerateIRResult
@@ -137,9 +137,26 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 +ContextImpl::GenerateIR(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, bool ExtendedDebugInfo, uint64_t MaxInst,
 +                        FEXCore::CompileReason::Capture* Reason) {
    FEXCORE_PROFILE_SCOPED("GenerateIR");
++  if (Reason) Reason->IRStage(SR_IR_SETUP);
    FEX_MadeiraIRCapClear(); // ml623: never inherit a previous compile's mark
 
-@@ -973,6 +974,7 @@
+   /* iOS-Madeira ml250: Thread->OpDispatcher has been observed NULL here, faulting as
+@@ -936,11 +938,14 @@
+     bool HadInvalidInst {false};
+
+     /* perf-silenced */ // LogMan::Msg::IFmt("[iOS] GenerateIR: Calling DecodeInstructionsAtEntry...");
++    if (Reason) Reason->IRStage(SR_IR_DECODE);
+     Thread->FrontendDecoder->DecodeInstructionsAtEntry(Thread, GuestCode, GuestRIP, MaxInst);
++    if (Reason) Reason->IRStage(SR_IR_BUILD);
+     /* perf-silenced */ // LogMan::Msg::IFmt("[iOS] GenerateIR: DecodeInstructionsAtEntry returned");
+
+     auto BlockInfo = Thread->FrontendDecoder->GetDecodedBlockInfo();
+     auto CodeBlocks = &BlockInfo->Blocks;
++    if (Reason) Reason->Decoded(BlockInfo->TotalInstructionCount, CodeBlocks->size());
+
+     /* perf-silenced GenerateIR Blocks log */
+
+@@ -973,6 +978,7 @@
 
      for (size_t j = 0; j < CodeBlocks->size(); ++j) {
        const FEXCore::Frontend::Decoder::DecodedBlocks& Block = CodeBlocks->at(j);
@@ -147,7 +164,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
  #ifdef ZYDIS_DISASSEMBLER
        if (FEXCore::Config::Get_X86DISASSEMBLE() && CodeBlocks->size() > 1) {
-@@ -1016,6 +1018,7 @@
+@@ -1016,6 +1022,7 @@
 
          TableInfo = Block.DecodedInstructions[i].TableInfo;
          DecodedInfo = &Block.DecodedInstructions[i];
@@ -155,15 +172,43 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
  #ifdef ZYDIS_DISASSEMBLER
          if (FEXCore::Config::Get_X86DISASSEMBLE()) {
-@@ -1209,6 +1212,7 @@
+@@ -1203,12 +1210,17 @@
+     }
+ #endif
+
++    if (Reason) Reason->IRStage(SR_IR_FINALIZE);
+     Thread->OpDispatcher->Finalize();
++    if (Reason) Reason->IRStage(SR_IR_OTHER);
+
+     Thread->FrontendDecoder->DelayedDisownBuffer();
    }
 
++  if (Reason) Reason->IRStage(SR_IR_OTHER);
    IR::IREmitter* IREmitter = Thread->OpDispatcher.get();
++  if (Reason) Reason->Emitted(TotalInstructions, IREmitter->ViewIR().GetSSACount(), HasCustomIR);
 +  if (Reason && HasCustomIR) Reason->Unsupported();
 
    auto ShouldDump = Thread->OpDispatcher->ShouldDumpIR();
    // Debug
-@@ -1237,6 +1241,9 @@
+@@ -1217,13 +1229,16 @@
+   }
+
+   // Run the passmanager over the IR from the dispatcher
+-  Thread->PassManager->Run(IREmitter);
++  if (Reason) Reason->IRStage(SR_IR_PASSES);
++  Thread->PassManager->Run(IREmitter, Reason);
++  if (Reason) Reason->IRStage(SR_IR_OTHER);
+
+   // Debug
+   if (ShouldDump) {
+     IRDumper(Thread, IREmitter, GuestRIP);
+   }
+
++  if (Reason) Reason->IRReturned(IREmitter->ViewIR().GetSSACount());
+   return {
+     .IRView = IREmitter->ViewIR(),
+     .TotalInstructions = TotalInstructions,
+@@ -1237,6 +1252,9 @@
  ContextImpl::CompileCodeResult ContextImpl::CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst) {
    MDECK_STEAM_SCOPE(SF_COMPILE);
    // [iOS-Madeira] verbose CompileCode logs suppressed — flooding log faster than splash
@@ -173,7 +218,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
    if (SourcecodeResolver && Config.GDBSymbols()) {
      auto MappedSection = SyscallHandler->LookupExecutableFileSection(Thread, GuestRIP);
-@@ -1246,9 +1253,11 @@
+@@ -1246,9 +1264,11 @@
      }
    }
 
@@ -186,7 +231,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    if (!IRView) {
      // OpDispatcher IR already released in this case.
      FEX_MadeiraIRCapClear(); // ml623
-@@ -1262,9 +1271,11 @@
+@@ -1262,9 +1282,11 @@
    // as expensive and are easily reverted.
    /* ml455 (#74): skip the recheck under a delivery compile — FindBlock takes
     * the lookup read lock our interrupted frame may write-own. */
@@ -198,7 +243,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
        FEX_MadeiraIRCapClear(); // ml623
        Thread->OpDispatcher->DelayedDisownBuffer();
        return {.CompiledCode = {.BlockBegin = reinterpret_cast<uint8_t*>(Block), .EntryPoints = {{GuestRIP, reinterpret_cast<uint8_t*>(Block)}}},
-@@ -1275,12 +1286,22 @@
+@@ -1275,12 +1297,22 @@
      }
    }
 
@@ -327,6 +372,165 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Inter
 
    void ClearRelocations() override {
      Relocations.clear();
+diff --git a/FEXCore/Source/Interface/IR/PassManager.cpp b/FEXCore/Source/Interface/IR/PassManager.cpp
+--- a/FEXCore/Source/Interface/IR/PassManager.cpp
++++ b/FEXCore/Source/Interface/IR/PassManager.cpp
+@@ -39,7 +39,7 @@
+   // Walk the passes and add them where asked.
+   if (PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::BEFOREOPT) {
+     // Insert at the start.
+-    it = InsertAt(it, Debug::CreateIRDumper());
++    it = InsertAt(it, Debug::CreateIRDumper(), SR_PASS_DUMP);
+     ++it; // Skip what we inserted.
+   }
+
+@@ -57,14 +57,14 @@
+         }
+
+         // Insert before
+-        it = InsertAt(it, Debug::CreateIRDumper());
++        it = InsertAt(it, Debug::CreateIRDumper(), SR_PASS_DUMP);
+         ++it; // Skip what we inserted.
+       }
+
+       ++it; // Skip current pass.
+       if (PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::AFTERPASS) {
+         // Insert after
+-        it = InsertAt(it, Debug::CreateIRDumper());
++        it = InsertAt(it, Debug::CreateIRDumper(), SR_PASS_DUMP);
+         ++it; // Skip what we inserted.
+       }
+     }
+@@ -72,7 +72,7 @@
+   if (PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::AFTEROPT) {
+     if (!(PassManagerDumpIR() & FEXCore::Config::PassManagerDumpIR::AFTERPASS)) {
+       // Insert final IRDumper.
+-      InsertAt(Passes.end(), Debug::CreateIRDumper());
++      InsertAt(Passes.end(), Debug::CreateIRDumper(), SR_PASS_DUMP);
+     }
+   }
+ }
+@@ -81,7 +81,7 @@
+   FEX_CONFIG_OPT(DisablePasses, O0);
+
+   if (!DisablePasses()) {
+-    InsertPass(CreateX87StackOptimizationPass(ctx->HostFeatures, ctx->Config.Is64BitMode ? IR::OpSize::i64Bit : IR::OpSize::i32Bit));
++    InsertPass(CreateX87StackOptimizationPass(ctx->HostFeatures, ctx->Config.Is64BitMode ? IR::OpSize::i64Bit : IR::OpSize::i32Bit), "", SR_PASS_X87);
+
+     // iOS-Madeira ml597: TARGETED A/B for the ml594 post-login hang. The renderer
+     // thread was sampled 9x at 97-100% CPU inside DeadFlagCalculationEliminination
+@@ -100,7 +100,7 @@
+     if (NoDFE && *NoDFE && *NoDFE != '0') {
+       LogMan::Msg::EFmt("[dfe-guard] ml597: MADEIRA_NO_DFE set — DeadFlagCalculationEliminination DISABLED");
+     } else {
+-      InsertPass(CreateDeadFlagCalculationEliminination());
++      InsertPass(CreateDeadFlagCalculationEliminination(), "", SR_PASS_DFE);
+     }
+   }
+ }
+@@ -112,7 +112,7 @@
+ }
+
+ void PassManager::InsertRegisterAllocationPass(FEXCore::Context::ContextImpl* ctx) {
+-  InsertPass(IR::CreateRegisterAllocationPass(&ctx->CPUID), "RA");
++  InsertPass(IR::CreateRegisterAllocationPass(&ctx->CPUID), "RA", SR_PASS_RA);
+ }
+
+ namespace {
+@@ -432,7 +432,7 @@
+   return IRCapRIP;
+ }
+
+-void PassManager::Run(IREmitter* IREmit) {
++void PassManager::Run(IREmitter* IREmit, FEXCore::CompileReason::Capture* Reason) {
+   FEXCORE_PROFILE_SCOPED("PassManager::Run");
+
+   // One-time armed line so that ZERO [ir-topo] output is INTERPRETABLE. In ml599
+@@ -472,7 +472,12 @@
+
+   int PassIndex = 0;
+   for (const auto& Pass : Passes) {
+-    Pass->Run(IREmit);
++    {
++      FEXCore::CompileReason::PassScope Timing(Reason, Pass->MDeckReasonPass,
++                                              Reason ? IREmit->ViewIR().GetSSACount() : 0);
++      Pass->Run(IREmit);
++      Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0);
++    }
+
+     if (Cap) {
+       char NameBuf[32];
+@@ -498,7 +503,12 @@
+
+ #if defined(ASSERTIONS_ENABLED) && ASSERTIONS_ENABLED
+   for (const auto& Pass : ValidationPasses) {
+-    Pass->Run(IREmit);
++    {
++      FEXCore::CompileReason::PassScope Timing(Reason, Pass->MDeckReasonPass,
++                                              Reason ? IREmit->ViewIR().GetSSACount() : 0);
++      Pass->Run(IREmit);
++      Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0);
++    }
+   }
+ #endif
+ }
+diff --git a/FEXCore/Source/Interface/IR/PassManager.h b/FEXCore/Source/Interface/IR/PassManager.h
+--- a/FEXCore/Source/Interface/IR/PassManager.h
++++ b/FEXCore/Source/Interface/IR/PassManager.h
+@@ -8,6 +8,7 @@
+ #pragma once
+
+ #include <FEXCore/Config/Config.h>
++#include <FEXCore/Utils/SteamCompileReason.h>
+ #include <FEXCore/Utils/ThreadPoolAllocator.h>
+ #include <FEXCore/fextl/memory.h>
+ #include <FEXCore/fextl/string.h>
+@@ -31,6 +32,7 @@
+
+ class Pass {
+ public:
++  unsigned MDeckReasonPass = SR_PASS_OTHER;
+   virtual ~Pass() = default;
+   virtual void Run(IREmitter* IREmit) = 0;
+
+@@ -46,8 +48,8 @@
+ public:
+   void AddDefaultPasses(FEXCore::Context::ContextImpl* ctx);
+   void AddDefaultValidationPasses();
+-  Pass* InsertPass(fextl::unique_ptr<Pass> Pass, fextl::string Name = "") {
+-    auto PassPtr = InsertAt(Passes.end(), std::move(Pass))->get();
++  Pass* InsertPass(fextl::unique_ptr<Pass> Pass, fextl::string Name = "", unsigned ReasonPass = SR_PASS_OTHER) {
++    auto PassPtr = InsertAt(Passes.end(), std::move(Pass), ReasonPass)->get();
+
+     if (!Name.empty()) {
+       NameToPassMaping[Name] = PassPtr;
+@@ -57,7 +59,7 @@
+
+   void InsertRegisterAllocationPass(FEXCore::Context::ContextImpl* ctx);
+
+-  void Run(IREmitter* IREmit);
++  void Run(IREmitter* IREmit, FEXCore::CompileReason::Capture* Reason = nullptr);
+
+   bool HasPass(fextl::string Name) const {
+     return NameToPassMaping.contains(Name);
+@@ -83,7 +85,8 @@
+
+ private:
+   using PassArrayType = fextl::vector<fextl::unique_ptr<Pass>>;
+-  PassArrayType::iterator InsertAt(PassArrayType::iterator pos, fextl::unique_ptr<Pass> Pass) {
++  PassArrayType::iterator InsertAt(PassArrayType::iterator pos, fextl::unique_ptr<Pass> Pass, unsigned ReasonPass = SR_PASS_OTHER) {
++    Pass->MDeckReasonPass = ReasonPass;
+     Pass->RegisterPassManager(this);
+     return Passes.insert(pos, std::move(Pass));
+   }
+@@ -93,6 +96,7 @@
+ #if defined(ASSERTIONS_ENABLED) && ASSERTIONS_ENABLED
+   fextl::vector<fextl::unique_ptr<Pass>> ValidationPasses;
+   void InsertValidationPass(fextl::unique_ptr<Pass> Pass, fextl::string Name = "") {
++    Pass->MDeckReasonPass = SR_PASS_VALIDATE;
+     Pass->RegisterPassManager(this);
+     auto PassPtr = ValidationPasses.emplace_back(std::move(Pass)).get();
+
 diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Core/Context.h
 --- a/FEXCore/include/FEXCore/Core/Context.h
 +++ b/FEXCore/include/FEXCore/Core/Context.h

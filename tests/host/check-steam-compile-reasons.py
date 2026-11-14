@@ -144,6 +144,27 @@ int main(void){
  for(unsigned i=1;i<SR_BUFFER_EVENTS+1;i++)sr_buffer_record(b,e);
  assert(b->buffer_count==SR_BUFFER_EVENTS&&b->buffer_overflow==1);
  b->active_epoch=8;sr_buffer_record(b,e);assert(b->buffer_count==SR_BUFFER_EVENTS);
+ // Frontend is nested in decode_ir, independent of generation classification.
+ memset(b,0,sizeof(*b));b->active_epoch=9;
+ struct sr_frontend ir={0};ir.calls=ir.returned=1;
+ sr_add(&ir.phases[SR_IR_BUILD],12);sr_add(&ir.phases[SR_IR_PASSES],8);
+ sr_add(&ir.passes[SR_PASS_X87],6);
+ sr_work_add(&ir.decoded_instructions,7);sr_work_add(&ir.decoded_blocks,2);
+ sr_work_add(&ir.ssa_before,100);sr_work_add(&ir.ssa_after,120);
+ sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],100);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],120);
+ struct sr_timing ir_time={0};ir_time.ticks[SR_DECODE_IR]=20;
+ struct sr_ticket cef=begin();cef.cef=1;
+ assert(sr_finish_full(b,cef,key,bytes(1),55,SR_RACED,20,&ir_time,(struct sr_output){0},&ir));
+ assert(sr_finish_full(b,sr_begin(b,2,0xa8,0xac,1),key,bytes(1),55,SR_FAILED,20,&ir_time,(struct sr_output){0},&ir));
+ sum=0;for(unsigned i=0;i<SR_IR_PHASES;i++)sum+=b->frontend.phases[i].ticks;
+ assert(sum==b->stages[SR_DECODE_IR].ticks&&sum==40&&b->frontend.calls==2);
+ assert(b->frontend.passes[SR_PASS_X87].ticks==12&&b->frontend.passes[SR_PASS_X87].max_ticks==6);
+ assert(b->frontend.decoded_instructions.total==14&&b->frontend.decoded_instructions.max==7);
+ assert(b->instances[SR_ORDINARY_INSTANCES].frontend.calls==1&&b->instances[0].frontend.calls==1);
+ assert(!b->classified&&b->frontend.ssa_after.count==2);
+ struct sr_ticket stale=begin();b->active_epoch=10;
+ assert(!sr_finish_full(b,stale,key,bytes(1),55,SR_FAILED,20,&ir_time,(struct sr_output){0},&ir));
+ assert(b->frontend.calls==2);
  free(b);puts("PASS compile classification: first/changed/new-generation/same-generation, shape uncertainty, instance/owner/mode isolation, failed/raced/delivery exclusion, epoch cancellation, bounded overflow, concurrent reconciliation");
 }
 '''
@@ -177,7 +198,20 @@ int main(){
  Initialize(pointer,1,true);assert(Bridge==b&&Instance&&b->attached==1&&CEF);
  assert(NextId()!=NextId());
  const uint8_t code[]={0x90};
- { Capture r(1,0x10000,0,0,false);assert(r.Active());r.Stage(SR_DECODE_IR);r.Block(0x10000);r.Instruction(0x10000,code,1);r.Finish(10,SR_GENERATED); }
+ { Capture r(1,0x10000,0,0,false);assert(r.Active());r.Stage(SR_DECODE_IR);
+   r.IRStage(SR_IR_SETUP);r.IRStage(SR_IR_DECODE);r.Decoded(1,1);
+   r.IRStage(SR_IR_BUILD);r.Block(0x10000);r.Instruction(0x10000,code,1);
+   r.IRStage(SR_IR_FINALIZE);r.Emitted(1,8,false);r.IRStage(SR_IR_PASSES);
+   {PassScope p(&r,SR_PASS_X87,8);p.Complete(9);}
+   {PassScope p(&r,SR_PASS_DFE,9);} // entered pass without normal return
+   r.IRStage(SR_IR_OTHER);r.IRReturned(9);r.Stage(SR_OTHER);r.Finish(10,SR_GENERATED);
+ }
+ assert(b->frontend.calls==1&&b->frontend.returned==1&&b->frontend.decoded_instructions.total==1);
+ assert(b->frontend.passes[SR_PASS_X87].count==1&&b->frontend.pass_ssa_out[SR_PASS_X87].count==1);
+ assert(b->frontend.passes[SR_PASS_DFE].count==1&&!b->frontend.pass_ssa_out[SR_PASS_DFE].count);
+ uint64_t ir_sum=0;for(unsigned i=0;i<SR_IR_PHASES;i++)ir_sum+=b->frontend.phases[i].ticks;
+ assert(ir_sum==b->stages[SR_DECODE_IR].ticks);
+ assert(b->frontend.passes[SR_PASS_X87].ticks+b->frontend.passes[SR_PASS_DFE].ticks<=b->frontend.phases[SR_IR_PASSES].ticks);
  { Capture r(1,0x10000,0,0,false);r.Block(0x10000);r.Instruction(0x10000,code,1);r.Finish(11,SR_GENERATED); }
  assert(b->kind[SR_FIRST].count==1&&b->kind[SR_NEW_GENERATION].count==1);
  uint64_t phase_sum=0;for(unsigned i=0;i<SR_STAGES;i++)phase_sum+=b->stages[i].ticks;
@@ -191,7 +225,9 @@ int main(){
  assert(!requested&&b->buffer_count==1&&b->buffers[0].reason==SR_BUFFER_CAPACITY);
  assert(b->buffers[0].instance==Instance&&b->buffers[0].old_used==4096&&b->buffers[0].requested==5000);
  {Capture r(1,0x10000,0,0,false);r.Finish(0,SR_RACED);}
- {Capture r(1,0x10000,0,0,false);}
+ {Capture r(1,0x10000,0,0,false);r.Stage(SR_DECODE_IR);r.IRStage(SR_IR_DECODE);}
+ ir_sum=0;for(unsigned i=0;i<SR_IR_PHASES;i++)ir_sum+=b->frontend.phases[i].ticks;
+ assert(ir_sum==b->stages[SR_DECODE_IR].ticks&&b->frontend.calls==2&&b->frontend.returned==1);
  {Capture r(1,0x10000,0,0,true);assert(!r.Active());r.Finish(99,SR_GENERATED);}
  assert(b->outcome[SR_RACED]==1&&b->outcome[SR_FAILED]==1&&b->outcome[SR_DELIVERY]==1);
  {Capture r(1,0x10000,0,0,false);r.Unsupported();r.Finish(11,SR_GENERATED);}
@@ -201,6 +237,9 @@ int main(){
  assert(b->attempts==before);
  {Capture r(1,0x10000,0,0,false);assert(!r.Active());}
  assert(b->attempts==before);
+ {Capture r(1,0x10000,0,0,false);r.Stage(SR_DECODE_IR);r.IRStage(SR_IR_DECODE);
+  PassScope p(&r,SR_PASS_RA,7);p.Complete(9);r.Decoded(5,1);r.IRReturned(9);}
+ assert(b->attempts==before&&b->frontend.calls==2);
  free(b);puts("PASS actual PE producer: default off, independent shared bridge, decoder fingerprint, output generation, RAII failure, races, delivery and stop");
 }
 '''
@@ -222,10 +261,18 @@ int main(void){
  struct sr_fingerprint f=sr_fingerprint_init();uint8_t code[]={0x90};
  sr_fingerprint_block(&f,0x10000);sr_fingerprint_inst(&f,0x10000,code,1);
  struct sr_ticket ticket=sr_begin(cr_bridge,1,0xe8,0x23c,1);
- assert(sr_finish(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,10,SR_GENERATED,24000));
+ ticket.cef=1;
+ struct sr_timing time={0};time.ticks[SR_DECODE_IR]=24000;
+ struct sr_frontend ir={0};ir.calls=ir.returned=1;
+ sr_add(&ir.phases[SR_IR_BUILD],12000);sr_add(&ir.phases[SR_IR_PASSES],12000);
+ sr_add(&ir.passes[SR_PASS_X87],6000);sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],8);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],9);
+ assert(sr_finish_full(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,10,SR_GENERATED,24000,&time,(struct sr_output){0},&ir));
  sr_buffer_record(cr_bridge,(struct sr_buffer_event){.epoch=epoch,.instance=1,.owner=5,.generation=10,
      .reason=SR_BUFFER_INITIAL,.ticks=cr_bridge->started_ticks});
  assert(cr_bridge->buffer_count==1);
+ // Force the CEF thread below top eight; frontend data must still be printed.
+ for(unsigned i=0;i<8;i++)for(unsigned j=0;j<2;j++)
+   assert(sr_finish(cr_bridge,sr_begin(cr_bridge,2,0xa8,0x100+i,1),(struct sr_key){.owner=6,.rip=0x20000+i*16},f,11,SR_RACED,1));
  cr_report(epoch,cr_started,cr_begun_start,cr_dropped_start,"fixture-complete");
  struct cr_report r;assert(cr_snapshot(cr_bridge,epoch,&r)&&r.kind[SR_FIRST].count==1);
  assert(sr_lock(cr_bridge));assert(!cr_snapshot(cr_bridge,epoch,&r));sr_unlock(cr_bridge);
@@ -233,7 +280,7 @@ int main(void){
  assert(!strcmp(cr_stop_reason(1,1,SR_MAX_COMPLETIONS),"event-budget"));
  assert(!strcmp(cr_stop_reason(2,1,0),"clock-error"));
  ios_steam_compile_log_configure(0);assert(!cr_bridge->active_epoch);
- ios_steam_compile_log_configure(1);assert(cr_bridge->active_epoch!=epoch&&!cr_bridge->attempts);
+ ios_steam_compile_log_configure(1);assert(cr_bridge->active_epoch!=epoch&&!cr_bridge->attempts&&!cr_bridge->frontend.calls);
  assert(!sr_finish(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,99,SR_GENERATED,24000));
  ios_steam_compile_log_set_active(0);assert(!cr_bridge->active_epoch);
  ios_steam_compile_log_set_active(1);assert(!cr_bridge->active_epoch);
@@ -262,8 +309,11 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert 'reason=fixture-complete' in result.stderr
                 assert 'kind=first-observed count=1 total_wall_ms=1.000000' in result.stderr
                 assert 'first_observed=1' in result.stderr and 'reason=worker-create-failed' in result.stderr
-                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer']:
+                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass']:
                     assert '['+prefix+']' in result.stderr
+                assert 'parent_ticks=24000 accounted_ticks=24000' in result.stderr
+                assert re.search(r'\[steam-compile-ir\].*scope=thread instance=1 tid=023c calls=1',result.stderr)
+                assert re.search(r'\[steam-compile-ir-pass\].*pass=x87-stack calls=1',result.stderr)
     # Real iPhoneOS compiler sees the complete standalone source.
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
     subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,
@@ -284,6 +334,12 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     assert 'Reason->Block(Block.Entry)' in core_text and 'Reason && HasCustomIR' in core_text
     assert core_text.index('Reason.Finish(0, SR_RACED)')<core_text.index('auto DebugData = fextl::make_unique<FEXCore::Core::DebugData>();',core_text.index('ContextImpl::CompileCodeResult ContextImpl::CompileCode'))
     assert 'Reason.Finish(MDECK_REASON_GENERATION(CompiledCode),' in core_text
+    assert 'Reason->IRStage(SR_IR_DECODE)' in core_text and 'Reason->IRStage(SR_IR_FINALIZE)' in core_text
+    assert 'Thread->PassManager->Run(IREmitter, Reason)' in core_text
+    manager=(source/'FEXCore/Source/Interface/IR/PassManager.cpp').read_text()
+    for stage in ['SR_PASS_X87','SR_PASS_DFE','SR_PASS_RA','SR_PASS_DUMP']:assert stage in manager
+    assert manager.count('FEXCore::CompileReason::PassScope Timing')==2
+    assert manager.count('Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0)')==2
     backend=(source/'FEXCore/Source/Interface/Core/CPUBackend.cpp').read_text()
     pos=backend.index('auto Buffer = fextl::make_shared<CodeBuffer>(Size);')
     assert backend.index('Buffer->MDeckReasonGeneration =',pos)<backend.index('Latest = Buffer;',pos)
@@ -302,7 +358,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
         assert 'CompileReason::IsCEFImage' in text
         assert '#include <FEXCore/Utils/SteamCompileReason.h>' in text, 'PE initializer needs its direct declaration'
     # Native builds must not gain PE symbol dependencies from the header.
-    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.Finish(0,SR_FAILED);}\n')
+    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);r.Finish(0,SR_FAILED);}\n')
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-I'+str(deps),str(noop),'-o',str(work/'noop')],check=True)
     subprocess.run([str(work/'noop')],check=True)
 

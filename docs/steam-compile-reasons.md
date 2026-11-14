@@ -59,6 +59,59 @@ Steam 根据保存的开关重新启用。本功能不暂停任何线程。
 留在其所在阶段。因此不能据 `backend_ms`、`decode_ir_ms` 或 `output_ms` 推导 CPU
 占用，也不能声称已经测到所有锁等待。与热点检测的包含式计时不可直接相加。
 
+## GenerateIR 内部分段（ABI v3）
+
+沿用同一个开关、45 秒窗口和完成事件预算。没有给每条 guest 指令增加时钟读取；
+使用调用栈上的 Capture 指针传递上下文，不使用 TLS 或全局“当前编译”指针。
+新 `[steam-compile-ir]` 将 `decode_ir_ms` 分成以下互斥区间：
+
+| 字段 | 含义 |
+| --- | --- |
+| setup_ms | GenerateIR 入口检查、重置、CustomIR 查找及自定义 Handler；含其中的锁等待 |
+| decode_ms | DecodeInstructionsAtEntry 调用 |
+| build_ms | 解码返回后读取块信息、BeginFunction、指令转 IR 循环；**包含现有指纹计算**、SMC IR 构造与可能启用的反汇编输出 |
+| finalize_ms | OpDispatcher::Finalize 调用 |
+| pass_manager_ms | PassManager::Run 整体，包括各 pass、已有拓扑检查和定向捕获等管理工作 |
+| other_ms | 其余时间：调用边界、解码器缓冲区释放、工作量记账、GenerateIR 外层 IR dump、返回处理等 |
+
+字段格式为 `累计毫秒/单段最大毫秒/进入段次数`；例如 other 可能在一次编译中进入
+多次，visits 不等于编译次数。`calls` 是已录入的 GenerateIR 调用数，`returned`
+只计正常返回 IR 的调用；提前返回和 C++ 栈展开仍保留已发生的阶段时间，但被事件
+预算、会话结束或诊断锁竞争丢弃的整次编译不会进入汇总。未正常退出的进程或不经过
+C++ 析构的控制转移不保证提交记录。delivery 仍不细分。
+
+`parent_ticks` 应严格等于 `accounted_ticks`，二者分别是旧 decode_ir 的整数 tick
+和内部阶段 tick 之和；毫秒打印可能有舍入差异。各段最大值不能相加。所有时间都是
+wall，含调度/内存等待与测量自身成本，不能解释为纯 CPU。
+
+`[steam-compile-ir-pass]` 输出 `calls/total_wall_ms/mean_wall_ms/max_wall_ms`，
+稳定名字为 `x87-stack`、`dead-flags`、`register-allocation`，以及按配置实际运行的
+`validation`、`ir-dump`。未来未指定标识的 pass 归入 `other`；同类 pass 重复运行时
+合并计数。pass 计时围绕实际 Run，未正常返回的栈展开也计一次，但没有输出工作量
+样本。未运行的 pass 不输出。各 pass 时间已包含在 `pass_manager_ms` 中，不能再加到
+GenerateIR 总时间。`pass_manager_ms - pass_sum_ms` 是管理/检查/计时边界等剩余经过
+时间，不应强行归到某个优化 pass。
+
+`[steam-compile-ir-work]` 的工作量格式为 `总量/最大单次量/样本数`：
+
+- `decoded_instructions/decoded_blocks`：解码器已有统计，在解码正常返回后读取。
+- `emitted_instructions`：到达 pass-manager 前的 TotalInstructions；CustomIR 的 1 是
+  原有占位计数，不代表实际解码了一条指令，`custom` 单独报告。
+- `ssa_before/ssa_after`：pass-manager 前后 `GetSSACount()` 的值，即分配的 SSA 槽位数，
+  **不是存活节点数，也不直接等于优化删除或新增节点数**。该读取是 O(1)，不遍历 IR。
+- 各 pass 的 `ssa_in/ssa_out` 使用相同口径。提前返回时可能只有部分工作量样本；
+  必须使用各自样本数，不能一律除以 generated 或 completed。
+
+三个新前缀输出 global、全部保留实例和线程视图。线程仍受 128 槽上限约束；除原有
+最忙 8 个线程外，额外输出所有已保留且有 GenerateIR 调用的 CEF 线程，保证前 8 名
+排序不会单独隐藏渲染线程。非前 8 名线程的 PID 可通过 instance 对应实例行，再与
+[xp-t] 的 PID/TID 对齐；出现 thread_overflow 时仍须报告覆盖限制。
+
+新增统计在现有完成事件的 try-lock 内汇总，不增加每个 pass 的共享锁。线程本地
+Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读取新增时钟，不扫描 IR。
+新增每秒输出和快照复制仍有成本，快照放在报告线程堆上，避免扩大工作线程栈占用。
+宿主和 WoW64/ARM64EC 使用 ABI v3 配套 magic/大小，不支持混用旧版本。
+
 ## 代码身份、指纹与实例配额
 
 每个 PE 初始化时取得宿主分配的唯一 instance；每个 CodeBufferManager 和每次
@@ -136,6 +189,9 @@ buffer 的释放生命周期。关闭期间已有的 buffer 可以没有对应 a
 [steam-compile-classes]      scope=instance/generation 的五类次数与累计 wall
 [steam-compile-unknown]      scope=global/instance/thread 的未知原因分解
 [steam-compile-time]         scope=global/instance/thread 的互斥阶段与总 wall
+[steam-compile-ir]           GenerateIR 内部互斥阶段、返回数与整数 tick 对账
+[steam-compile-ir-work]      解码/发射指令数、基本块数和 SSA 分配槽位
+[steam-compile-ir-pass]      各 pass 次数、累计/平均/最大 wall 和输入输出槽位
 [steam-compile-generation]   实际输出 buffer 的身份、容量与已用高水位
 [steam-compile-buffer]       实际分配事件、容量触发与旧新代对应
 ```
@@ -166,6 +222,19 @@ buffer_dropped、buffer_overflow；没有输出不能解释为数值为零。
 5. 用相同操作比较诊断关闭/开启时的 CPU、footprint、窗口排队及事件丢失率，量化
    这次扩大历史表和增加时钟读取的成本。
 
+6. 用新 `[steam-compile-ir]` 检查 global、目标实例及渲染线程的 `parent_ticks` 等于
+   `accounted_ticks`，检查 `pass_sum_ms <= pass_manager_ms`（允许打印舍入误差）。
+   对编译高峰做累计差，分别列出各阶段总时间和各 pass 总时间、调用次数、平均值。
+   阶段平均值用总时间/visits；整体 GenerateIR 平均值用 decode_ir_ms/calls，不能混用。
+7. 结合 `[steam-compile-ir-work]` 与各 pass 的输入样本数判断是调用增多、输入变大，
+   还是单位输入处理更贵；报告提前返回以及普通实例/线程覆盖丢失。暂时只得到分配
+   槽位规模，不能把前后差值写成实际删掉的 IR 节点数。
+8. 固定 Steam 启动和交互脚本，分别采集开关开/关的 CPU、footprint、窗口排队。
+   开关对照衡量整个诊断的开销；本次没有独立指纹开关，不能从对照中单独算出指纹成本。
+   45 秒之后的编译仍不在该窗口内；本任务没有修改窗口或提高事件预算。
+
 GitHub Actions 的受控 fixture 覆盖配额隔离、分段覆盖率、探测溢出、不驱逐、
-分类/阶段对账、并发/会话隔离、buffer 事件边界和 patch-chain。它不能代替完整
-FEX PE 编译链接及实机验证。代码修改本身不表示这些检查已经执行或通过。
+分类/阶段对账、并发/会话隔离、buffer 事件边界和 patch-chain；新增用例覆盖内部阶段
+与父计时对账、pass 正常/未完成返回、工作量汇总、关闭/会话隔离、CEF 线程跌出前 8 名
+后的输出，以及原生 no-op 接口。它不能代替完整 FEX PE 编译链接及实机验证。
+代码修改本身不表示这些检查已经执行或通过。

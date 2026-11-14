@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#define SR_MAGIC UINT64_C(0x4d4452434d503032)
+#define SR_MAGIC UINT64_C(0x4d4452434d503033)
 /* Private banks: ordinary startup can never consume a CEF bank. */
 #define SR_ORDINARY_INSTANCES 16
 #define SR_CEF_INSTANCES 2
@@ -24,6 +24,10 @@ enum sr_outcome { SR_GENERATED, SR_RACED, SR_FAILED, SR_DELIVERY, SR_OUTCOMES };
 enum sr_unknown { SR_HISTORY_FULL, SR_SHAPE_CHANGED, SR_MISSING_FINGERPRINT, SR_MISSING_GENERATION,
                   SR_OUT_OF_ORDER, SR_INSTANCE_OVERFLOW, SR_UNKNOWNS };
 enum sr_stage { SR_OTHER, SR_DECODE_IR, SR_RECHECK, SR_BACKEND, SR_BUFFER_WAIT, SR_LOOKUP_WAIT, SR_OUTPUT, SR_STAGES };
+/* Stable IDs shared by PE producers and the native logger. Unknown/custom
+ * passes remain visible in OTHER; no RTTI, dynamic names or IR walks. */
+enum sr_ir_phase { SR_IR_OTHER, SR_IR_SETUP, SR_IR_DECODE, SR_IR_BUILD, SR_IR_FINALIZE, SR_IR_PASSES, SR_IR_PHASES };
+enum sr_ir_pass { SR_PASS_OTHER, SR_PASS_X87, SR_PASS_DFE, SR_PASS_RA, SR_PASS_VALIDATE, SR_PASS_DUMP, SR_IR_PASSES_COUNT };
 enum sr_buffer_reason { SR_BUFFER_INITIAL, SR_BUFFER_CAPACITY, SR_BUFFER_EXPLICIT };
 struct sr_fingerprint {
     uint64_t shape, content_a, content_b, bytes, instructions;
@@ -68,6 +72,13 @@ struct sr_history {
     uint64_t generation, order;
 };
 struct sr_metric { uint64_t count, ticks, max_ticks; };
+struct sr_work { uint64_t count, total, max; };
+struct sr_frontend {
+    uint64_t calls, returned, custom;
+    struct sr_metric phases[SR_IR_PHASES], passes[SR_IR_PASSES_COUNT];
+    struct sr_work decoded_instructions, decoded_blocks, emitted_instructions, ssa_before, ssa_after;
+    struct sr_work pass_ssa_in[SR_IR_PASSES_COUNT], pass_ssa_out[SR_IR_PASSES_COUNT];
+};
 struct sr_timing { uint64_t ticks[SR_STAGES]; };
 struct sr_output { uint64_t rx, used, capacity; };
 struct sr_instance {
@@ -76,13 +87,15 @@ struct sr_instance {
     uint64_t history_used, probe_exhausted, capacity_exhausted;
     uint64_t unknown[SR_UNKNOWNS], outcome[SR_OUTCOMES];
     struct sr_metric kind[SR_KINDS], stages[SR_STAGES], total;
+    struct sr_frontend frontend;
 };
 struct sr_thread {
     uint64_t epoch, instance;
-    unsigned pid, tid, path, reserved;
+    unsigned pid, tid, path, cef;
     struct sr_metric kind[SR_KINDS];
     uint64_t outcome[SR_OUTCOMES], unknown[SR_UNKNOWNS];
     struct sr_metric stages[SR_STAGES], total;
+    struct sr_frontend frontend;
 };
 struct sr_generation {
     uint64_t epoch, instance, owner, generation;
@@ -102,6 +115,7 @@ struct sr_bridge {
     uint64_t buffer_count, buffer_overflow, buffer_dropped, buffer_dropped_base, started_ticks;
     uint64_t unknown[SR_UNKNOWNS];
     struct sr_metric stages[SR_STAGES], total;
+    struct sr_frontend frontend;
     struct sr_metric kind[SR_KINDS];
     uint64_t outcome[SR_OUTCOMES];
     struct sr_thread threads[SR_THREADS];
@@ -190,16 +204,40 @@ static inline void sr_add_timing(struct sr_metric *stages,struct sr_metric *tota
     sr_add(total,ticks);
     for(unsigned i=0;i<SR_STAGES;i++)sr_add(&stages[i],timing->ticks[i]);
 }
-static inline int sr_finish_detail(struct sr_bridge *b,struct sr_ticket t,struct sr_key key,
+static inline void sr_work_add(struct sr_work *w,uint64_t n) {
+    w->count++;w->total+=n;if(n>w->max)w->max=n;
+}
+static inline void sr_metric_merge(struct sr_metric *dst,const struct sr_metric *src) {
+    dst->count+=src->count;dst->ticks+=src->ticks;if(src->max_ticks>dst->max_ticks)dst->max_ticks=src->max_ticks;
+}
+static inline void sr_work_merge(struct sr_work *dst,const struct sr_work *src) {
+    dst->count+=src->count;dst->total+=src->total;if(src->max>dst->max)dst->max=src->max;
+}
+static inline void sr_frontend_merge(struct sr_frontend *dst,const struct sr_frontend *src) {
+    if(!src)return;
+    dst->calls+=src->calls;dst->returned+=src->returned;dst->custom+=src->custom;
+    for(unsigned i=0;i<SR_IR_PHASES;i++)sr_metric_merge(&dst->phases[i],&src->phases[i]);
+    for(unsigned i=0;i<SR_IR_PASSES_COUNT;i++) {
+        sr_metric_merge(&dst->passes[i],&src->passes[i]);
+        sr_work_merge(&dst->pass_ssa_in[i],&src->pass_ssa_in[i]);
+        sr_work_merge(&dst->pass_ssa_out[i],&src->pass_ssa_out[i]);
+    }
+    sr_work_merge(&dst->decoded_instructions,&src->decoded_instructions);
+    sr_work_merge(&dst->decoded_blocks,&src->decoded_blocks);
+    sr_work_merge(&dst->emitted_instructions,&src->emitted_instructions);
+    sr_work_merge(&dst->ssa_before,&src->ssa_before);sr_work_merge(&dst->ssa_after,&src->ssa_after);
+}
+static inline int sr_finish_full(struct sr_bridge *b,struct sr_ticket t,struct sr_key key,
                             struct sr_fingerprint f,uint64_t generation,unsigned outcome,uint64_t ticks,
-                            const struct sr_timing *timing,struct sr_output output) {
+                            const struct sr_timing *timing,struct sr_output output,const struct sr_frontend *frontend) {
     if(!b||!t.epoch||outcome>=SR_OUTCOMES||__atomic_load_n(&b->active_epoch,__ATOMIC_ACQUIRE)!=t.epoch)return 0;
     if(!sr_lock(b)){__atomic_fetch_add(&b->dropped,1,__ATOMIC_RELAXED);return 0;}
     if(__atomic_load_n(&b->active_epoch,__ATOMIC_ACQUIRE)!=t.epoch||b->attempts>=SR_MAX_COMPLETIONS){sr_unlock(b);return 0;}
     b->attempts++;b->outcome[outcome]++;
     sr_add_timing(b->stages,&b->total,timing,ticks);
+    sr_frontend_merge(&b->frontend,frontend);
     struct sr_instance *instance=sr_instance_for(b,t);
-    if(instance){instance->outcome[outcome]++;sr_add_timing(instance->stages,&instance->total,timing,ticks);}
+    if(instance){instance->outcome[outcome]++;sr_add_timing(instance->stages,&instance->total,timing,ticks);sr_frontend_merge(&instance->frontend,frontend);}
     else b->instance_overflow++;
     enum sr_kind kind=SR_UNKNOWN;
     unsigned why=SR_UNKNOWNS;
@@ -225,14 +263,20 @@ static inline int sr_finish_detail(struct sr_bridge *b,struct sr_ticket t,struct
     struct sr_thread *thread=0;
     for(unsigned j=0;j<SR_THREADS;j++) {
         struct sr_thread *s=&b->threads[(index+j)&(SR_THREADS-1)];
-        if(s->epoch!=t.epoch){memset(s,0,sizeof(*s));s->epoch=t.epoch;s->instance=t.instance;s->pid=t.pid;s->tid=t.tid;s->path=t.path;thread=s;break;}
+        if(s->epoch!=t.epoch){memset(s,0,sizeof(*s));s->epoch=t.epoch;s->instance=t.instance;s->pid=t.pid;s->tid=t.tid;s->path=t.path;s->cef=t.cef;thread=s;break;}
         if(s->instance==t.instance&&s->tid==t.tid){thread=s;break;}
     }
     if(thread) {
         thread->outcome[outcome]++;sr_add_timing(thread->stages,&thread->total,timing,ticks);
+        sr_frontend_merge(&thread->frontend,frontend);
         if(outcome==SR_GENERATED){sr_add(&thread->kind[kind],ticks);if(why<SR_UNKNOWNS)thread->unknown[why]++;}
     } else b->thread_overflow++;
     sr_unlock(b);return 1;
+}
+static inline int sr_finish_detail(struct sr_bridge *b,struct sr_ticket t,struct sr_key key,
+                             struct sr_fingerprint f,uint64_t generation,unsigned outcome,uint64_t ticks,
+                             const struct sr_timing *timing,struct sr_output output) {
+    return sr_finish_full(b,t,key,f,generation,outcome,ticks,timing,output,0);
 }
 /* Fixture/API wrapper; production always supplies stages and output metadata. */
 static inline int sr_finish(struct sr_bridge *b,struct sr_ticket t,struct sr_key key,
