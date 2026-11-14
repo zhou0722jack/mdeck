@@ -48,7 +48,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    auto CompiledCode = Thread->CPUBackend->CompileCode(GuestRIP, Length, TotalInstructions == 1, &*IRView, DebugData.get(), TFSet);
 +  if (Reason.Active()) {
 +    const auto ReasonEntry = CompiledCode.EntryPoints.find(GuestRIP);
-+    Reason.Finish(CompiledCode.MDeckReasonGeneration,
++    Reason.Finish(MDECK_REASON_GENERATION(CompiledCode),
 +        CompiledCode.BlockBegin && ReasonEntry != CompiledCode.EntryPoints.end() && ReasonEntry->second ? SR_GENERATED : SR_FAILED);
 +  }
  
@@ -59,31 +59,41 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
  #pragma once
 +#include <FEXCore/Utils/SteamCompileReason.h>
  
-@@ -56,2 +57,3 @@
+@@ -56,2 +57,5 @@
      size_t AllocatedSize; // including guard page; see UsableSize()
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    uint64_t MDeckReasonGeneration = 0;
++#endif
  
-@@ -85,2 +87,3 @@
+@@ -85,2 +89,5 @@
    public:
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    const uint64_t MDeckReasonOwner = FEXCore::CompileReason::NextId();
++#endif
      // Get the CodeBuffer that was most recently allocated.
-@@ -131,2 +134,3 @@
+@@ -131,2 +138,5 @@
        size_t Size;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +      uint64_t MDeckReasonGeneration = 0;
++#endif
      };
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -588,2 +588,3 @@
+@@ -588,2 +588,5 @@
      auto Buffer = fextl::make_shared<CodeBuffer>(Size);
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    Buffer->MDeckReasonGeneration = FEXCore::CompileReason::NextId();
++#endif
  
 diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 --- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 +++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
-@@ -1370,2 +1370,3 @@
+@@ -1370,2 +1370,5 @@
        CodeBuffers.LatestOffset = GetCursorOffset();
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +      CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;
++#endif
      }
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp

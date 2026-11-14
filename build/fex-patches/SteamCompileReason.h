@@ -71,6 +71,8 @@ public:
 #if defined(FEX_IOS_HOST) && defined(_WIN32)
 #define MDECK_COMPILE_CAPTURE(name,thread,rip,maxinst,mode,delivery) \
   FEXCore::CompileReason::Capture name((thread)->CPUBackend->GetCodeBufferManager().MDeckReasonOwner,rip,maxinst,mode,delivery)
+#define MDECK_REASON_GENERATION(code) ((code).MDeckReasonGeneration)
 #else
 #define MDECK_COMPILE_CAPTURE(name,thread,rip,maxinst,mode,delivery) FEXCore::CompileReason::Capture name
+#define MDECK_REASON_GENERATION(code) 0
 #endif

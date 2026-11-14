@@ -209,7 +209,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     assert 'Reason->Instruction(InstAddress, DecodedInfo->InstBytes, DecodedInfo->InstSize)' in core_text
     assert 'Reason->Block(Block.Entry)' in core_text and 'Reason && HasCustomIR' in core_text
     assert core_text.index('Reason.Finish(0, SR_RACED)')<core_text.index('auto DebugData = fextl::make_unique<FEXCore::Core::DebugData>();',core_text.index('ContextImpl::CompileCodeResult ContextImpl::CompileCode'))
-    assert 'Reason.Finish(CompiledCode.MDeckReasonGeneration,' in core_text
+    assert 'Reason.Finish(MDECK_REASON_GENERATION(CompiledCode),' in core_text
     backend=(source/'FEXCore/Source/Interface/Core/CPUBackend.cpp').read_text()
     pos=backend.index('auto Buffer = fextl::make_shared<CodeBuffer>(Size);')
     assert backend.index('Buffer->MDeckReasonGeneration =',pos)<backend.index('Latest = Buffer;',pos)

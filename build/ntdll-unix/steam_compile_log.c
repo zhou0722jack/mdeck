@@ -146,7 +146,8 @@ void ios_steam_compile_log_configure(int enabled) {
     b->attempts=b->classified=b->fingerprint_bytes=b->history_used=b->history_full=b->shape_changed=0;
     b->missing_fingerprint=b->missing_generation=b->out_of_order=b->thread_overflow=0;
     memset(b->kind,0,sizeof(b->kind));memset(b->outcome,0,sizeof(b->outcome));sr_unlock(b);
-    mach_timebase_info(&cr_timebase);cr_started=cr_now();
+    if(!cr_timebase.denom)mach_timebase_info(&cr_timebase);
+    cr_started=cr_now();
     cr_begun_start=__atomic_load_n(&b->begun,__ATOMIC_RELAXED);cr_dropped_start=__atomic_load_n(&b->dropped,__ATOMIC_RELAXED);
     char pointer[32];snprintf(pointer,sizeof(pointer),"%llx",(unsigned long long)(uintptr_t)b);
     if(setenv("MADEIRA_COMPILE_REASON_BRIDGE",pointer,1)){dprintf(2,"[steam-compile-reason] reason=bridge-publish-failed\n");goto done;}
