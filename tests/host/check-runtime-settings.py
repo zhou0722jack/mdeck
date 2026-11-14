@@ -175,6 +175,21 @@ expect(allocationOff.components(separatedBy: SteamAllocationLogSettings.key).cou
        && allocationOff.contains("# keep me") && allocationOff.contains("pool=1152")
        && !SteamAllocationLogSettings.enabled(global: [SteamAllocationLogSettings.key: "1"], profile: allocationOff),
        "allocation switch deduplicates its own key, preserves unrelated settings and overrides global on")
+expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
+let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
+expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)
+       && lookupOn.components(separatedBy: SteamCacheLookupSettings.key).count == 2
+       && lookupOn.contains("# preserve") && lookupOn.contains("pool=1152"), "cache lookup toggle deduplicates and preserves profile")
+expect(SteamCacheLookupSettings.text(lookupOn, enabled: true) == lookupOn, "cache lookup toggle is idempotent")
+let lookupOff = SteamCacheLookupSettings.text(lookupOn, enabled: false)
+expect(!SteamCacheLookupSettings.enabled(global: [SteamCacheLookupSettings.key: "1"], profile: lookupOff), "profile off overrides global cache lookup on")
+expect(SteamCacheLookupSettings.enabled(global: [SteamCacheLookupSettings.key: "1"], profile: ""), "cache lookup global setting is inherited")
+for invalid in ["", "true", "2", "1junk"] {
+    expect(!SteamCacheLookupSettings.enabled(global: [SteamCacheLookupSettings.key: invalid], profile: ""), "cache lookup only accepts runtime-compatible 1: \(invalid)")
+}
+expect(!SteamHotspotSettings.enabled(global: [:], profile: lookupOn)
+       && !SteamAllocationLogSettings.enabled(global: [:], profile: lookupOn)
+       && !SteamSurfaceLogSettings.enabled(global: [:], profile: lookupOn), "cache optimization does not enable diagnostics")
 let hotspotOff = SteamHotspotSettings.text("# preserve\npool=1152\nenv.MADEIRA_STEAM_HOTSPOT=1\nenv.MADEIRA_STEAM_HOTSPOT=0\n", enabled: false)
 expect(hotspotOff.components(separatedBy: SteamHotspotSettings.key).count == 2
        && hotspotOff.contains("# preserve") && hotspotOff.contains("pool=1152")

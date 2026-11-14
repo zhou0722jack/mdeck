@@ -1887,6 +1887,7 @@ static void *wine_process_thread(void *arg) {
                 unsetenv("MADEIRA_STEAM_SURFACE_STATS"); /* absent in a new profile means off */
                 unsetenv("MADEIRA_STEAM_ALLOC_STATS");
                 unsetenv("MADEIRA_STEAM_HOTSPOT");
+                unsetenv("MADEIRA_FEX_L1_HASH"); /* each session reapplies its own profile */
                 /* ml1095: "env.NAME = value" lines of madeira.cfg; the legacy
                  * madeira-env.txt (KEY=VALUE lines) only when madeira.cfg is absent. */
                 NSString *text = nil;

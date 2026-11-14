@@ -1,0 +1,122 @@
+diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interface/Core/LookupCache.h
+--- a/FEXCore/Source/Interface/Core/LookupCache.h
++++ b/FEXCore/Source/Interface/Core/LookupCache.h
+@@ -7,2 +7,3 @@
+ #include <FEXCore/Utils/LogManager.h>
++#include <FEXCore/Utils/L1CacheIndex.h>
+ #include <FEXCore/Utils/SHMStats.h>
+@@ -187,4 +188,5 @@
+     uintptr_t HostCode;
+     uintptr_t GuestCode;
+   };
++  static_assert(sizeof(LookupCacheEntry) == 16, "L1 emitter scales entries by four bits");
+ 
+@@ -205,2 +207,2 @@
+-    auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[Address & L1PointerMask];
++    auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[L1Index(Address, L1PointerMask)];
+     if (L1Entry.GuestCode == Address) {
+@@ -361,2 +363,2 @@
+-      auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[Address & (Entries - 1)];
++      auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[L1Index(Address, Entries - 1)];
+ #else
+@@ -364,2 +366,2 @@
+-      auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[Address & L1PointerMask];
++      auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[L1Index(Address, L1PointerMask)];
+ #endif
+@@ -449,2 +451,5 @@
+ private:
++  size_t L1Index(uint64_t Address, uintptr_t Mask) const {
++    return MDeckL1::Index(Address, Mask, L1MixedIndex);
++  }
+   void CacheBlockMapping(uint64_t Address, const GuestToHostMap::BlockEntry& Entry, bool L1Only, const LookupCacheBaseLockToken& lk) {
+@@ -455,2 +460,2 @@
+-    auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[Address & L1PointerMask];
++    auto& L1Entry = reinterpret_cast<LookupCacheEntry*>(L1Pointer)[L1Index(Address, L1PointerMask)];
+     L1Entry.GuestCode = Address;
+@@ -510,2 +515,3 @@
+   uintptr_t L1PointerMask;
++  const bool L1MixedIndex = MDeckL1::Enabled();
+ 
+diff --git a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+--- a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
++++ b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+@@ -17,2 +17,3 @@
+ #include "Interface/Core/LookupCache.h"
++#include <FEXCore/Utils/L1CacheIndexEmitter.h>
+ #include "Utils/MemberFunctionToPointer.h"
+@@ -212,6 +213,4 @@
+-    ldp<ARMEmitter::IndexType::OFFSET>(TMP1, TMP2, STATE, offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer));
+-    and_(ARMEmitter::Size::i64Bit, TMP2, TMP2, EC_CALL_CHECKER_PC_REG, ARMEmitter::ShiftType::LSL,
+-         FEXCore::ilog2(sizeof(LookupCache::LookupCacheEntry)));
+-    add(TMP1, TMP1, TMP2);
++    MDeckL1::EmitAddress(*this, TMP1, TMP2, STATE, EC_CALL_CHECKER_PC_REG,
++        offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer), MDeckL1::Enabled());
+     ldp<ARMEmitter::IndexType::OFFSET>(TMP4, TMP2, TMP1, 0);
+     sub(TMP2, TMP2, EC_CALL_CHECKER_PC_REG);
+@@ -311,6 +310,4 @@
+-    ldp<ARMEmitter::IndexType::OFFSET>(TMP1, TMP2, STATE, offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer));
+-    // Entry address = L1Pointer + ((RIP << ilog2(entry size)) & pre-scaled mask)
+-    and_(ARMEmitter::Size::i64Bit, TMP2, TMP2, RipReg, ARMEmitter::ShiftType::LSL, FEXCore::ilog2(sizeof(LookupCache::LookupCacheEntry)));
+-    add(TMP1, TMP1, TMP2);
++    MDeckL1::EmitAddress(*this, TMP1, TMP2, STATE, RipReg,
++        offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer), MDeckL1::Enabled());
+     ldp<ARMEmitter::IndexType::OFFSET>(TMP4, TMP2, TMP1, 0);
+     sub(TMP2, TMP2, RipReg);
+@@ -370,9 +367,5 @@
+-        ldp<ARMEmitter::IndexType::OFFSET>(TMP1, TMP2, STATE, offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer));
+-
+-        // Calculate (tmp1 + ((ripreg & L1_ENTRIES_MASK) << 4)) for the address
+-        // L1Mask is pre-shifted.
+-        and_(ARMEmitter::Size::i64Bit, TMP2, TMP2, RipReg.R(), ARMEmitter::ShiftType::LSL, FEXCore::ilog2(sizeof(LookupCache::LookupCacheEntry)));
+-        add(TMP1, TMP1, TMP2);
++        MDeckL1::EmitAddress(*this, TMP1, TMP2, STATE, RipReg,
++            offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer), MDeckL1::Enabled());
+ 
+         stp<ARMEmitter::IndexType::OFFSET>(TMP4, RipReg, TMP1);
+ 
+diff --git a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+@@ -10,2 +10,3 @@
+ #include "Interface/Core/LookupCache.h"
++#include <FEXCore/Utils/L1CacheIndexEmitter.h>
+ 
+@@ -362,8 +363,4 @@
+-    ldp<ARMEmitter::IndexType::OFFSET>(TMP1, TMP2, STATE, offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer));
+-
+-    // Calculate (tmp1 + ((ripreg & L1_ENTRIES_MASK) << 4)) for the address
+-    // L1Mask is pre-shifted.
+-    and_(ARMEmitter::Size::i64Bit, TMP2, TMP2, RipReg, ARMEmitter::ShiftType::LSL, FEXCore::ilog2(sizeof(LookupCache::LookupCacheEntry)));
+-    add(TMP1, TMP1, TMP2);
++    MDeckL1::EmitAddress(*this, TMP1, TMP2, STATE, RipReg,
++        offsetof(FEXCore::Core::CpuStateFrame, State.L1Pointer), MDeckL1::Enabled());
+ 
+     ldp<ARMEmitter::IndexType::OFFSET>(TMP2, TMP1, TMP1, 0);
+diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
+--- a/Source/Windows/WOW64/Module.cpp
++++ b/Source/Windows/WOW64/Module.cpp
+@@ -35,2 +35,3 @@
+ #include "Common/JITGuardPage.h"
++#include <FEXCore/Utils/L1CacheIndex.h>
+ #include "Common/Config.h"
+@@ -1303,2 +1304,6 @@
++#ifdef FEX_IOS_HOST
++  LogMan::Msg::IFmt("[fex-l1] path=wow64 mode={} cache-bytes=unchanged",
++      FEXCore::MDeckL1::Configure(getenv("MADEIRA_FEX_L1_HASH")) ? "fold16-v1" : "legacy");
++#endif
+   CTX->InitCore();
+ #ifdef FEX_IOS_HOST
+diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
+--- a/Source/Windows/ARM64EC/Module.cpp
++++ b/Source/Windows/ARM64EC/Module.cpp
+@@ -53,2 +53,3 @@
+ #include <type_traits>
++#include <FEXCore/Utils/L1CacheIndex.h>
+ #include <atomic>
+@@ -1210,2 +1211,6 @@
++#ifdef FEX_IOS_HOST
++  LogMan::Msg::IFmt("[fex-l1] path=arm64ec mode={} cache-bytes=unchanged",
++      FEXCore::MDeckL1::Configure(getenv("MADEIRA_FEX_L1_HASH")) ? "fold16-v1" : "legacy");
++#endif
+   CTX->InitCore();
+   Exception::HandlerConfig.emplace(*CTX);

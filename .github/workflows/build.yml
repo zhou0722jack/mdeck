@@ -45,6 +45,7 @@ jobs:
           python3 tests/host/check-native-deck.py
           python3 tests/host/check-steam-hotspot.py
           python3 tests/host/check-steam-fex-stages.py
+          python3 tests/host/check-fex-l1-index.py
           python3 tests/host/check-steam-alloc-stats.py
           python3 tests/host/check-steam-surface-stats.py
           python3 tests/host/check-runtime-settings.py

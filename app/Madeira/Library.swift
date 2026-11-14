@@ -4991,6 +4991,23 @@ struct LibraryDetail: View {
             }
         }
         if isSteamGlobal {
+            Section("Performance") {
+                Toggle("Code cache lookup optimization (experimental)", isOn: Binding(get: {
+                    SteamCacheLookupSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamCacheLookupSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The cache lookup setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-cache-lookup-optimization")
+                Text("Changes how translated code is found without increasing cache capacity. Off by default; takes effect on the next Steam launch. Turn it off to compare performance. Steam games following this profile inherit the choice.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
             Section("Diagnostics") {
                 Toggle("Steam performance diagnostics", isOn: Binding(get: {
                     SteamSurfaceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)

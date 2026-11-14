@@ -1,5 +1,27 @@
 import Foundation
 
+/// Experimental L1 indexing is selected before FEX emits its dispatcher.
+/// It is independent of diagnostics and never changes during a Wine session.
+enum SteamCacheLookupSettings {
+    static let key = "env.MADEIRA_FEX_L1_HASH"
+
+    static func enabled(global: [String: String], profile: String) -> Bool {
+        global.merging(MadeiraConfig.parse(profile)) { _, own in own }[key] == "1"
+    }
+
+    static func text(_ previous: String, enabled: Bool) -> String {
+        var lines = previous.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }
+            return trimmed[..<equals].trimmingCharacters(in: .whitespaces) != key
+        }
+        while lines.last == "" { lines.removeLast() }
+        if !lines.isEmpty { lines.append("") }
+        lines.append("\(key) = \(enabled ? "1" : "0")")
+        return lines.joined(separator: "\n") + "\n"
+    }
+}
+
 /// Steam's software window path has a separate opt-in from CPU/DXMT sampling.
 enum SteamSurfaceLogSettings {
     static let key = "env.MADEIRA_STEAM_SURFACE_STATS"

@@ -1,6 +1,18 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "The cache lookup setting could not be saved.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "无法保存缓存查找设置。" } } }
+    },
+    "Code cache lookup optimization (experimental)": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "缓存查找优化（试验）" } } }
+    },
+    "Changes how translated code is found without increasing cache capacity. Off by default; takes effect on the next Steam launch. Turn it off to compare performance. Steam games following this profile inherit the choice.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "改善已翻译代码的查找方式，缓存容量不变。默认关闭，下次启动 Steam 生效；可关闭后对比性能。使用此全局配置的 Steam 游戏也会继承该选项。" } } }
+    },
     "Also records translation and code cache timings once per second, and identifies Windows modules for sampled JIT blocks. Timings include waiting and nested work; they are not CPU time.": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "同时每秒汇总翻译和代码缓存耗时，并识别采样到的 JIT 代码块所对应的 Windows 模块。计时包含等待和子阶段，不等于 CPU 时间。" } } }

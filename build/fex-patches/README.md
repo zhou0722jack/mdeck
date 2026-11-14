@@ -14,6 +14,7 @@ These patches are for Madeira only and are not to be sent to FEX-Emu.
 | `0001-windows-ios-smc-traps-per-16k-host-page.patch` | Self-modifying-code write traps per 16 KB iOS host page, both modules (The Escapists 2, Project Zomboid) |
 | `0002-ios-wow64-region-c.patch` | Register C separately from the main JIT pool for WoW64 executable allocations; use the same bounded C RX-to-RW handling for atomics in both FEX PE paths. |
 | `0003-steam-hotspot-stages.patch` | Opt-in CEF translation/cache stage timing in both PE paths. `apply.sh` also installs the shared `SteamProbe.h` and `steam_probe_abi.h` headers. No FEX submodule pin change. |
+| `0004-ios-l1-cache-index.patch` | Opt-in L1 address mixing in every C++ and emitted ARM64 reader, writer and invalidation path. Uses the existing cache capacity; the immutable per-PE selection is made before InitCore. See `docs/steam-cache-lookup.md`. |
 
 A patch must apply on the current FEX pin. When the pin moves, rebase the
 patches onto it (or drop a patch the new pin already covers).
