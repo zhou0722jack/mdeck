@@ -32,7 +32,8 @@ static inline unsigned sf_stride(unsigned stage) { return stage == SF_DISPATCH |
  * session. Old scopes carry an epoch and cannot update a reused slot. */
 static inline int sf_enroll(struct sf_bridge *b, uint64_t epoch, uint64_t teb,
                             uint64_t mach_tid, unsigned pid, unsigned tid) {
-    if (!teb || __atomic_load_n(&b->active_epoch, __ATOMIC_ACQUIRE) != epoch) return 0;
+    if (!teb || !mach_tid || !pid || !tid || !epoch ||
+        __atomic_load_n(&b->active_epoch, __ATOMIC_ACQUIRE) != epoch) return 0;
     for (unsigned j = 0; j < SF_PROBES; j++) {
         struct sf_slot *s = &b->slots[(sf_hash(teb) + j) & (SF_SLOTS - 1)];
         if (!sf_lock(s)) return 0;

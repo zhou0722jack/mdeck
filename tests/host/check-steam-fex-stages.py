@@ -18,7 +18,12 @@ program = r'''
 #include <atomic>
 #include <thread>
 #include <vector>
+#include "steam_probe_abi.h"
+// The fixture runs on macOS: load its standard library first, then select
+// the exact PE-only probe code without changing libc++'s platform headers.
+#define _WIN32 1
 #include "SteamProbe.h"
+#undef _WIN32
 static sf_bridge b {};
 alignas(16) static uint64_t teb[32] {};
 extern "C" uint64_t mdeck_steam_probe_teb() { return reinterpret_cast<uintptr_t>(teb); }
@@ -37,6 +42,7 @@ int main() {
   teb[0x48/8]=tid;
   assert(!enter(SF_COMPILE).slot);
   reset(7);
+  assert(!sf_enroll(&b,7,address(),100,0xe8,0));
   assert(!sf_enroll(&b,7,address(),101,0xe8,tid+4));
   assert(!sf_enter(&b,address(),tid+4,SF_COMPILE).slot);
   auto t=enter(SF_COMPILE);assert(t.slot);
@@ -126,7 +132,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-stages-') as tmp:
     for mode in ['wow64','arm64ec']:
         out=work/mode
         command=['xcrun','clang++','-std=c++20','-O1','-g','-Wall','-Wextra','-Werror',
-                 '-DFEX_IOS_HOST','-D_WIN32','-fsanitize=address,undefined','-pthread',
+                 '-DFEX_IOS_HOST','-fsanitize=address,undefined','-pthread',
                  '-I'+str(dep),str(src),'-o',str(out)]
         if mode=='arm64ec':command.append('-DARCHITECTURE_arm64ec')
         subprocess.run(command,check=True)
