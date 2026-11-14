@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#define SR_MAGIC UINT64_C(0x4d4452434d503033)
+#define SR_MAGIC UINT64_C(0x4d4452434d503034)
 /* Private banks: ordinary startup can never consume a CEF bank. */
 #define SR_ORDINARY_INSTANCES 16
 #define SR_CEF_INSTANCES 2
@@ -28,6 +28,8 @@ enum sr_stage { SR_OTHER, SR_DECODE_IR, SR_RECHECK, SR_BACKEND, SR_BUFFER_WAIT, 
  * passes remain visible in OTHER; no RTTI, dynamic names or IR walks. */
 enum sr_ir_phase { SR_IR_OTHER, SR_IR_SETUP, SR_IR_DECODE, SR_IR_BUILD, SR_IR_FINALIZE, SR_IR_PASSES, SR_IR_PHASES };
 enum sr_ir_pass { SR_PASS_OTHER, SR_PASS_X87, SR_PASS_DFE, SR_PASS_RA, SR_PASS_VALIDATE, SR_PASS_DUMP, SR_IR_PASSES_COUNT };
+#define SR_RA_STRIDE 64
+enum sr_ra_phase { SR_RA_SETUP, SR_RA_CHECK, SR_RA_REVERSE, SR_RA_FORWARD, SR_RA_CLEANUP, SR_RA_PHASES };
 enum sr_buffer_reason { SR_BUFFER_INITIAL, SR_BUFFER_CAPACITY, SR_BUFFER_EXPLICIT };
 struct sr_fingerprint {
     uint64_t shape, content_a, content_b, bytes, instructions;
@@ -73,8 +75,19 @@ struct sr_history {
 };
 struct sr_metric { uint64_t count, ticks, max_ticks; };
 struct sr_work { uint64_t count, total, max; };
+/* RA phase totals cover sampled invocations only, never extrapolated. */
+struct sr_ra {
+    uint64_t eligible, sampled, returned;
+    struct sr_metric total, phases[SR_RA_PHASES];
+    struct sr_work slots, blocks, reverse_nodes, forward_nodes, suspect_blocks;
+};
+struct sr_ra_sample {
+    uint64_t ticks[SR_RA_PHASES], total, slots, blocks, reverse_nodes, forward_nodes, suspect_blocks;
+    unsigned returned;
+};
 struct sr_frontend {
     uint64_t calls, returned, custom;
+    struct sr_ra ra;
     struct sr_metric phases[SR_IR_PHASES], passes[SR_IR_PASSES_COUNT];
     struct sr_work decoded_instructions, decoded_blocks, emitted_instructions, ssa_before, ssa_after;
     struct sr_work pass_ssa_in[SR_IR_PASSES_COUNT], pass_ssa_out[SR_IR_PASSES_COUNT];
@@ -213,8 +226,17 @@ static inline void sr_metric_merge(struct sr_metric *dst,const struct sr_metric 
 static inline void sr_work_merge(struct sr_work *dst,const struct sr_work *src) {
     dst->count+=src->count;dst->total+=src->total;if(src->max>dst->max)dst->max=src->max;
 }
+static inline void sr_ra_merge(struct sr_ra *dst,const struct sr_ra *src) {
+    dst->eligible+=src->eligible;dst->sampled+=src->sampled;dst->returned+=src->returned;
+    sr_metric_merge(&dst->total,&src->total);
+    for(unsigned i=0;i<SR_RA_PHASES;i++)sr_metric_merge(&dst->phases[i],&src->phases[i]);
+    sr_work_merge(&dst->slots,&src->slots);sr_work_merge(&dst->blocks,&src->blocks);
+    sr_work_merge(&dst->reverse_nodes,&src->reverse_nodes);sr_work_merge(&dst->forward_nodes,&src->forward_nodes);
+    sr_work_merge(&dst->suspect_blocks,&src->suspect_blocks);
+}
 static inline void sr_frontend_merge(struct sr_frontend *dst,const struct sr_frontend *src) {
     if(!src)return;
+    sr_ra_merge(&dst->ra,&src->ra);
     dst->calls+=src->calls;dst->returned+=src->returned;dst->custom+=src->custom;
     for(unsigned i=0;i<SR_IR_PHASES;i++)sr_metric_merge(&dst->phases[i],&src->phases[i]);
     for(unsigned i=0;i<SR_IR_PASSES_COUNT;i++) {

@@ -149,6 +149,10 @@ int main(void){
  struct sr_frontend ir={0};ir.calls=ir.returned=1;
  sr_add(&ir.phases[SR_IR_BUILD],12);sr_add(&ir.phases[SR_IR_PASSES],8);
  sr_add(&ir.passes[SR_PASS_X87],6);
+ ir.ra.eligible=65;ir.ra.sampled=2;ir.ra.returned=1;
+ sr_add(&ir.ra.total,3);sr_add(&ir.ra.total,4);
+ sr_add(&ir.ra.phases[SR_RA_CHECK],2);sr_add(&ir.ra.phases[SR_RA_FORWARD],5);
+ sr_work_add(&ir.ra.reverse_nodes,10);sr_work_add(&ir.ra.reverse_nodes,20);
  sr_work_add(&ir.decoded_instructions,7);sr_work_add(&ir.decoded_blocks,2);
  sr_work_add(&ir.ssa_before,100);sr_work_add(&ir.ssa_after,120);
  sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],100);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],120);
@@ -165,6 +169,10 @@ int main(void){
  struct sr_ticket stale=begin();b->active_epoch=10;
  assert(!sr_finish_full(b,stale,key,bytes(1),55,SR_FAILED,20,&ir_time,(struct sr_output){0},&ir));
  assert(b->frontend.calls==2);
+ assert(b->frontend.ra.eligible==130&&b->frontend.ra.sampled==4&&b->frontend.ra.returned==2);
+ assert(b->frontend.ra.total.ticks==14&&b->frontend.ra.total.max_ticks==4);
+ assert(b->frontend.ra.reverse_nodes.total==60&&b->frontend.ra.reverse_nodes.max==20);
+ assert(b->instances[SR_ORDINARY_INSTANCES].frontend.ra.eligible==65);
  free(b);puts("PASS compile classification: first/changed/new-generation/same-generation, shape uncertainty, instance/owner/mode isolation, failed/raced/delivery exclusion, epoch cancellation, bounded overflow, concurrent reconciliation");
 }
 '''
@@ -204,11 +212,26 @@ int main(){
    r.IRStage(SR_IR_FINALIZE);r.Emitted(1,8,false);r.IRStage(SR_IR_PASSES);
    {PassScope p(&r,SR_PASS_X87,8);p.Complete(9);}
    {PassScope p(&r,SR_PASS_DFE,9);} // entered pass without normal return
+   {PassScope p(&r,SR_PASS_RA,9);uint64_t sequence=0;
+    for(unsigned i=0;i<129;i++) {
+      RAScope ra(&r,sequence);assert(ra.Active()==(i%SR_RA_STRIDE==0));
+      ra.Slots(9);ra.Block();ra.Stage(SR_RA_CHECK);ra.SuspectBlock();
+      ra.Stage(SR_RA_REVERSE);ra.ReverseNode();ra.ReverseNode();
+      ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.Stage(SR_RA_CLEANUP);
+      if(i!=128)ra.Complete(); // final sampled invocation exits without return
+    }
+    assert(sequence==129);p.Complete(9);
+   }
    r.IRStage(SR_IR_OTHER);r.IRReturned(9);r.Stage(SR_OTHER);r.Finish(10,SR_GENERATED);
  }
  assert(b->frontend.calls==1&&b->frontend.returned==1&&b->frontend.decoded_instructions.total==1);
  assert(b->frontend.passes[SR_PASS_X87].count==1&&b->frontend.pass_ssa_out[SR_PASS_X87].count==1);
  assert(b->frontend.passes[SR_PASS_DFE].count==1&&!b->frontend.pass_ssa_out[SR_PASS_DFE].count);
+ assert(b->frontend.ra.eligible==129&&b->frontend.ra.sampled==3&&b->frontend.ra.returned==2);
+ uint64_t ra_sum=0;for(unsigned i=0;i<SR_RA_PHASES;i++)ra_sum+=b->frontend.ra.phases[i].ticks;
+ assert(ra_sum==b->frontend.ra.total.ticks&&ra_sum<=b->frontend.passes[SR_PASS_RA].ticks);
+ assert(b->frontend.ra.reverse_nodes.total==6&&b->frontend.ra.forward_nodes.total==3);
+ assert(b->frontend.ra.slots.total==27&&b->frontend.ra.suspect_blocks.total==3);
  uint64_t ir_sum=0;for(unsigned i=0;i<SR_IR_PHASES;i++)ir_sum+=b->frontend.phases[i].ticks;
  assert(ir_sum==b->stages[SR_DECODE_IR].ticks);
  assert(b->frontend.passes[SR_PASS_X87].ticks+b->frontend.passes[SR_PASS_DFE].ticks<=b->frontend.phases[SR_IR_PASSES].ticks);
@@ -238,7 +261,8 @@ int main(){
  {Capture r(1,0x10000,0,0,false);assert(!r.Active());}
  assert(b->attempts==before);
  {Capture r(1,0x10000,0,0,false);r.Stage(SR_DECODE_IR);r.IRStage(SR_IR_DECODE);
-  PassScope p(&r,SR_PASS_RA,7);p.Complete(9);r.Decoded(5,1);r.IRReturned(9);}
+  PassScope p(&r,SR_PASS_RA,7);p.Complete(9);r.Decoded(5,1);r.IRReturned(9);
+   uint64_t seq=0;RAScope ra(&r,seq);ra.Stage(SR_RA_CHECK);ra.ReverseNode();ra.Complete();assert(!seq&&!ra.Active());}
  assert(b->attempts==before&&b->frontend.calls==2);
  free(b);puts("PASS actual PE producer: default off, independent shared bridge, decoder fingerprint, output generation, RAII failure, races, delivery and stop");
 }
@@ -266,6 +290,9 @@ int main(void){
  struct sr_frontend ir={0};ir.calls=ir.returned=1;
  sr_add(&ir.phases[SR_IR_BUILD],12000);sr_add(&ir.phases[SR_IR_PASSES],12000);
  sr_add(&ir.passes[SR_PASS_X87],6000);sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],8);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],9);
+ ir.ra.eligible=65;ir.ra.sampled=ir.ra.returned=1;
+ sr_add(&ir.ra.total,3000);sr_add(&ir.ra.phases[SR_RA_CHECK],1000);sr_add(&ir.ra.phases[SR_RA_FORWARD],2000);
+ sr_work_add(&ir.ra.slots,9);sr_work_add(&ir.ra.reverse_nodes,7);sr_work_add(&ir.ra.forward_nodes,6);
  assert(sr_finish_full(cr_bridge,ticket,(struct sr_key){.owner=5,.rip=0x10000},f,10,SR_GENERATED,24000,&time,(struct sr_output){0},&ir));
  sr_buffer_record(cr_bridge,(struct sr_buffer_event){.epoch=epoch,.instance=1,.owner=5,.generation=10,
      .reason=SR_BUFFER_INITIAL,.ticks=cr_bridge->started_ticks});
@@ -309,9 +336,11 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert 'reason=fixture-complete' in result.stderr
                 assert 'kind=first-observed count=1 total_wall_ms=1.000000' in result.stderr
                 assert 'first_observed=1' in result.stderr and 'reason=worker-create-failed' in result.stderr
-                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass']:
+                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass','steam-compile-ra','steam-compile-ra-work']:
                     assert '['+prefix+']' in result.stderr
                 assert 'parent_ticks=24000 accounted_ticks=24000' in result.stderr
+                assert 'parent_ticks=3000 accounted_ticks=3000' in result.stderr
+                assert 'eligible=65 samples=1 returned=1 stride=64' in result.stderr
                 assert re.search(r'\[steam-compile-ir\].*scope=thread instance=1 tid=023c calls=1',result.stderr)
                 assert re.search(r'\[steam-compile-ir-pass\].*pass=x87-stack calls=1',result.stderr)
     # Real iPhoneOS compiler sees the complete standalone source.
@@ -339,6 +368,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     manager=(source/'FEXCore/Source/Interface/IR/PassManager.cpp').read_text()
     for stage in ['SR_PASS_X87','SR_PASS_DFE','SR_PASS_RA','SR_PASS_DUMP']:assert stage in manager
     assert manager.count('FEXCore::CompileReason::PassScope Timing')==2
+    assert manager.count('Pass->RunWithReason(IREmit, Reason)')==2
     assert manager.count('Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0)')==2
     backend=(source/'FEXCore/Source/Interface/Core/CPUBackend.cpp').read_text()
     pos=backend.index('auto Buffer = fextl::make_shared<CodeBuffer>(Size);')
@@ -358,7 +388,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
         assert 'CompileReason::IsCEFImage' in text
         assert '#include <FEXCore/Utils/SteamCompileReason.h>' in text, 'PE initializer needs its direct declaration'
     # Native builds must not gain PE symbol dependencies from the header.
-    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);r.Finish(0,SR_FAILED);}\n')
+    noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);uint64_t seq=0;FEXCore::CompileReason::RAScope ra(&r,seq);ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.Complete();r.Finish(0,SR_FAILED);}\n')
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-I'+str(deps),str(noop),'-o',str(work/'noop')],check=True)
     subprocess.run([str(work/'noop')],check=True)
 

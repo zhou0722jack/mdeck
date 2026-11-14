@@ -454,7 +454,7 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.cpp b/FEXCore/Source/Interf
 +    {
 +      FEXCore::CompileReason::PassScope Timing(Reason, Pass->MDeckReasonPass,
 +                                              Reason ? IREmit->ViewIR().GetSSACount() : 0);
-+      Pass->Run(IREmit);
++      Pass->RunWithReason(IREmit, Reason);
 +      Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0);
 +    }
 
@@ -468,7 +468,7 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.cpp b/FEXCore/Source/Interf
 +    {
 +      FEXCore::CompileReason::PassScope Timing(Reason, Pass->MDeckReasonPass,
 +                                              Reason ? IREmit->ViewIR().GetSSACount() : 0);
-+      Pass->Run(IREmit);
++      Pass->RunWithReason(IREmit, Reason);
 +      Timing.Complete(Reason ? IREmit->ViewIR().GetSSACount() : 0);
 +    }
    }
@@ -485,15 +485,19 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.h b/FEXCore/Source/Interfac
  #include <FEXCore/Utils/ThreadPoolAllocator.h>
  #include <FEXCore/fextl/memory.h>
  #include <FEXCore/fextl/string.h>
-@@ -31,6 +32,7 @@
+@@ -31,8 +32,11 @@
 
  class Pass {
  public:
 +  unsigned MDeckReasonPass = SR_PASS_OTHER;
    virtual ~Pass() = default;
    virtual void Run(IREmitter* IREmit) = 0;
++  // Explicit stack-owned diagnostic context; other passes keep their existing Run.
++  virtual void RunWithReason(IREmitter* IREmit, FEXCore::CompileReason::Capture*) { Run(IREmit); }
 
-@@ -46,8 +48,8 @@
+   void RegisterPassManager(PassManager* _Manager) {
+     Manager = _Manager;
+@@ -46,8 +50,8 @@
  public:
    void AddDefaultPasses(FEXCore::Context::ContextImpl* ctx);
    void AddDefaultValidationPasses();
@@ -504,7 +508,7 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.h b/FEXCore/Source/Interfac
 
      if (!Name.empty()) {
        NameToPassMaping[Name] = PassPtr;
-@@ -57,7 +59,7 @@
+@@ -57,7 +61,7 @@
 
    void InsertRegisterAllocationPass(FEXCore::Context::ContextImpl* ctx);
 
@@ -513,7 +517,7 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.h b/FEXCore/Source/Interfac
 
    bool HasPass(fextl::string Name) const {
      return NameToPassMaping.contains(Name);
-@@ -83,7 +85,8 @@
+@@ -83,7 +87,8 @@
 
  private:
    using PassArrayType = fextl::vector<fextl::unique_ptr<Pass>>;
@@ -523,7 +527,7 @@ diff --git a/FEXCore/Source/Interface/IR/PassManager.h b/FEXCore/Source/Interfac
      Pass->RegisterPassManager(this);
      return Passes.insert(pos, std::move(Pass));
    }
-@@ -93,6 +96,7 @@
+@@ -93,6 +98,7 @@
  #if defined(ASSERTIONS_ENABLED) && ASSERTIONS_ENABLED
    fextl::vector<fextl::unique_ptr<Pass>> ValidationPasses;
    void InsertValidationPass(fextl::unique_ptr<Pass> Pass, fextl::string Name = "") {

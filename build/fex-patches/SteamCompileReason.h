@@ -130,6 +130,20 @@ public:
     if(end>=begin)sr_add(&frontend.passes[pass],end-begin);
     if(completed)sr_work_add(&frontend.pass_ssa_out[pass],slots);
   }
+  uint64_t RABegin(uint64_t& sequence) {
+    if(!Active()||stage!=SR_DECODE_IR)return 0;
+    frontend.ra.eligible++;
+    return (sequence++ % SR_RA_STRIDE)==0 ? Clock() : 0;
+  }
+  static uint64_t RAClock(){return Clock();}
+  void RAEnd(const sr_ra_sample& sample) {
+    auto& ra=frontend.ra;ra.sampled++;ra.returned+=sample.returned;
+    sr_add(&ra.total,sample.total);
+    for(unsigned i=0;i<SR_RA_PHASES;i++)sr_add(&ra.phases[i],sample.ticks[i]);
+    sr_work_add(&ra.slots,sample.slots);sr_work_add(&ra.blocks,sample.blocks);
+    sr_work_add(&ra.reverse_nodes,sample.reverse_nodes);sr_work_add(&ra.forward_nodes,sample.forward_nodes);
+    sr_work_add(&ra.suspect_blocks,sample.suspect_blocks);
+  }
   void Output(sr_output value) {output=value;}
   void Finish(uint64_t generation,unsigned outcome) {
     if(!ticket.epoch)return;
@@ -159,10 +173,34 @@ public:
    void IRReturned(uint64_t){}
    uint64_t PassBegin(unsigned,uint64_t){return 0;}
    void PassEnd(unsigned,uint64_t,bool,uint64_t){}
+   uint64_t RABegin(uint64_t&){return 0;}
+   static uint64_t RAClock(){return 0;}
+   void RAEnd(const sr_ra_sample&){}
    void Output(sr_output){}
   void Finish(uint64_t,unsigned){}
 };
 #endif
+// Sample entire RA invocations. All phase boundaries share one clock reading;
+// no clock reads per node and no additional IR walk. Total is nested in RA pass.
+class RAScope {
+  Capture* capture;uint64_t begin,last;unsigned phase=SR_RA_SETUP;
+  sr_ra_sample sample; // untouched on unsampled/default-off calls
+  void Close(uint64_t now) {if(now>=last)sample.ticks[phase]+=now-last;last=now;}
+public:
+  RAScope(Capture* capture,uint64_t& sequence):capture(capture),
+    begin(capture?capture->RABegin(sequence):0),last(begin){if(begin)sample={};}
+  bool Active() const {return begin!=0;}
+  void Stage(unsigned next){if(!begin||next>=SR_RA_PHASES||phase==next)return;Close(Capture::RAClock());phase=next;}
+  void Slots(uint64_t n){if(begin)sample.slots=n;}
+  void Block(){if(begin)sample.blocks++;}
+  void ReverseNode(){if(begin)sample.reverse_nodes++;}
+  void ForwardNode(){if(begin)sample.forward_nodes++;}
+  void SuspectBlock(){if(begin)sample.suspect_blocks++;}
+  void Complete(){if(begin)sample.returned=1;}
+  ~RAScope(){if(begin){const auto end=Capture::RAClock();Close(end);sample.total=end>=begin?end-begin:0;capture->RAEnd(sample);}}
+  RAScope(const RAScope&)=delete;
+  RAScope& operator=(const RAScope&)=delete;
+};
 // Stack-owned; no TLS or global current-capture pointer. Unwinding still records
 // an entered pass, with no output workload sample when Run did not return.
 class PassScope {

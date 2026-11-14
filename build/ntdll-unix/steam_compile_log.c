@@ -129,6 +129,26 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
             (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,names[i],(unsigned long long)m->count,
             m->ticks*scale,m->ticks*scale/m->count,m->max_ticks*scale,CR_WORK(f->pass_ssa_in[i]),CR_WORK(f->pass_ssa_out[i]));
     }
+    const struct sr_ra *ra=&f->ra;
+    if(ra->eligible) {
+        uint64_t ra_accounted=0;for(unsigned i=0;i<SR_RA_PHASES;i++)ra_accounted+=ra->phases[i].ticks;
+        dprintf(2,"[steam-compile-ra] session=%llu t+%.3f scope=%s instance=%llu tid=%04x eligible=%llu samples=%llu returned=%llu "
+            "stride=%u total_wall_ms=%.6f max_wall_ms=%.6f parent_ticks=%llu accounted_ticks=%llu "
+            "setup_ms=%.6f/%.6f check_ms=%.6f/%.6f reverse_ms=%.6f/%.6f forward_ms=%.6f/%.6f cleanup_ms=%.6f/%.6f "
+            "format=total-max-per-sampled-call sampled-only=1 parent=register-allocation cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
+            (unsigned long long)ra->eligible,(unsigned long long)ra->sampled,(unsigned long long)ra->returned,SR_RA_STRIDE,
+            ra->total.ticks*scale,ra->total.max_ticks*scale,(unsigned long long)ra->total.ticks,(unsigned long long)ra_accounted,
+            ra->phases[0].ticks*scale,ra->phases[0].max_ticks*scale,ra->phases[1].ticks*scale,ra->phases[1].max_ticks*scale,
+            ra->phases[2].ticks*scale,ra->phases[2].max_ticks*scale,ra->phases[3].ticks*scale,ra->phases[3].max_ticks*scale,
+            ra->phases[4].ticks*scale,ra->phases[4].max_ticks*scale);
+        dprintf(2,"[steam-compile-ra-work] session=%llu t+%.3f scope=%s instance=%llu tid=%04x "
+            "ssa_slots=%llu/%llu/%llu blocks=%llu/%llu/%llu reverse_nodes=%llu/%llu/%llu "
+            "forward_nodes=%llu/%llu/%llu suspect_blocks=%llu/%llu/%llu "
+            "format=total-max-samples sampled-only=1 reverse-and-forward-may-differ=1 cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
+            CR_WORK(ra->slots),CR_WORK(ra->blocks),CR_WORK(ra->reverse_nodes),CR_WORK(ra->forward_nodes),CR_WORK(ra->suspect_blocks));
+    }
 #undef CR_WORK
 }
 static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint64_t dropped_start,const char *reason) {

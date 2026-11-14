@@ -59,7 +59,7 @@ Steam 根据保存的开关重新启用。本功能不暂停任何线程。
 留在其所在阶段。因此不能据 `backend_ms`、`decode_ir_ms` 或 `output_ms` 推导 CPU
 占用，也不能声称已经测到所有锁等待。与热点检测的包含式计时不可直接相加。
 
-## GenerateIR 内部分段（ABI v3）
+## GenerateIR 内部分段（当前 ABI v4）
 
 沿用同一个开关、45 秒窗口和完成事件预算。没有给每条 guest 指令增加时钟读取；
 使用调用栈上的 Capture 指针传递上下文，不使用 TLS 或全局“当前编译”指针。
@@ -110,7 +110,19 @@ GenerateIR 总时间。`pass_manager_ms - pass_sum_ms` 是管理/检查/计时�
 新增统计在现有完成事件的 try-lock 内汇总，不增加每个 pass 的共享锁。线程本地
 Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读取新增时钟，不扫描 IR。
 新增每秒输出和快照复制仍有成本，快照放在报告线程堆上，避免扩大工作线程栈占用。
-宿主和 WoW64/ARM64EC 使用 ABI v3 配套 magic/大小，不支持混用旧版本。
+宿主和 WoW64/ARM64EC 使用 ABI v4 配套 magic/大小，不支持混用旧版本。
+
+## RA 抽样分段（ABI v4）
+
+同一开关下，每个 RA pass 实例每 64 次有效调用抽样一次，记录 setup、链校验与修复、
+反向分析、正向分配、cleanup 五段。`[steam-compile-ra]` 的 `samples/returned`、阶段
+时间与工作量只描述样本；`eligible` 表示已录入编译中的全部可抽样 RA 调用。
+`parent_ticks == accounted_ticks` 应严格成立。日志是原 RA pass 时间的嵌套子集，
+不能相加或按 64 倍当作精确全量成本。`[steam-compile-ra-work]` 沿现有扫描计数，
+不额外遍历 IR；关闭或非样本不读分段时钟，但仍有条件判断开销。
+
+DFE 临时存储复用不依赖日志开关。容量限制、状态清理、采样边界与验收细节见
+[DFE/RA 说明](steam-dfe-ra.md)。当前版本没有改变 RA 分配算法或移除安全校验。
 
 ## 代码身份、指纹与实例配额
 
@@ -192,6 +204,8 @@ buffer 的释放生命周期。关闭期间已有的 buffer 可以没有对应 a
 [steam-compile-ir]           GenerateIR 内部互斥阶段、返回数与整数 tick 对账
 [steam-compile-ir-work]      解码/发射指令数、基本块数和 SSA 分配槽位
 [steam-compile-ir-pass]      各 pass 次数、累计/平均/最大 wall 和输入输出槽位
+[steam-compile-ra]           RA 样本调用的互斥阶段、样本数与整数 tick 对账
+[steam-compile-ra-work]      RA 样本的 SSA 槽位、块数、两遍节点数与可疑块数
 [steam-compile-generation]   实际输出 buffer 的身份、容量与已用高水位
 [steam-compile-buffer]       实际分配事件、容量触发与旧新代对应
 ```

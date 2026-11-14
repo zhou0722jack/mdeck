@@ -1,0 +1,183 @@
+diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+--- a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
+@@ -16,6 +16,7 @@
+ #include <FEXCore/Utils/CompilerDefs.h>
+ #include <FEXCore/Utils/MathUtils.h>
+ #include <FEXCore/Utils/Profiler.h>
++#include <FEXCore/Utils/DFEScratch.h>
+ #include <FEXCore/fextl/deque.h>
+ #include <FEXCore/fextl/vector.h>
+
+@@ -105,7 +106,7 @@
+ };
+
+ struct ControlFlowGraph {
+-  fextl::vector<BlockInfo> BlockMap;
++  fextl::vector<BlockInfo>& BlockMap;
+   IRListView& IR;
+
+   void Init(fextl::deque<uint32_t>& Worklist, uint32_t BlockCount) {
+@@ -113,12 +114,13 @@
+
+     for (unsigned ID = 0; ID < BlockCount; ++ID) {
+       // Add the block with conservative flags and already in the worklist.
+-      auto Info = BlockInfo {{}, nullptr, FLAG_ALL, true};
+-
+-      // Add some initial capacity
+-      Info.Predecessors.reserve(2);
+-
+-      BlockMap[ID] = std::move(Info);
++      auto& Info = BlockMap[ID];
++      Info.Predecessors.clear();
++      Info.Node = nullptr;
++      Info.Flags = FLAG_ALL;
++      Info.InWorklist = true;
++      // Keep old predecessor capacity; allocate only for actual incoming edges.
++      // Zero-predecessor blocks no longer each allocate reserve(2).
+       /* ⛔ ml621: the ml611 AllocWatch registration was REMOVED here. See
+        * AllocWatch.h — it produced 71.9M events / 17.2M slot collisions and its
+        * 512-line drain corrupted the exception record, killing ml620. */
+@@ -204,6 +206,8 @@
+     }
+
+     const size_t Idx = Info->Predecessors.size();
++    // Reserve the common two-edge case only when this block first gets an edge.
++    if (Info->Predecessors.capacity() < 2) Info->Predecessors.reserve(2);
+     Info->Predecessors.push_back(From);
+
+     if (FromValid && Info->Predecessors[Idx] != From && EdgeReports < 4) {
+@@ -252,6 +256,8 @@
+   void Run(IREmitter* IREmit) override;
+
+ private:
++  using Scratch = DFEScratch<fextl::vector<BlockInfo>, fextl::vector<uint8_t>, fextl::deque<uint32_t>>;
++  Scratch ScratchData;
+   FlagInfo Classify(IROp_Header* Node);
+   unsigned FlagsForCondClassType(CondClass Cond);
+   bool EliminateDeadCode(IREmitter* IREmit, Ref CodeNode, IROp_Header* IROp);
+@@ -830,10 +836,12 @@
+   FEXCORE_PROFILE_SCOPED("PassManager::DFE");
+
+   auto CurrentIR = IREmit->ViewIR();
+-  fextl::deque<uint32_t> Worklist;
+-
+-  // Initialize CFG
+-  ControlFlowGraph CFG {.IR = CurrentIR};
++  Scratch::Lease Lease {ScratchData};
++  auto& Storage = Lease.Get();
++  auto& Worklist = Storage.Worklist;
++
++  // Invocation-local CFG counters and sentinel; only empty storage is reused.
++  ControlFlowGraph CFG {.BlockMap = Storage.BlockMap, .IR = CurrentIR};
+   CFG.Init(Worklist, CurrentIR.GetHeader()->BlockCount);
+
+   // Gather CFG
+@@ -896,7 +904,8 @@
+     // pointer that ProcessBlock will actually dereference.
+     uint32_t DupIDs = 0, MissingIDs = 0, NullNodes = 0, BadWorklistIDs = 0;
+     {
+-      fextl::vector<uint8_t> Seen(CFG.BlockMap.size(), 0);
++      auto& Seen = Storage.SeenIDs;
++      Seen.assign(CFG.BlockMap.size(), 0);
+       for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
+         auto Block = BlockHeader->C<IROp_CodeBlock>();
+         if (CFG.IDValid(Block->ID)) {
+diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
+--- a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
+@@ -58,10 +58,12 @@
+   explicit ConstrainedRAPass(const FEXCore::CPUIDEmu* CPUID)
+     : CPUID {CPUID} {}
+   void Run(IREmitter* IREmit) override;
++  void RunWithReason(IREmitter* IREmit, FEXCore::CompileReason::Capture* Reason) override;
+   void AddRegisters(IR::RegClass Class, uint32_t RegisterCount) override;
+   bool TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp);
+
+ private:
++  uint64_t ReasonSequence {};
+   RegisterClassData Classes[IR::NumClasses];
+
+   IREmitter* IREmit {};
+@@ -566,17 +568,25 @@
+ }
+
+ void ConstrainedRAPass::Run(IREmitter* IREmit_) {
++  RunWithReason(IREmit_, nullptr);
++}
++
++void ConstrainedRAPass::RunWithReason(IREmitter* IREmit_, FEXCore::CompileReason::Capture* Reason) {
+   FEXCORE_PROFILE_SCOPED("PassManager::RA");
++  FEXCore::CompileReason::RAScope Timing(Reason, ReasonSequence);
+
+   IREmit = IREmit_;
+   auto IR_ = IREmit->ViewIR();
+   IR = &IR_;
++  Timing.Slots(IR->GetSSACount());
+
+   PreferredReg.resize(IR->GetSSACount(), PhysicalRegister::Invalid());
+   SSAToReg.resize(IR->GetSSACount(), PhysicalRegister::Invalid());
+   Seen.resize(IR->GetSSACount(), false);
+
+   for (auto [BlockNode, BlockHeader] : IR->GetBlocks()) {
++    Timing.Stage(SR_RA_SETUP);
++    Timing.Block();
+     // Spilling is local, so reset this per-block
+     AnySpilled = false;
+
+@@ -603,12 +613,15 @@
+     // whereas walking a cyclic chain would set kill bits on nodes belonging to
+     // other blocks and free their registers early -- a miscompile.
+     // ml599b: cheap backward-only check here; full diagnosis only when it trips.
++    Timing.Stage(SR_RA_CHECK);
+     bool BackwardPassSafe = true;
+     IRTopoNoteChecked();
+     if (!QuickBackwardOK(*IR, BlockNode)) {
++      Timing.SuspectBlock();
+       BackwardPassSafe = HandleSuspectBlock("ra-entry", *IR, BlockNode) == IRTopoAction::Proceed;
+     }
+
++    Timing.Stage(SR_RA_REVERSE);
+     // Backwards pass: analyze kill bits and SRA affinities
+     if (BackwardPassSafe) {
+       // Reverse iteration is not yet working with the iterators
+@@ -630,6 +643,7 @@
+           break;
+         }
+         auto [CodeNode, IROp] = CodeLast();
++        Timing.ReverseNode();
+         // End of iteration gunk
+
+         // Record preferred registers for SRA. We also record the Node accessing
+@@ -680,6 +694,7 @@
+       }
+     }
+
++    Timing.Stage(SR_RA_FORWARD);
+     // NextUses currently contains first use distances, the exact initialization
+     // assumed by the forward pass. Do not reset it.
+
+@@ -688,6 +703,7 @@
+
+     // Forward pass: Assign registers, spilling & optimizing as we go.
+     for (auto [CodeNode, IROp] : IR->GetCode(BlockNode)) {
++      Timing.ForwardNode();
+       bool AnySpilledBeforeThisInstruction = AnySpilled;
+
+       // These do not read or write registers, and must be skipped for merging.
+@@ -807,6 +823,7 @@
+     }
+   }
+
++  Timing.Stage(SR_RA_CLEANUP);
+   PreferredReg.clear();
+   SSAToReg.clear();
+   SpillSlots.clear();
+@@ -814,6 +831,7 @@
+   Seen.clear();
+
+   IR->GetHeader()->PostRA = true;
++  Timing.Complete();
+ }
+
+ fextl::unique_ptr<IR::Pass> CreateRegisterAllocationPass(const CPUIDEmu* CPUID) {

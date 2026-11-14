@@ -28,6 +28,7 @@
     "check-steam-hotspot.py",
     "check-steam-fex-stages.py",
     "check-steam-compile-reasons.py",
+    "check-dfe-scratch.py",
     "check-fex-l1-index.py",
     "check-steam-alloc-stats.py",
     "check-steam-surface-stats.py",
