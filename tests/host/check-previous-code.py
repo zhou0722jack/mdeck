@@ -34,7 +34,8 @@ with tempfile.TemporaryDirectory(prefix='mdeck-previous-') as tmp:
         'uintptr_t CPUBackend::TryPreviousCode('])
     refill=method(lookup,'uintptr_t RefillPreviousBlock(')
     fixture=r'''
-#include "PreviousCode.h"
+#include <cstddef>
+#include <utility>
 #include <atomic>
 #include <cassert>
 #include <cstdint>
@@ -44,6 +45,10 @@ with tempfile.TemporaryDirectory(prefix='mdeck-previous-') as tmp:
 #include <mutex>
 #include <string>
 #include <vector>
+// Load the real host STL before selecting the tested PE policy branch.
+#define FEX_IOS_HOST 1
+#define _WIN32 1
+#include "PreviousCode.h"
 namespace fextl { template<class T> using shared_ptr=std::shared_ptr<T>; }
 static int map_locks=0, destructions=0, resets=0;
 static bool delivery=false, unpublished=false;
@@ -144,7 +149,7 @@ int main(int argc,char** argv){
     cpp=work/'reuse.cpp';cpp.write_text(fixture)
     exe=work/'reuse'
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-fsanitize=address,undefined',
-                    '-DFEX_IOS_HOST','-D_WIN32','-I'+str(patches),str(cpp),'-o',str(exe)],check=True)
+                    '-I'+str(patches),str(cpp),'-o',str(exe)],check=True)
     for mode in ['default','other','invalid','on']:subprocess.run([str(exe),mode],check=True)
     native=work/'native.cpp';native.write_text('#include "PreviousCode.h"\n#include <cassert>\nint main(){FEXCore::MDeckPrevious::Configure("1",true);assert(!FEXCore::MDeckPrevious::Enabled());}\n')
     subprocess.run(['xcrun','clang++','-std=c++20','-Wall','-Wextra','-Werror','-I'+str(patches),str(native),'-o',str(work/'native')],check=True)
