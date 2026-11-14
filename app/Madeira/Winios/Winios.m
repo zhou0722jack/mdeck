@@ -617,7 +617,6 @@ static void winios_surface_stats_report(uint64_t epoch) {
                 SURFACE_MS(layer), SURFACE_MS(main), SURFACE_MS(total));
 #undef SURFACE_MS
     }
-    ios_steam_alloc_stats_report(epoch);
 }
 
 void winios_surface_stats_configure(int enabled) {
@@ -627,7 +626,6 @@ void winios_surface_stats_configure(int enabled) {
     uint64_t epoch = g_surface_stats.epoch + 1;
     g_surface_stats = (struct winios_surface_stats){.epoch = epoch, .since = winios_now_mono()};
     g_surface_stats_started = g_surface_stats.since;
-    ios_steam_alloc_stats_configure(enabled, epoch);
     if (enabled) {
         dispatch_queue_t q = dispatch_queue_create("mdeck.steam-surface-stats", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
         g_surface_stats_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
@@ -640,6 +638,31 @@ void winios_surface_stats_configure(int enabled) {
     if (enabled) dprintf(STDERR_FILENO, "[steam-surface] enabled session=%llu interval=1s ms=mean/max/count "
             "updates=host-layer-submissions (not display FPS); no GPU timing; main=largest visible Steam-owned window; "
             "cursor and other windows separate; switch=MADEIRA_STEAM_SURFACE_STATS\n", (unsigned long long)epoch);
+}
+
+/* Allocation diagnostics have their own timer and epoch. In particular,
+ * enabling them never starts surface copying/owner diagnostics, and stopping
+ * either sampler must not cancel the other sampler's heartbeat. */
+static pthread_mutex_t g_allocation_stats_lock = PTHREAD_MUTEX_INITIALIZER;
+static dispatch_source_t g_allocation_stats_timer;
+static uint64_t g_allocation_stats_epoch;
+
+void winios_allocation_stats_configure(int enabled) {
+    pthread_mutex_lock(&g_allocation_stats_lock);
+    if (g_allocation_stats_timer) {
+        dispatch_source_cancel(g_allocation_stats_timer);
+        g_allocation_stats_timer = nil;
+    }
+    uint64_t epoch = ++g_allocation_stats_epoch;
+    ios_steam_alloc_stats_configure(enabled, epoch);
+    if (enabled) {
+        dispatch_queue_t q = dispatch_queue_create("mdeck.steam-allocation-stats", dispatch_queue_attr_make_with_qos_class(DISPATCH_QUEUE_SERIAL, QOS_CLASS_UTILITY, 0));
+        g_allocation_stats_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, q);
+        dispatch_source_set_timer(g_allocation_stats_timer, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), NSEC_PER_SEC, 100 * NSEC_PER_MSEC);
+        dispatch_source_set_event_handler(g_allocation_stats_timer, ^{ ios_steam_alloc_stats_report(epoch); });
+        dispatch_resume(g_allocation_stats_timer);
+    }
+    pthread_mutex_unlock(&g_allocation_stats_lock);
 }
 
 static struct winios_surface_ticket winios_surface_stats_begin(HWND hwnd, uint64_t bytes) {
@@ -1562,6 +1585,7 @@ void winios_note_game_metal_hwnd(void *hwnd) {
 /* Called at every Wine session start (WineProcessBridge): a game session
  * starts with no overlay windows and no known Metal windows. */
 void winios_session_reset(void) {
+    winios_allocation_stats_configure(0);
     winios_surface_stats_configure(0);
     atomic_fetch_add(&g_desktop_ready_generation, 1);
     atomic_store(&g_desktop_ready_hwnd, 0);

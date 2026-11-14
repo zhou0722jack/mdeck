@@ -143,6 +143,28 @@ let duplicates = "# keep me\npool=1152\nenv.MADEIRA_STEAM_SURFACE_STATS = 1\nenv
 let deduped = SteamSurfaceLogSettings.text(duplicates, enabled: true)
 expect(deduped.components(separatedBy: SteamSurfaceLogSettings.key).count == 2
        && deduped.contains("# keep me") && deduped.contains("pool=1152"), "surface switch removes duplicate keys while keeping notes and unrelated settings")
+expect(!SteamAllocationLogSettings.enabled(global: [:], profile: steamSurface), "existing window diagnostics do not enable allocation timing")
+for cpuEnabled in [false, true] {
+    for windowEnabled in [false, true] {
+        for allocationEnabled in [false, true] {
+            var independent = PerformanceLogSettings.text(original, enabled: cpuEnabled)
+            independent = SteamSurfaceLogSettings.text(independent, enabled: windowEnabled)
+            independent = SteamAllocationLogSettings.text(independent, enabled: allocationEnabled)
+            expect(PerformanceLogSettings.enabled(global: quiet, profile: independent) == cpuEnabled
+                   && SteamSurfaceLogSettings.enabled(global: [:], profile: independent) == windowEnabled
+                   && SteamAllocationLogSettings.enabled(global: [:], profile: independent) == allocationEnabled,
+                   "CPU, window and allocation switches retain independent values: \(cpuEnabled)/\(windowEnabled)/\(allocationEnabled)")
+            expect(SteamAllocationLogSettings.text(independent, enabled: allocationEnabled) == independent,
+                   "allocation switch writes are idempotent")
+        }
+    }
+}
+let allocationDuplicates = "# keep me\npool=1152\nenv.MADEIRA_STEAM_ALLOC_STATS = 1\nenv.MADEIRA_STEAM_ALLOC_STATS=0\n"
+let allocationOff = SteamAllocationLogSettings.text(allocationDuplicates, enabled: false)
+expect(allocationOff.components(separatedBy: SteamAllocationLogSettings.key).count == 2
+       && allocationOff.contains("# keep me") && allocationOff.contains("pool=1152")
+       && !SteamAllocationLogSettings.enabled(global: [SteamAllocationLogSettings.key: "1"], profile: allocationOff),
+       "allocation switch deduplicates its own key, preserves unrelated settings and overrides global on")
 try! profiling.write(to: fresh, atomically: true, encoding: .utf8)
 expect(!MadeiraConfig.installPerformanceLogDefaults(at: fresh) && (try! String(contentsOf: fresh, encoding: .utf8)) == profiling,
        "upgrade preserves manually selected performance logging")
@@ -195,6 +217,11 @@ check('Toggle("Steam performance diagnostics"' in detail
       and 'SteamSurfaceLogSettings.text(file.text, enabled: enabled)' in detail
       and '.accessibilityIdentifier("steam-surface-performance-logging")' in detail,
       'Steam advanced settings expose independent surface diagnostics')
+check('Toggle("Steam allocation and retry diagnostics"' in detail
+      and 'SteamAllocationLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)' in detail
+      and 'SteamAllocationLogSettings.text(file.text, enabled: enabled)' in detail
+      and '.accessibilityIdentifier("steam-allocation-performance-logging")' in detail,
+      'Steam advanced settings expose independent allocation/retry diagnostics')
 app_source = (root / 'app/Madeira/MadeiraApp.swift').read_text()
 check(app_source.index('MadeiraConfig.installMdeckRuntimeDefaults()') < app_source.index('MadeiraConfig.installPerformanceLogDefaults()')
       < app_source.index('SteamClientSignInSync.shared.start()'), 'sampling defaults initialize before runtime startup')

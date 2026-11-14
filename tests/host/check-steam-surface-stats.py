@@ -122,11 +122,10 @@ objc_test = r'''
 #include <mach/mach_time.h>
 #include <time.h>
 #include "WiniosSurfaceStats.h"
+#include "steam_alloc_stats.h"
 typedef void *HWND;
 #define WINIOS_CENSUS_IMAGE 264
 static atomic_uint owner_queries;
-static void ios_steam_alloc_stats_configure(int enabled, uint64_t epoch) { (void)enabled; (void)epoch; }
-static void ios_steam_alloc_stats_report(uint64_t epoch) { (void)epoch; }
 static double winios_now_mono(void) { return (double)clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1e9; }
 static int winios_drv_census_owner(HWND hwnd, unsigned *pid, unsigned *style) {
     atomic_fetch_add(&owner_queries, 1); *pid = 123; *style = 0; return 1;
@@ -137,9 +136,12 @@ static int winios_drv_process_image(unsigned pid, char *out, unsigned size) {
 '''
 objc_main = r'''
 int main(void) { @autoreleasepool {
+    fprintf(stderr, "[fixture] surface-only\n");
+    winios_allocation_stats_configure(0);
     winios_surface_stats_configure(0);
     assert(winios_surface_stats_begin((void *)42, 1024).slot == -1);
     winios_surface_stats_configure(1);
+    assert(!__atomic_load_n(&ios_sa_on, __ATOMIC_ACQUIRE) && !g_allocation_stats_timer);
     winios_surface_stats_window((void *)42, 800, 600, 1);
     winios_surface_stats_window((void *)42, 800, 600, 1);
     assert(atomic_load(&owner_queries) == 1);
@@ -175,7 +177,36 @@ int main(void) { @autoreleasepool {
            && !g_surface_stats.slots[0].counts.pending_bytes && !g_surface_stats.slots[0].in_flight);
     pthread_mutex_unlock(&g_surface_stats_lock);
     winios_surface_stats_configure(0);
+    assert(!__atomic_load_n(&ios_sa_on, __ATOMIC_ACQUIRE));
+    fprintf(stderr, "[fixture] allocation-only\n");
+    winios_allocation_stats_configure(1);
+    assert(__atomic_load_n(&ios_sa_on, __ATOMIC_ACQUIRE) && g_allocation_stats_timer && !g_surface_stats_timer);
+    assert(winios_surface_stats_begin((void *)42, 1).slot == -1);
+    struct ios_sa_request request;
+    ios_sa_begin(&request, 0xe8, 0x20c, 1, 4096, 0, 0x3000, 0);
+    ios_sa_end(&request, 0);
+    usleep(1300000);
+
+    fprintf(stderr, "[fixture] both-on\n");
+    uint64_t allocation_epoch = ios_sa_epoch;
+    winios_surface_stats_configure(1);
+    assert(ios_sa_epoch == allocation_epoch && __atomic_load_n(&ios_sa_on, __ATOMIC_ACQUIRE));
+    assert(g_surface_stats_timer && g_allocation_stats_timer);
+    ios_sa_begin(&request, 0xe8, 0x20c, 1, 8192, 0, 0x3000, 0);
+    ios_sa_end(&request, 0);
+    usleep(1300000);
+
+    fprintf(stderr, "[fixture] allocation-stopped\n");
+    winios_allocation_stats_configure(0);
+    assert(!__atomic_load_n(&ios_sa_on, __ATOMIC_ACQUIRE) && !g_allocation_stats_timer);
+    assert(atomic_load(&g_surface_stats_on) && g_surface_stats_timer);
+    ios_sa_begin(&request, 0xe8, 0x20c, 1, 4096, 0, 0x3000, 0);
+    assert(!request.root);
+    usleep(1300000);
+    winios_surface_stats_configure(0);
+    assert(!g_surface_stats_timer && !g_allocation_stats_timer);
     puts("PASS production adapter: independent off/on, once-per-window lookup, visibility, utility heartbeat, stop, restart and concurrent producers");
+    puts("PASS production surface/allocation timers: all four combinations, allocation-only heartbeat without UIKit, no cross-reset and stopping allocation preserves surface sampling");
 } return 0; }
 '''
 
@@ -191,12 +222,21 @@ with tempfile.TemporaryDirectory() as directory:
     m.write_text(objc_test + '\n' + adapter + '\n' + objc_main)
     executable = d / 'adapter'
     subprocess.run(['xcrun', 'clang', '-fobjc-arc', '-fblocks', '-Wall', '-Werror', '-Wno-unused-function',
-                    '-I' + str(native), str(m), '-framework', 'Foundation', '-o', str(executable)], check=True)
+                    '-I' + str(native), '-I' + str(root / 'build/ntdll-unix'), str(m), '-framework', 'Foundation', '-o', str(executable)], check=True)
     result = subprocess.run([str(executable)], text=True, capture_output=True, check=True, timeout=15)
     print(result.stdout, end='')
     rows = [line for line in result.stderr.splitlines() if 'kind=steam-main' in line]
     assert len(rows) >= 2 and any('applied=1 ' in line for line in rows) and any('applied=0 ' in line for line in rows), result.stderr
     assert any('kind=cursor' in line for line in result.stderr.splitlines()), result.stderr
+    surface_only = result.stderr.split('[fixture] surface-only\n', 1)[1].split('[fixture] allocation-only\n', 1)[0]
+    allocation_only = result.stderr.split('[fixture] allocation-only\n', 1)[1].split('[fixture] both-on\n', 1)[0]
+    both_on = result.stderr.split('[fixture] both-on\n', 1)[1].split('[fixture] allocation-stopped\n', 1)[0]
+    stopped = result.stderr.split('[fixture] allocation-stopped\n', 1)[1]
+    assert '[steam-alloc]' not in surface_only and '[steam-surface]' in surface_only
+    assert '[steam-surface]' not in allocation_only and re.search(r'\[steam-alloc\].*kind=total .*requests=1 ', allocation_only)
+    assert '[steam-surface]' in both_on and '[steam-alloc]' in both_on
+    assert '[steam-surface]' in stopped
+    assert not re.search(r'\[steam-alloc\].*kind=', stopped), 'old allocation timer must not report into stopped/new epoch'
     print('PASS adapter log: active and idle main-window intervals plus separate cursor, without main-queue execution')
 
 sdk = subprocess.check_output(['xcrun', '--sdk', 'iphoneos', '--show-sdk-path'], text=True).strip()
@@ -213,5 +253,9 @@ assert 'winios_surface_stats_configure' not in source[source.index('void winios_
 assert bridge.index('unsetenv("MADEIRA_STEAM_SURFACE_STATS")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
 assert bridge.index('winios_surface_stats_configure(e && *e && strcmp(e, "0"));') > bridge.index('dup2(logfd, STDERR_FILENO);')
 assert len(re.findall(r'winios_surface_stats_configure\(0\);\s+g_wine_running = 0;', bridge)) == 2, 'normal and rejected-argument exits stop sampling'
+assert len(re.findall(r'winios_allocation_stats_configure\(0\);\s+winios_surface_stats_configure\(0\);\s+g_wine_running = 0;', bridge)) == 2
+assert bridge.index('unsetenv("MADEIRA_STEAM_ALLOC_STATS")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
+assert bridge.index('e = getenv("MADEIRA_STEAM_ALLOC_STATS");') > bridge.index('dup2(logfd, STDERR_FILENO);')
+assert 'winios_allocation_stats_configure(e && *e && strcmp(e, "0"));' in bridge
 assert 'python3 tests/host/check-steam-surface-stats.py' in workflow
 print('PASS integration: independent lifecycle, all surface exits accounted for, environment precedence and checks-only workflow')

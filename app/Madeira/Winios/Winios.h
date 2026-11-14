@@ -91,6 +91,8 @@ void winios_session_reset(void);
 /* Session worker, after effective env config is applied. Independent of the
  * first-frame census; 0 also cancels its timer and invalidates queued samples. */
 void winios_surface_stats_configure(int enabled);
+/* Separate allocation sampler, controlled by MADEIRA_STEAM_ALLOC_STATS. */
+void winios_allocation_stats_configure(int enabled);
 /* Ends a Dock session: explorer's desktop is asked to close (its own thread posts WM_CLOSE). */
 void winios_close_desktop(void);
 int winios_desktop_point_from_window(double wx, double wy, int *px, int *py);

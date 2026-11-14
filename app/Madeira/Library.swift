@@ -5005,7 +5005,22 @@ struct LibraryDetail: View {
                 }))
                 .disabled(model.current != nil || model.startingScreen)
                 .accessibilityIdentifier("steam-surface-performance-logging")
-                Text("Measure Steam window updates, image copying, main-thread queue waits, layer submission and allocation retries once a second. Includes address conflicts and low-address fallback timings by thread and request size. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.")
+                Text("Measure Steam window updates, image copying, main-thread queue waits and layer submission once a second. Cursor updates are separate. Off by default; takes effect the next time Steam starts. These are not display FPS or GPU timings.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                Toggle("Steam allocation and retry diagnostics", isOn: Binding(get: {
+                    SteamAllocationLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamAllocationLogSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The performance logging setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-allocation-performance-logging")
+                Text("Measure allocation requests, address conflicts, retries and low-address fallback once a second, grouped by thread and request size. Independent of window diagnostics and CPU performance logging. Off by default; takes effect the next time Steam starts.")
                     .font(.footnote).foregroundStyle(.secondary)
                 Toggle("Performance logging", isOn: Binding(get: {
                     PerformanceLogSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)

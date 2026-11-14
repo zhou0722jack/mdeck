@@ -228,5 +228,11 @@ assert 'ios_sa_fallback_begin( &alloc_fallback );' in low_branch
 assert low_branch.count('map_reserved_area(') == 1
 winios = (root / 'app/Madeira/Winios/Winios.m').read_text()
 assert 'ios_steam_alloc_stats_configure(enabled, epoch);' in winios and 'ios_steam_alloc_stats_report(epoch);' in winios
+allocation_adapter = winios[winios.index('void winios_allocation_stats_configure('):winios.index('static struct winios_surface_ticket winios_surface_stats_begin(')]
+surface_adapter = winios[winios.index('static void winios_surface_stats_report('):winios.index('/* Allocation diagnostics have their own timer')]
+assert 'ios_steam_alloc_stats_configure' not in surface_adapter and 'ios_steam_alloc_stats_report' not in surface_adapter
+assert 'g_allocation_stats_timer' in allocation_adapter and 'g_surface_stats_timer' not in allocation_adapter
+assert 'ios_steam_alloc_stats_configure(enabled, epoch);' in allocation_adapter
+assert 'ios_steam_alloc_stats_report(epoch);' in allocation_adapter
 assert 'python3 tests/host/check-steam-alloc-stats.py' in (root / '.github/workflows/build.yml').read_text()
-print('PASS integration: same independent Steam switch and utility timer; allocation search and return policies unchanged')
+print('PASS integration: independent allocation switch, timer and epoch; window diagnostics cannot enable/reset it; allocation search and return policies unchanged')
