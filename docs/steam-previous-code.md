@@ -42,7 +42,7 @@ WoW64、ARM64EC 各自初始化时，以当前进程映像 basename `steamwebhel
 
 ## 日志与验证
 
-`[fex-prev] owner=... attempts=... latest_hits=... previous_hits=... misses=... latest_rx=... previous_rx=... retained_bytes=...` 记录累计尝试和命中。前 8 次尝试、之后每 1024 次以及新缓冲区分配后输出。多线程字段以独立原子读取，报告可能不是同一时刻快照；没有最终完整快照保证。`owner` 是会话内 manager 地址；不要跨会话合并。`retained_bytes` 只反映保留入口，不是总存活旧代码内存。
+`[fex-prev]` 现在记录 dispatcher miss、实际尝试、最新代/上一代候选与条目、`reject_maxinst`/`reject_tf`/`reject_delivery`/`reject_signal`、`reject_no_entry`/`reject_non_normal`/`reject_host_range`、migration attempt/switch、refill attempt/hit/miss 和最终 `fallback_compiles`，以及原有的 `latest_hits`/`previous_hits`/`misses`。候选和条目是按候选查找次数累计的；拒绝字段不是互斥分类，单次查找可能先后经过多个候选。`dispatcher_misses` 是从 dispatcher 进入 CompileBlock 后的缓存未命中次数，`fallback_compiles` 是本次受控查找没有返回 HostCode 而继续普通 CompileBlock 的次数。前 8 次 dispatcher miss、之后每 1024 次以及新缓冲区分配后输出。多线程字段以独立原子读取，报告可能不是同一时刻快照；没有最终完整快照保证。`owner` 是会话内 manager 地址；不要跨会话合并。`retained_bytes` 只反映保留入口，不是总存活旧代码内存。
 
 已添加 Actions 用例（尚未运行）：
 

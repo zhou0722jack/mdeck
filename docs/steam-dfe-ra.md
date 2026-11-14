@@ -121,6 +121,15 @@ fills + remats，merge_attempts 也包括尚未正常返回的尝试。
 TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和测量开销。固定步长
 抽样可能有偏差，不能把这些计数或时间简单乘 64 当作全量结果。
 
+## 本轮静态热点清单
+
+这部分是源码检查结果，不是新的设备计时结论：
+
+- DFE 的 `ControlFlowGraph::Init` 仍按本次 `BlockCount` resize `BlockMap`；收集阶段为每个实际边维护前驱 vector，传播阶段继续使用 deque worklist。复用开关只保留容量并清空内容，超过上限会释放；因此下一步应在同场景开关 A/B 中观察 `decode/build/pass_manager` wall 和分配器行为，不能仅凭容量复用假定收益。
+- DFE 的 CFG gather 后还有一次 `Seen`/前驱/工作队列一致性检查，随后是 dataflow worklist 传播。它们是正确性边界，不应为了减少计时或分配而删除；若要优化，应先统计 BlockMap、前驱槽和 worklist 的实际峰值。
+- RA 的 `Run` 每次按 `GetSSACount()` 调整 `PreferredReg`、`SSAToReg`、`Seen`，然后对每个 block 做 reverse kill/SRA 扫描和 forward 分配/ spill/fill/merge 扫描，最后 clear 但保留容量。现有 RA 日志可定位阶段和工作量，但 stride=64 采样不能乘 64 作为全量时间。
+- 因此当前优先级是先用现有阶段/工作量日志确认容器扩容和两遍扫描的相关性，再考虑复用更多 RA scratch；不要先合并 reverse/forward，也不要移除 CFG/拓扑校验。
+
 ## 验证与实机判定
 
 所有用例仅通过 GitHub Actions 执行，本轮未运行本地测试或构建。

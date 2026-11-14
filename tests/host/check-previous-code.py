@@ -86,7 +86,10 @@ struct IosMigrateLockGuard { std::mutex& mutex; explicit IosMigrateLockGuard(std
 struct CodeBufferManager {
  using Ptr=fextl::shared_ptr<CodeBuffer>; struct ReuseCandidates {Ptr Latest,Previous;};
  std::mutex LatestMutex; Ptr Latest; FEXCore::MDeckPrevious::Slot<Ptr> PreviousSlot;
- std::atomic<uint64_t> ReuseAttempts{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{};
+ std::atomic<uint64_t> ReuseDispatcherMisses{},ReuseAttempts{},ReuseLatestCandidates{},ReusePreviousCandidates{},
+  ReuseLatestEntries{},ReusePreviousEntries{},ReuseRejectMaxInst{},ReuseRejectTF{},ReuseRejectDelivery{},ReuseRejectSignal{},
+  ReuseRejectNoEntry{},ReuseRejectNonNormal{},ReuseRejectHostRange{},ReuseMigrationAttempts{},ReuseMigrationSwitches{},
+  ReuseRefillAttempts{},ReuseRefillHits{},ReuseRefillMisses{},ReuseFallbackCompiles{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{};
  ReuseCandidates GetReuseCandidates();bool IsReuseCandidate(const Ptr&);void StopPreviousReuse();void ReportPreviousReuse(){}
 };
 struct CPUBackend {
@@ -126,12 +129,23 @@ int main(int argc,char** argv){
  assert(!lookup.local.count(123) && lookup.pages==std::vector<uint64_t>({4,5}) && resets==1);
  assert(backend.IsInCurrentBuffer(0x10080) && !backend.IsInCurrentBuffer(0x20080));
  assert(manager.ReusePreviousHits==1 && !b->LookupCache->entries.count(0x4000));
+ assert(manager.ReuseLatestCandidates==1 && manager.ReusePreviousCandidates==1);
+ assert(manager.ReusePreviousEntries==1 && manager.ReuseMigrationAttempts==1);
+ assert(manager.ReuseMigrationSwitches==1 && manager.ReuseRefillAttempts==1 && manager.ReuseRefillHits==1);
+ assert(manager.ReuseRefillMisses==0 && manager.ReuseFallbackCompiles==0);
  assert(backend.TryPreviousCode(0x8000)==0x20080 && manager.ReuseLatestHits==1);
- assert(backend.TryPreviousCode(0x9000)==0);
+ auto no_entry=manager.ReuseRejectNoEntry.load();assert(backend.TryPreviousCode(0x9000)==0);
+ assert(manager.ReuseRejectNoEntry>no_entry);
+ backend.CurrentCodeBuffer=b;lookup.Shared=b->LookupCache.get();a->LookupCache->entries[0x4000].HostCode=0xffff0000;
+ assert(!backend.TryPreviousCode(0x4000) && manager.ReuseRejectHostRange>=1);
+ a->LookupCache->entries[0x4000].HostCode=0x10080;
  a->LookupCache->entries[0x4000].MDeckNormal=false;assert(backend.TryPreviousCode(0x4000)==0);
  a->LookupCache->entries[0x4000].MDeckNormal=true;
- auto attempts=manager.ReuseAttempts.load();frame.SignalHandlerRefCounter=1;assert(!backend.TryPreviousCode(0x4000));
+ auto before_rejects=manager.ReuseRejectNonNormal.load();assert(before_rejects>=1);
+  auto attempts=manager.ReuseAttempts.load();frame.SignalHandlerRefCounter=1;assert(!backend.TryPreviousCode(0x4000));
+  assert(manager.ReuseRejectSignal>=1);
  frame.SignalHandlerRefCounter=0;delivery=true;assert(!backend.TryPreviousCode(0x4000));delivery=false;
+  assert(manager.ReuseRejectDelivery>=1);
  unpublished=true;assert(!backend.TryPreviousCode(0x4000));unpublished=false;assert(manager.ReuseAttempts==attempts);
  // Simulate concurrent publication between candidate inspection and refill.
  migrate_hook=[&]{a->LookupCache->entries[0x4000].MDeckNormal=false;};
@@ -156,7 +170,11 @@ int main(int argc,char** argv){
     subprocess.run([str(work/'native')],check=True)
     # Integration contracts not exercised by host adapters.
     compile_block=core[core.index('uintptr_t ContextImpl::CompileBlock('):core.index('uintptr_t ContextImpl::CompileSingleStep(')]
-    assert 'FromDispatcher && !IosUnpublished && MaxInst == 0' in compile_block
+    assert 'FromDispatcher && FEXCore::MDeckPrevious::Enabled()' in compile_block
+    assert 'ReuseDispatcherMisses.fetch_add' in compile_block
+    assert 'ReuseRejectMaxInst.fetch_add' in compile_block
+    assert 'ReuseRejectTF.fetch_add' in compile_block
+    assert 'ReuseFallbackCompiles.fetch_add' in compile_block
     assert '!Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]' in compile_block
     assert compile_block.index('CodeInvalidationMutex')<compile_block.index('TryPreviousCode(GuestRIP)')<compile_block.index('auto [CompiledCode, DebugData, StartAddr, Length, NeedsAddGuestCodeRanges]')
     assert 'MaxInst == 0 && NeedsAddGuestCodeRanges && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]' in compile_block
