@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 R="${ROOT:?}"
+if command -v brew >/dev/null 2>&1; then
+    export PATH="$(brew --prefix bison)/bin:$PATH"
+fi
 bash "$R/tools/build/build-wine.sh"
 modules=()
 while IFS= read -r name; do

@@ -236,6 +236,8 @@ for name in parts.PARTS:
 assert 'restore-keys:' not in workflow
 assert 'actions/cache/save@v4' in workflow
 assert 'runtime-components.py build windows' in workflow
+wine_recipe=(ROOT/'build/windows-runtime/parts/wine.sh').read_text()
+assert wine_recipe.index('brew --prefix bison') < wine_recipe.index('tools/build/build-wine.sh')
 print('PASS workflow: each owner restores/saves exact keys and saves completed owners before a later failure')
 if __name__=='__main__':
     unittest.main()
