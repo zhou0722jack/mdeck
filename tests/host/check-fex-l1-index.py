@@ -82,6 +82,7 @@ struct GuestToHostMap {
 // Dependencies are controlled; all indexing, fill, invalidation, resizing and
 // generation-change method bodies below are copied from the applied source.
 struct CacheFixture {
+  using LookupCache = CacheFixture;
   struct LookupCacheEntry { uintptr_t HostCode,GuestCode; };
   static constexpr size_t MIN_L1_ENTRIES=8192,MAX_L1_ENTRIES=131072;
   std::vector<LookupCacheEntry> storage=std::vector<LookupCacheEntry>(MAX_L1_ENTRIES);
