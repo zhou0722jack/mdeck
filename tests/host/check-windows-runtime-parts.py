@@ -3,6 +3,7 @@
 Product commands are controlled fixtures; no runtime/IPA builds here.
 """
 import copy
+from contextlib import contextmanager
 import importlib.util
 import json
 import os
@@ -88,6 +89,22 @@ class PartTests(unittest.TestCase):
     def snapshots(self):
         return {name: parts.snapshot(name, self.sdk) for name in parts.PARTS}
 
+    @contextmanager
+    def controlled_builds(self, fail=False):
+        # Git check_output also calls subprocess.run internally. Preserve real
+        # source-key reads while controlling only the product recipe commands.
+        real_run = subprocess.run
+        commands = []
+        def run(command, *args, **kwargs):
+            if isinstance(command, list) and command[0] == 'bash':
+                commands.append(command)
+                if fail:
+                    raise subprocess.CalledProcessError(86, command)
+                return subprocess.CompletedProcess(command, 0)
+            return real_run(command, *args, **kwargs)
+        with patch.object(parts.subprocess, 'run', side_effect=run):
+            yield commands
+
     def test_invalidation_graph(self):
         cases = {
             'build/fex-patches/probe.h': {'fex32', 'fex64'},
@@ -122,19 +139,19 @@ class PartTests(unittest.TestCase):
     def test_cache_hit_does_not_compile(self):
         self.snapshots()
         with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'):
-            with patch.object(parts.subprocess, 'run') as run:
+            with self.controlled_builds() as commands:
                 for name in parts.PARTS:
                     parts.build_part(name, self.sdk)
-                run.assert_not_called()
+                self.assertEqual(commands, [])
 
     def test_fex_only_rebuild_reuses_wine_and_dxmt(self):
         self.snapshots()
         self.write('build/fex-patches/probe.h', b'changed\n')
         with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'):
-            with patch.object(parts.subprocess, 'run') as run:
+            with self.controlled_builds() as commands:
                 for name in parts.PARTS:
                     parts.build_part(name, self.sdk)
-        self.assertEqual([Path(c.args[0][1]).name for c in run.call_args_list], ['fex32.sh','fex64.sh'])
+        self.assertEqual([Path(c[1]).name for c in commands], ['fex32.sh','fex64.sh'])
 
     def test_fresh_runner_support_restores_and_rejects_bad_support(self):
         self.snapshots()
@@ -179,7 +196,7 @@ class PartTests(unittest.TestCase):
         self.snapshots()
         before = {n: (parts.cache_dir(n) / 'manifest.json').read_bytes() for n in parts.PARTS}
         self.write('build/fex-patches/probe.h', b'new revision')
-        with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'), patch.object(parts.subprocess, 'run', side_effect=subprocess.CalledProcessError(86, 'compiler')):
+        with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'), self.controlled_builds(fail=True):
             with self.assertRaises(subprocess.CalledProcessError):
                 parts.build_part('fex32', self.sdk)
         self.assertEqual(before, {n: (parts.cache_dir(n) / 'manifest.json').read_bytes() for n in parts.PARTS})
@@ -194,9 +211,9 @@ class PartTests(unittest.TestCase):
 
     def test_full_assembly_closure_and_receipt(self):
         self.snapshots()
-        with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'), patch.object(parts.subprocess, 'run') as run:
+        with patch.dict(os.environ, MADEIRA_RUNTIME_REUSE='1'), self.controlled_builds() as commands:
             parts.build_all(self.sdk)
-            run.assert_not_called()
+            self.assertEqual(commands, [])
         receipt = json.loads((self.root / 'app/Madeira/windows-runtime-parts.json').read_text())
         self.assertEqual(set(receipt['parts']), set(parts.PARTS))
         caller = self.write('app/Madeira/arm64ec-windows/caller.dll', helpers.pe(0x8664, ['absent.dll']))
