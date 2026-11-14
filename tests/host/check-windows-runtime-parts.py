@@ -237,6 +237,8 @@ for name in parts.PARTS:
 assert 'restore-keys:' not in workflow
 assert 'actions/cache/save@v4' in workflow
 assert 'runtime-components.py build windows' in workflow
+package=(ROOT/'tools/build/package-ipa.sh').read_text()
+assert package.index('cp "$ROOT/app/Madeira/windows-runtime-parts.json" "$APP/windows-runtime-parts.json"') < package.index('runtime-components.py" bundle')
 wine_recipe=(ROOT/'build/windows-runtime/parts/wine.sh').read_text()
 assert wine_recipe.index('brew --prefix bison') < wine_recipe.index('tools/build/build-wine.sh')
 print('PASS workflow: each owner restores/saves exact keys and saves completed owners before a later failure')
