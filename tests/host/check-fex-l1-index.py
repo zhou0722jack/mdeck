@@ -16,20 +16,23 @@ patches = root / 'build/fex-patches'
 
 def method(text, signature):
     start = text.index(signature)
-    # Mask comments and strings while preserving their offsets for brace scan.
+    # These methods have preprocessor alternatives which each open a scope
+    # (the Windows/non-Windows invalidation loop). Use their source indentation
+    # for the method boundary, rather than counting both alternatives' braces.
     clean = re.sub(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"',
-                   lambda m: ' ' * len(m[0]), text, flags=re.S)
+                   lambda m: ''.join('\n' if c == '\n' else ' ' for c in m[0]), text, flags=re.S)
     pos = clean.index('{', start)
-    depth, end = 1, pos + 1
-    while depth:
-        depth += (clean[end] == '{') - (clean[end] == '}')
-        end += 1
+    indent = re.match(r'[ \t]*', signature)[0]
+    ending = re.search(r'(?m)^' + re.escape(indent) + r'\}', clean[pos+1:])
+    assert ending, signature
+    end = pos + 1 + ending.end()
     return text[start:end]
 
 
 fixture = r'''
 #include <algorithm>
 #include <cassert>
+#include <bit>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -48,6 +51,7 @@ fixture = r'''
 namespace LogMan::Msg { template<class... T> void EFmt(const char*,T...) {} }
 namespace fextl { template<class T> using vector=std::vector<T>; }
 namespace FEXCore {
+inline unsigned ilog2(size_t value) { assert(std::has_single_bit(value));return std::countr_zero(value); }
 namespace SHMStats { template<class T> struct AccumulationBlock { explicit AccumulationBlock(T*) {} }; }
 namespace Allocator {
 static unsigned clears;
