@@ -1,9 +1,10 @@
 diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
 --- a/FEXCore/Source/Interface/Core/Core.cpp
 +++ b/FEXCore/Source/Interface/Core/Core.cpp
-@@ -1,1 +1,2 @@
+@@ -1,2 +1,3 @@
  // SPDX-License-Identifier: MIT
 +#include <FEXCore/Utils/SteamProbe.h>
+ /*
 @@ -1236,2 +1237,3 @@
  ContextImpl::CompileCodeResult ContextImpl::CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst) {
 +  MDECK_STEAM_SCOPE(SF_COMPILE);
@@ -15,9 +16,10 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interface/Core/LookupCache.h
 --- a/FEXCore/Source/Interface/Core/LookupCache.h
 +++ b/FEXCore/Source/Interface/Core/LookupCache.h
-@@ -1,1 +1,2 @@
+@@ -1,2 +1,3 @@
  // SPDX-License-Identifier: MIT
 +#include <FEXCore/Utils/SteamProbe.h>
+ #pragma once
 @@ -195,2 +196,3 @@
    void ChangeGuestToHostMapping([[maybe_unused]] CPU::CodeBuffer& Prev, GuestToHostMap& NewMap, const LookupCacheWriteLockToken& lk) {
 +    MDECK_STEAM_SCOPE(SF_MIGRATE);
@@ -29,9 +31,10 @@ diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interf
 diff --git a/FEXCore/Source/Interface/Core/LookupCache.cpp b/FEXCore/Source/Interface/Core/LookupCache.cpp
 --- a/FEXCore/Source/Interface/Core/LookupCache.cpp
 +++ b/FEXCore/Source/Interface/Core/LookupCache.cpp
-@@ -193,1 +193,2 @@
+@@ -193,2 +193,3 @@
  void LookupCache::ClearCache(const LookupCacheWriteLockToken& lk) {
 +  MDECK_STEAM_SCOPE(SF_CLEAR);
+   // Clear L1 and L2 by clearing the full cache.
 diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 --- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 +++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
@@ -42,15 +45,17 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -799,1 +799,2 @@
+@@ -799,2 +799,3 @@
    extern "C" void IosMaybeSweepCodeBuffers(FEXCore::Core::InternalThreadState* CallerThread) {
 +    MDECK_STEAM_SCOPE(SF_SWEEP);
+     const uint64_t Gen = IosCodeBufferGenCounter.load(std::memory_order_acquire);
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp
 +++ b/Source/Windows/WOW64/Module.cpp
-@@ -1,1 +1,2 @@
+@@ -1,2 +1,3 @@
  // SPDX-License-Identifier: MIT
 +#include <FEXCore/Utils/SteamProbe.h>
+ /*
 @@ -1305,2 +1306,5 @@
    CTX->InitCore();
 +#ifdef FEX_IOS_HOST
@@ -70,9 +75,10 @@ diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
 --- a/Source/Windows/ARM64EC/Module.cpp
 +++ b/Source/Windows/ARM64EC/Module.cpp
-@@ -1,1 +1,2 @@
+@@ -1,2 +1,3 @@
  // SPDX-License-Identifier: MIT
 +#include <FEXCore/Utils/SteamProbe.h>
+ /*
 @@ -485,3 +486,9 @@
  } // namespace
  
