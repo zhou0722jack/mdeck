@@ -310,7 +310,7 @@ jobs:
         run: python3 build/windows-runtime/parts.py keys >> "$GITHUB_OUTPUT"
       - name: Prepare Windows runtime tools and pinned sources
         if: matrix.component == 'windows' && steps.runtime-cache.outputs.cache-hit != 'true'
-        run: bash tools/build/build-runtime-component.sh windows --prepare-only
+        run: bash build/windows-runtime/prepare.sh
       - name: Restore Wine runtime and link support
         id: cache-win-wine
         if: matrix.component == 'windows'

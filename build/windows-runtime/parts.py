@@ -68,7 +68,8 @@ def input_key(name, sdk, visiting=()):
         raise ValueError('cyclic Windows dependencies: ' + name)
     spec = PARTS[name]
     tracked = git('ls-files', '--cached', '--others', '--exclude-standard').splitlines()
-    patterns = spec['inputs'] + ['build/windows-runtime/parts.py', 'tools/build/build-runtime-component.sh']
+    patterns = spec['inputs'] + ['build/windows-runtime/parts.py', 'build/windows-runtime/prepare.sh',
+                                'tools/build/build-runtime-component.sh']
     inputs = {p: digest((ROOT / p).read_bytes()) for p in tracked if (ROOT / p).is_file()
               and any(fnmatch.fnmatchcase(p, pattern) for pattern in patterns)}
     # Only this owner's output inventory participates. Rebuilt bytes never do.
