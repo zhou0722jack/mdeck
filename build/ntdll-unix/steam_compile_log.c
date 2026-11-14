@@ -28,7 +28,13 @@ static uint64_t cr_now(void) {
 }
 struct cr_report {
     uint64_t attempts,classified,history_used,history_full,shape_changed,missing_fingerprint,missing_generation;
-    uint64_t out_of_order,thread_overflow,bytes;
+    uint64_t out_of_order,thread_overflow,bytes,instance_overflow,generation_overflow;
+    uint64_t buffer_count,buffer_overflow,buffer_dropped,started_ticks;
+    uint64_t unknown[SR_UNKNOWNS];
+    struct sr_metric stages[SR_STAGES],total;
+    struct sr_instance instances[SR_INSTANCES];
+    struct sr_generation generations[SR_GENERATIONS];
+    struct sr_buffer_event buffers[SR_BUFFER_EVENTS];
     struct sr_metric kind[SR_KINDS];
     uint64_t outcome[SR_OUTCOMES];
     struct sr_thread threads[SR_THREADS];
@@ -39,12 +45,49 @@ static int cr_snapshot(struct sr_bridge *b,uint64_t epoch,struct cr_report *r) {
     *r=(struct cr_report){.attempts=b->attempts,.classified=b->classified,.history_used=b->history_used,
         .history_full=b->history_full,.shape_changed=b->shape_changed,.missing_fingerprint=b->missing_fingerprint,
         .missing_generation=b->missing_generation,.out_of_order=b->out_of_order,.thread_overflow=b->thread_overflow,
-        .bytes=b->fingerprint_bytes};
+        .bytes=b->fingerprint_bytes,.instance_overflow=b->instance_overflow,.generation_overflow=b->generation_overflow,
+        .buffer_count=b->buffer_count,.buffer_overflow=b->buffer_overflow,
+        .buffer_dropped=__atomic_load_n(&b->buffer_dropped,__ATOMIC_RELAXED)-b->buffer_dropped_base,.started_ticks=b->started_ticks,.total=b->total};
+    memcpy(r->unknown,b->unknown,sizeof(r->unknown));
+    memcpy(r->stages,b->stages,sizeof(r->stages));
+    memcpy(r->instances,b->instances,sizeof(r->instances));
+    memcpy(r->generations,b->generations,sizeof(r->generations));
+    memcpy(r->buffers,b->buffers,sizeof(r->buffers));
     memcpy(r->kind,b->kind,sizeof(r->kind));memcpy(r->outcome,b->outcome,sizeof(r->outcome));
     memcpy(r->threads,b->threads,sizeof(r->threads));sr_unlock(b);return 1;
 }
 static uint64_t cr_thread_count(const struct sr_thread *t) {
     uint64_t n=0;for(unsigned i=0;i<SR_OUTCOMES;i++)n+=t->outcome[i];return n;
+}
+/* One compact row per scope; stage values are total/max wall milliseconds.
+ * All stages are exclusive, including other; all completed outcomes are included. */
+static void cr_stages(uint64_t epoch,double elapsed,double scale,const char *scope,uint64_t instance,unsigned tid,
+                      const struct sr_metric *stages,const struct sr_metric *total) {
+    dprintf(2,"[steam-compile-time] session=%llu t+%.3f scope=%s instance=%llu tid=%04x completed=%llu total_wall_ms=%.6f max_wall_ms=%.6f "
+        "other_ms=%.6f/%.6f decode_ir_ms=%.6f/%.6f recheck_ms=%.6f/%.6f backend_ms=%.6f/%.6f "
+        "buffer_lock_wait_ms=%.6f/%.6f lookup_lock_wait_ms=%.6f/%.6f output_ms=%.6f/%.6f exclusive=1 outcomes=all cumulative=1\n",
+        (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,(unsigned long long)total->count,total->ticks*scale,total->max_ticks*scale,
+        stages[0].ticks*scale,stages[0].max_ticks*scale,stages[1].ticks*scale,stages[1].max_ticks*scale,
+        stages[2].ticks*scale,stages[2].max_ticks*scale,stages[3].ticks*scale,stages[3].max_ticks*scale,
+        stages[4].ticks*scale,stages[4].max_ticks*scale,stages[5].ticks*scale,stages[5].max_ticks*scale,
+        stages[6].ticks*scale,stages[6].max_ticks*scale);
+}
+static void cr_unknown(uint64_t epoch,double elapsed,const char *scope,uint64_t instance,unsigned tid,const uint64_t *u) {
+    dprintf(2,"[steam-compile-unknown] session=%llu t+%.3f scope=%s instance=%llu tid=%04x history_full=%llu shape_changed=%llu "
+        "missing_fingerprint=%llu missing_generation=%llu out_of_order=%llu instance_overflow=%llu cumulative=1\n",
+        (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
+        (unsigned long long)u[0],(unsigned long long)u[1],(unsigned long long)u[2],
+        (unsigned long long)u[3],(unsigned long long)u[4],(unsigned long long)u[5]);
+}
+static void cr_classes(uint64_t epoch,double elapsed,double scale,const char *scope,uint64_t instance,
+                       uint64_t owner,uint64_t generation,const struct sr_metric *kind) {
+    dprintf(2,"[steam-compile-classes] session=%llu t+%.3f scope=%s instance=%llu owner=%llu generation=%llu "
+        "first_observed=%llu changed_content=%llu same_content_new_generation=%llu same_content_same_generation=%llu unknown=%llu "
+        "first_wall_ms=%.6f changed_wall_ms=%.6f new_generation_wall_ms=%.6f same_generation_wall_ms=%.6f unknown_wall_ms=%.6f cumulative=1\n",
+        (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,(unsigned long long)owner,(unsigned long long)generation,
+        (unsigned long long)kind[0].count,(unsigned long long)kind[1].count,(unsigned long long)kind[2].count,
+        (unsigned long long)kind[3].count,(unsigned long long)kind[4].count,
+        kind[0].ticks*scale,kind[1].ticks*scale,kind[2].ticks*scale,kind[3].ticks*scale,kind[4].ticks*scale);
 }
 static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint64_t dropped_start,const char *reason) {
     struct sr_bridge *b=cr_bridge;struct cr_report r;
@@ -59,7 +102,7 @@ static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint6
     dprintf(2,"[steam-compile-reason] session=%llu t+%.3f reason=%s attached_paths=%llu begun=%llu completed=%llu generated=%llu raced=%llu failed=%llu delivery=%llu "
         "first_observed=%llu changed_content=%llu same_content_new_generation=%llu same_content_same_generation=%llu unknown=%llu "
         "history_used=%llu history_capacity=%u history_full=%llu shape_changed=%llu missing_fingerprint=%llu missing_generation=%llu out_of_order=%llu "
-        "dropped=%llu thread_overflow=%llu fingerprint_bytes=%llu coverage=observed-window identity=PE-instance-owner-rip-mode hash=128bit causality=unproven cumulative=1\n",
+        "dropped=%llu thread_overflow=%llu fingerprint_bytes=%llu instance_overflow=%llu generation_overflow=%llu buffer_events=%llu buffer_overflow=%llu buffer_dropped=%llu coverage=observed-window identity=PE-instance-owner-rip-mode hash=128bit causality=unproven cumulative=1\n",
         (unsigned long long)epoch,elapsed,reason,(unsigned long long)__atomic_load_n(&b->attached,__ATOMIC_RELAXED),
         (unsigned long long)(__atomic_load_n(&b->begun,__ATOMIC_RELAXED)-begun_start),(unsigned long long)r.attempts,
         (unsigned long long)r.outcome[SR_GENERATED],(unsigned long long)r.outcome[SR_RACED],(unsigned long long)r.outcome[SR_FAILED],(unsigned long long)r.outcome[SR_DELIVERY],
@@ -67,11 +110,44 @@ static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint6
         (unsigned long long)r.kind[SR_SAME_GENERATION].count,(unsigned long long)r.kind[SR_UNKNOWN].count,
         (unsigned long long)r.history_used,SR_HISTORY,(unsigned long long)r.history_full,(unsigned long long)r.shape_changed,
         (unsigned long long)r.missing_fingerprint,(unsigned long long)r.missing_generation,(unsigned long long)r.out_of_order,
-        (unsigned long long)(__atomic_load_n(&b->dropped,__ATOMIC_RELAXED)-dropped_start),(unsigned long long)r.thread_overflow,(unsigned long long)r.bytes);
+        (unsigned long long)(__atomic_load_n(&b->dropped,__ATOMIC_RELAXED)-dropped_start),(unsigned long long)r.thread_overflow,(unsigned long long)r.bytes,
+        (unsigned long long)r.instance_overflow,(unsigned long long)r.generation_overflow,(unsigned long long)r.buffer_count,
+        (unsigned long long)r.buffer_overflow,(unsigned long long)r.buffer_dropped);
     for(unsigned i=0;i<SR_KINDS;i++) {
         struct sr_metric *m=&r.kind[i];
         dprintf(2,"[steam-compile-kind] session=%llu t+%.3f kind=%s count=%llu total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f scope=decode-through-backend wall-not-CPU=1 cumulative=1\n",
             (unsigned long long)epoch,elapsed,names[i],(unsigned long long)m->count,m->ticks*scale,m->count?m->ticks*scale/m->count:0,m->max_ticks*scale);
+    }
+    cr_stages(epoch,elapsed,scale,"global",0,0,r.stages,&r.total);
+    cr_unknown(epoch,elapsed,"global",0,0,r.unknown);
+    for(unsigned i=0;i<SR_INSTANCES;i++) {
+        const struct sr_instance *t=&r.instances[i];if(t->epoch!=epoch)continue;
+        dprintf(2,"[steam-compile-instance] session=%llu t+%.3f instance=%llu pid=%04x path=%s target=%s history_used=%llu history_capacity=%u "
+            "probe_exhausted=%llu capacity_exhausted=%llu generated=%llu raced=%llu failed=%llu delivery=%llu cumulative=1\n",
+            (unsigned long long)epoch,elapsed,(unsigned long long)t->instance,t->pid,t->path==1?"wow64":"arm64ec",t->cef?"cef":"ordinary",
+            (unsigned long long)t->history_used,t->capacity,(unsigned long long)t->probe_exhausted,(unsigned long long)t->capacity_exhausted,
+            (unsigned long long)t->outcome[0],(unsigned long long)t->outcome[1],(unsigned long long)t->outcome[2],(unsigned long long)t->outcome[3]);
+        cr_classes(epoch,elapsed,scale,"instance",t->instance,0,0,t->kind);
+        cr_unknown(epoch,elapsed,"instance",t->instance,0,t->unknown);
+        cr_stages(epoch,elapsed,scale,"instance",t->instance,0,t->stages,&t->total);
+    }
+    for(unsigned i=0;i<SR_GENERATIONS;i++) {
+        const struct sr_generation *g=&r.generations[i];if(g->epoch!=epoch)continue;
+        dprintf(2,"[steam-compile-generation] session=%llu t+%.3f instance=%llu owner=%llu generation=%llu rx=0x%llx used_high_water=%llu capacity=%llu cumulative=1\n",
+            (unsigned long long)epoch,elapsed,(unsigned long long)g->instance,(unsigned long long)g->owner,(unsigned long long)g->generation,
+            (unsigned long long)g->output.rx,(unsigned long long)g->output.used,(unsigned long long)g->output.capacity);
+        cr_classes(epoch,elapsed,scale,"generation",g->instance,g->owner,g->generation,g->kind);
+    }
+    static const char *buffer_reasons[]={"initial","capacity","explicit-or-other"};
+    for(unsigned i=0;i<r.buffer_count;i++) {
+        const struct sr_buffer_event *e=&r.buffers[i];
+        double event_time=e->ticks>=r.started_ticks?(e->ticks-r.started_ticks)/(double)b->frequency:0;
+        dprintf(2,"[steam-compile-buffer] session=%llu t+%.3f event=%u event_t+%.6f instance=%llu owner=%llu pid=%04x tid=%04x path=%u reason=%s "
+            "previous=%llu generation=%llu old_rx=0x%llx old_used=%llu old_capacity=%llu rx=0x%llx capacity=%llu requested=%llu begun_marker=%llu cumulative=1\n",
+            (unsigned long long)epoch,elapsed,i+1,event_time,(unsigned long long)e->instance,(unsigned long long)e->owner,e->pid,e->tid,e->path,
+            buffer_reasons[e->reason],(unsigned long long)e->previous,(unsigned long long)e->generation,(unsigned long long)e->old_rx,
+            (unsigned long long)e->old_used,(unsigned long long)e->old_capacity,(unsigned long long)e->rx,
+            (unsigned long long)e->capacity,(unsigned long long)e->requested,(unsigned long long)e->order);
     }
     int printed[SR_THREADS]={0};
     for(unsigned shown=0;shown<8;shown++) {
@@ -89,6 +165,8 @@ static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint6
             (unsigned long long)t->kind[3].count,(unsigned long long)t->kind[4].count,
             t->kind[0].ticks*scale,t->kind[1].ticks*scale,t->kind[2].ticks*scale,t->kind[3].ticks*scale,t->kind[4].ticks*scale,
             (unsigned long long)t->outcome[0],(unsigned long long)t->outcome[1],(unsigned long long)t->outcome[2],(unsigned long long)t->outcome[3]);
+        cr_unknown(epoch,elapsed,"thread",t->instance,t->tid,t->unknown);
+        cr_stages(epoch,elapsed,scale,"thread",t->instance,t->tid,t->stages,&t->total);
     }
 }
 static void cr_wait_second(void) {
@@ -145,6 +223,11 @@ void ios_steam_compile_log_configure(int enabled) {
     if(!b->frequency)__asm__ volatile("mrs %0, cntfrq_el0":"=r"(b->frequency));
     b->attempts=b->classified=b->fingerprint_bytes=b->history_used=b->history_full=b->shape_changed=0;
     b->missing_fingerprint=b->missing_generation=b->out_of_order=b->thread_overflow=0;
+    b->instance_overflow=b->generation_overflow=b->buffer_count=b->buffer_overflow=0;
+    memset(b->unknown,0,sizeof(b->unknown));
+    __asm__ volatile("isb\nmrs %0, cntvct_el0":"=r"(b->started_ticks)::"memory");
+    b->buffer_dropped_base=__atomic_load_n(&b->buffer_dropped,__ATOMIC_RELAXED);
+    memset(b->stages,0,sizeof(b->stages));memset(&b->total,0,sizeof(b->total));
     memset(b->kind,0,sizeof(b->kind));memset(b->outcome,0,sizeof(b->outcome));sr_unlock(b);
     if(!cr_timebase.denom)mach_timebase_info(&cr_timebase);
     cr_started=cr_now();
@@ -158,8 +241,10 @@ void ios_steam_compile_log_configure(int enabled) {
     }
     __atomic_store_n(&b->active_epoch,epoch,__ATOMIC_RELEASE);
     dprintf(2,"[steam-compile-reason] enabled session=%llu duration=45s interval=1s max_events=%u history_capacity=%u storage_bytes=%zu "
+        "cef_banks=%u cef_capacity=%u ordinary_banks=%u ordinary_capacity=%u probes=%u "
         "source=decoder-snapshots fingerprint=128bit first=first-observed-in-window classification=observational\n",
-        (unsigned long long)epoch,SR_MAX_COMPLETIONS,SR_HISTORY,sizeof(*b));
+        (unsigned long long)epoch,SR_MAX_COMPLETIONS,SR_HISTORY,sizeof(*b),
+        SR_CEF_INSTANCES,SR_CEF_HISTORY,SR_ORDINARY_INSTANCES,SR_ORDINARY_HISTORY,SR_PROBES);
 done:
     pthread_cond_broadcast(&cr_wake);pthread_mutex_unlock(&cr_control);errno=saved;
 }

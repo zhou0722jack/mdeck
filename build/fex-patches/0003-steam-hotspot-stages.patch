@@ -38,8 +38,7 @@ diff --git a/FEXCore/Source/Interface/Core/LookupCache.cpp b/FEXCore/Source/Inte
 diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 --- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 +++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
-@@ -800,2 +800,3 @@
- void Arm64JITCore::ClearCache() {
+@@ -801,1 +801,2 @@
 +  MDECK_STEAM_SCOPE(SF_CLEAR);
    // NOTE: Holding on to the reference here is required to ensure validity of the WriteLock mutex
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp

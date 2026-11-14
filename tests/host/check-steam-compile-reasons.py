@@ -72,15 +72,20 @@ int main(void){
  for(unsigned i=0;i<2000;i++)sr_fingerprint_inst(&limit,0x10000+i*15,inst,15);
  assert(limit.invalid&&limit.bytes<=SR_MAX_BYTES);
  limit=sr_fingerprint_init();sr_fingerprint_inst(&limit,UINT64_MAX,inst,1);assert(limit.invalid);
- // A full bounded probe chain returns unknown without evicting/forgetting.
+ // Force a bounded probe collision without billions of collision-search iterations.
  memset(b,0,sizeof(*b));b->active_epoch=3;
- unsigned found=0;uint64_t a=0x10000;
- for(;found<SR_PROBES+1;a++) {
-  struct sr_key k=key;k.rip=a;if(sr_index(k)!=0)continue;
-  note(k,bytes(1),10);found++;
+ struct sr_ticket t=begin();struct sr_instance *bank=sr_instance_for(b,t);
+ for(unsigned j=0;j<SR_PROBES;j++) {
+  struct sr_history *h=&b->history[bank->offset+sr_probe(key,bank->capacity,j)];
+  h->epoch=t.epoch;h->key=key;h->key.owner++;h->generation=10;
  }
- assert(b->kind[SR_FIRST].count==SR_PROBES&&b->history_full==1&&b->kind[SR_UNKNOWN].count==1);
- struct sr_key first=b->history[0].key;note(first,bytes(1),11);assert(b->kind[SR_NEW_GENERATION].count==1);
+ bank->history_used=SR_PROBES;b->history_used=SR_PROBES;
+ note(key,bytes(1),10);
+ assert(b->history_full==1&&bank->probe_exhausted==1&&!bank->capacity_exhausted);
+ assert(b->unknown[SR_HISTORY_FULL]==1&&bank->unknown[SR_HISTORY_FULL]==1);
+ for(unsigned j=0;j<SR_PROBES;j++)assert(b->history[bank->offset+sr_probe(key,bank->capacity,j)].key.owner==key.owner+1);
+ b->history[bank->offset+sr_probe(key,bank->capacity,0)].epoch=0;
+ note(key,bytes(1),10);note(key,bytes(1),11);assert(b->kind[SR_NEW_GENERATION].count==1);
  // Every recorded generated event reconciles to one exclusive classification.
  uint64_t sum=0;for(unsigned i=0;i<SR_KINDS;i++)sum+=b->kind[i].count;
  assert(sum==b->outcome[SR_GENERATED]&&sum==b->classified);
@@ -91,6 +96,54 @@ int main(void){
  for(unsigned i=0;i<4;i++)pthread_join(workers[i],NULL);
  sum=0;for(unsigned i=0;i<SR_KINDS;i++)sum+=b->kind[i].count;
  assert(sum==b->classified&&sum==b->attempts&&b->attempts+b->dropped==40000);
+ // Early ordinary startup overflows only its own bank. Later CEF must retain
+ // >99% classification coverage in EVERY 50k-event interval, not just overall.
+ memset(b,0,sizeof(*b));b->active_epoch=5;
+ for(unsigned i=0;i<20000;i++){struct sr_key k=key;k.rip+=i*16;note(k,bytes(i),10);}
+ assert(b->instances[0].unknown[SR_HISTORY_FULL]>0);
+ uint64_t unknown_before=0;
+ for(unsigned i=0;i<350000;i++) {
+  struct sr_key k=key;k.rip+=i*16;
+  struct sr_ticket cef=sr_begin(b,3,0xe8,0x23c,1);cef.cef=1;
+  assert(sr_finish(b,cef,k,bytes(i),20,SR_GENERATED,100));
+  if((i+1)%50000==0) {
+   uint64_t unknown_now=b->instances[SR_ORDINARY_INSTANCES].kind[SR_UNKNOWN].count;
+   assert(unknown_now-unknown_before<500);unknown_before=unknown_now;
+  }
+ }
+ bank=&b->instances[SR_ORDINARY_INSTANCES];
+ assert(bank->cef&&bank->instance==3&&bank->capacity==SR_CEF_HISTORY&&bank->history_used>346500);
+ assert(bank->offset>=SR_ORDINARY_INSTANCES*SR_ORDINARY_HISTORY);
+ assert(!bank->capacity_exhausted);
+ for(unsigned i=0;i<20000;i++) {
+  struct sr_key k=key;k.rip+=i*16;struct sr_ticket cef=sr_begin(b,3,0xe8,0x23c,1);cef.cef=1;
+  assert(sr_finish(b,cef,k,bytes(i),21,SR_GENERATED,100));
+ }
+ assert(bank->kind[SR_NEW_GENERATION].count>19800);
+ // Exhaust ordinary instance slots; neither reserved CEF bank is consumed.
+ memset(b,0,sizeof(*b));b->active_epoch=6;
+ for(unsigned i=1;i<=SR_ORDINARY_INSTANCES+1;i++)
+  assert(sr_finish(b,sr_begin(b,i,0xa8,i,1),key,bytes(1),10,SR_GENERATED,100));
+ assert(b->instance_overflow==1&&b->unknown[SR_INSTANCE_OVERFLOW]==1);
+ for(unsigned i=0;i<SR_CEF_INSTANCES+1;i++) {
+  struct sr_ticket cef=sr_begin(b,100+i,0xe8,1,1);cef.cef=1;
+  assert(sr_finish(b,cef,key,bytes(1),10,SR_GENERATED,100));
+ }
+ assert(b->instance_overflow==2&&b->kind[SR_FIRST].count==SR_INSTANCES);
+ // Exclusive timing, actual generation high-water and bounded buffer events.
+ memset(b,0,sizeof(*b));b->active_epoch=7;
+ struct sr_timing timing={{1,2,3,4,5,6,7}};
+ assert(sr_finish_detail(b,begin(),key,bytes(1),55,SR_GENERATED,28,&timing,(struct sr_output){0x100000000,4096,8192}));
+ assert(sr_finish_detail(b,begin(),key,bytes(1),55,SR_GENERATED,28,&timing,(struct sr_output){0x100000000,2048,8192}));
+ sum=0;for(unsigned i=0;i<SR_STAGES;i++)sum+=b->stages[i].ticks;
+ assert(sum==b->total.ticks&&sum==56&&b->instances[0].total.ticks==56);
+ assert(b->generations[0].output.used==4096&&b->generations[0].kind[SR_SAME_GENERATION].count==1);
+ struct sr_buffer_event e={.epoch=7,.instance=1,.owner=5,.reason=SR_BUFFER_CAPACITY,.previous=55,.generation=56,.old_used=4096,.requested=5000};
+ sr_buffer_record(b,e);assert(b->buffer_count==1&&b->buffers[0].previous==55&&b->buffers[0].requested==5000);
+ assert(sr_lock(b));sr_buffer_record(b,e);sr_unlock(b);assert(b->buffer_dropped==1);
+ for(unsigned i=1;i<SR_BUFFER_EVENTS+1;i++)sr_buffer_record(b,e);
+ assert(b->buffer_count==SR_BUFFER_EVENTS&&b->buffer_overflow==1);
+ b->active_epoch=8;sr_buffer_record(b,e);assert(b->buffer_count==SR_BUFFER_EVENTS);
  free(b);puts("PASS compile classification: first/changed/new-generation/same-generation, shape uncertainty, instance/owner/mode isolation, failed/raced/delivery exclusion, epoch cancellation, bounded overflow, concurrent reconciliation");
 }
 '''
@@ -115,12 +168,28 @@ int main(){
  teb[0x40/8]=0xe8;teb[0x48/8]=0x23c;
  Initialize(nullptr,1);Initialize("junk",1);Initialize("fffffffffffffffff",1);assert(!Bridge);
  char pointer[32];snprintf(pointer,sizeof(pointer),"%llx",(unsigned long long)(uintptr_t)b);
- Initialize(pointer,1);assert(Bridge==b&&Instance&&b->attached==1);
+ const char16_t cef[]=u"C:\\Steam\\STEAMWEBHELPER.EXE";
+ const char16_t ordinary[]=u"C:\\Steam\\steam.exe";
+ assert(IsCEFImage(reinterpret_cast<const uint16_t*>(cef),sizeof(cef)-2));
+ assert(!IsCEFImage(reinterpret_cast<const uint16_t*>(ordinary),sizeof(ordinary)-2));
+ assert(!IsCEFImage(reinterpret_cast<const uint16_t*>(cef),sizeof(cef)-1));
+ assert(!IsCEFImage(nullptr,0));
+ Initialize(pointer,1,true);assert(Bridge==b&&Instance&&b->attached==1&&CEF);
  assert(NextId()!=NextId());
  const uint8_t code[]={0x90};
- { Capture r(1,0x10000,0,0,false);assert(r.Active());r.Block(0x10000);r.Instruction(0x10000,code,1);r.Finish(10,SR_GENERATED); }
+ { Capture r(1,0x10000,0,0,false);assert(r.Active());r.Stage(SR_DECODE_IR);r.Block(0x10000);r.Instruction(0x10000,code,1);r.Finish(10,SR_GENERATED); }
  { Capture r(1,0x10000,0,0,false);r.Block(0x10000);r.Instruction(0x10000,code,1);r.Finish(11,SR_GENERATED); }
  assert(b->kind[SR_FIRST].count==1&&b->kind[SR_NEW_GENERATION].count==1);
+ uint64_t phase_sum=0;for(unsigned i=0;i<SR_STAGES;i++)phase_sum+=b->stages[i].ticks;
+ assert(phase_sum==b->total.ticks&&b->total.count==2&&b->instances[SR_ORDINARY_INSTANCES].cef);
+ uint64_t requested=0;
+ {CapacityScope outer(&requested,5000);assert(requested==5000);
+  {CapacityScope inner(&requested,6000);assert(requested==6000);}
+  assert(requested==5000);
+  BufferAllocated(1,10,0x100000000,4096,8192,11,0x200000000,16384,requested);
+ }
+ assert(!requested&&b->buffer_count==1&&b->buffers[0].reason==SR_BUFFER_CAPACITY);
+ assert(b->buffers[0].instance==Instance&&b->buffers[0].old_used==4096&&b->buffers[0].requested==5000);
  {Capture r(1,0x10000,0,0,false);r.Finish(0,SR_RACED);}
  {Capture r(1,0x10000,0,0,false);}
  {Capture r(1,0x10000,0,0,true);assert(!r.Active());r.Finish(99,SR_GENERATED);}
@@ -190,6 +259,8 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert 'reason=fixture-complete' in result.stderr
                 assert 'kind=first-observed count=1 total_wall_ms=1.000000' in result.stderr
                 assert 'first_observed=1' in result.stderr and 'reason=worker-create-failed' in result.stderr
+                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer']:
+                    assert '['+prefix+']' in result.stderr
     # Real iPhoneOS compiler sees the complete standalone source.
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
     subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,
@@ -215,10 +286,17 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     assert backend.index('Buffer->MDeckReasonGeneration =',pos)<backend.index('Latest = Buffer;',pos)
     jit=(source/'FEXCore/Source/Interface/Core/JIT/JIT.cpp').read_text()
     pos=jit.index('if ((GetCursorOffset() + TempSize) > CurrentCodeBuffer->UsableSize())')
-    assert jit.index('CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;',pos)>jit.index('CTX->ClearCodeCache(ThreadState);',pos)
+    assert jit.index('CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;',pos)>jit.index('CTX->ClearCodeCache(ThreadState, true, Reason);',pos)
+    assert 'Reason->Stage(SR_BUFFER_WAIT)' in jit and 'Reason->Stage(SR_LOOKUP_WAIT)' in jit
+    assert 'Reason->Stage(SR_OUTPUT)' in jit and 'Reason.Stage(SR_DECODE_IR)' in core_text
+    assert 'MDECK_REASON_CAPACITY(ReasonCapacity, CodeBuffers, TempSize)' in jit
+    assert jit.index('CodeData.MDeckReasonOutput =',pos)>jit.index('memcpy(WritePtr(',pos)
+    assert 'CompileReason::BufferAllocated(MDeckReasonOwner,' in backend
     for path in ['WOW64','ARM64EC']:
         text=(source/f'Source/Windows/{path}/Module.cpp').read_text()
-        assert 'CompileReason::Initialize(getenv("MADEIRA_COMPILE_REASON_BRIDGE"),' in text
+        assert 'CompileReason::Initialize(ReasonBridge,' in text
+        assert text.index('CompileReason::Initialize(ReasonBridge,')<text.index('CTX->InitCore();')
+        assert 'CompileReason::IsCEFImage' in text
         assert '#include <FEXCore/Utils/SteamCompileReason.h>' in text, 'PE initializer needs its direct declaration'
     # Native builds must not gain PE symbol dependencies from the header.
     noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.Finish(0,SR_FAILED);}\n')

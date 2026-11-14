@@ -147,7 +147,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-steam-stages-') as tmp:
             ('void ChangeGuestToHostMapping(', 'MDECK_STEAM_SCOPE(SF_MIGRATE);'),
             ('uintptr_t FindBlock(', 'MDECK_STEAM_SCOPE(SF_LOOKUP);')],
         'FEXCore/Source/Interface/Core/JIT/JIT.cpp':[
-            ('void Arm64JITCore::ClearCache()', 'MDECK_STEAM_SCOPE(SF_CLEAR);')],
+            ('void Arm64JITCore::ClearCache(', 'MDECK_STEAM_SCOPE(SF_CLEAR);')],
         'FEXCore/Source/Interface/Core/LookupCache.cpp':[
             ('void LookupCache::ClearCache(', 'MDECK_STEAM_SCOPE(SF_CLEAR);')],
         'FEXCore/Source/Interface/Core/CPUBackend.cpp':[
