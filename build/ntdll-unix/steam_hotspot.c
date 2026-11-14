@@ -2,6 +2,7 @@
  * Its only suspended interval is sh_capture_thread; all lookup, aggregation,
  * locks and output run after resume. No shared legacy profiler state. */
 #include "steam_hotspot.h"
+#include "../fex-patches/steam_probe_abi.h"
 #include <mach/mach.h>
 #include <mach/mach_time.h>
 #include <mach/thread_policy.h>
@@ -15,6 +16,7 @@
 #include <errno.h>
 #include <time.h>
 #include <unistd.h>
+#include <stdlib.h>
 #include <sys/qos.h>
 
 /* Required owners are signal_arm64_ios.c and virtual_ios.c in this archive. */
@@ -40,6 +42,8 @@ struct sh_run {
     unsigned selected_overflow, previous_overflow, no_candidate, rounds, threads_used;
     struct sh_thread threads[SH_THREADS];
     struct { uint64_t id, cpu_us; unsigned round; } previous[SH_PREVIOUS];
+    uint64_t fex_report_at, fex_dropped_start;
+    unsigned fex_enroll_failed;
 };
 struct sh_candidate { uint64_t id, teb; unsigned pid, tid, group, index, run_state; double cpu_ms; char name[64]; };
 struct sh_module { uint64_t base, size; char name[48]; };
@@ -50,6 +54,9 @@ static atomic_int sh_enabled;
 static atomic_int sh_active;
 static int sh_worker_started;
 static mach_timebase_info_data_t sh_timebase;
+/* Permanent host-owned storage: PE scopes may outlive a stop/session change.
+ * Publication uses an epoch; it never frees a pointer a PE can still hold. */
+static struct sf_bridge sh_fex = {.magic = SF_MAGIC, .bytes = sizeof(struct sf_bridge)};
 
 static uint64_t sh_now(void) {
     return (uint64_t)((__uint128_t)mach_absolute_time() * sh_timebase.numer / sh_timebase.denom);
@@ -122,7 +129,20 @@ static int sh_state(void *context, uintptr_t thread, struct sh_registers *out) {
     out->pc = arm_thread_state64_get_pc(state); out->lr = arm_thread_state64_get_lr(state);
     /* Only a candidate hint. It is never used to decide the host-PC class,
      * and is not claimed as the current x86 instruction. */
-    if (state.__x[28] <= UINT64_MAX - 0x18) sh_read(state.__x[28] + 0x18, &out->frame_rip, 8);
+    uint64_t frame[4] = {0};
+    if (sh_read(state.__x[28], frame, sizeof(frame))) {
+        out->frame_rip = frame[3];
+        uint32_t offset = 0, again = 0;
+        struct { uint64_t size, rip, guest_size; uint32_t count, entries; } tail;
+        /* A maximum of four small reads, with hard size/address bounds.
+         * Register-derived data is untrusted even when the state read worked. */
+        if (frame[0] >= 0x100000000ull && !(frame[0] & 3) &&
+            frame[0] <= UINT64_MAX - 0x200000 && sh_read(frame[0], &offset, 4) &&
+            offset >= 4 && offset <= 0x100000 &&
+            sh_read(frame[0] + offset, &tail, sizeof(tail)) &&
+            sh_block_valid(frame[0], out->pc, offset, tail.size, tail.rip, tail.guest_size) &&
+            sh_read(frame[0], &again, 4) && again == offset) out->block_rip = tail.rip;
+    }
     return 0;
 }
 static const struct sh_capture_ops sh_ops = {sh_capture_now, sh_suspend, sh_state, sh_resume, NULL};
@@ -149,6 +169,38 @@ static unsigned sh_modules(uint64_t teb, struct sh_module modules[128]) {
     }
     return used;
 }
+/* WoW64's guest loader list is different from the native PEB list. Keep its
+ * addresses in guest coordinates; only reads add this process's 4 GB window.
+ * Verify the i386 CPU area and TEB32 self pointer before traversing. */
+static unsigned sh_modules32(uint64_t teb, struct sh_module modules[128]) {
+    uint64_t cpu = 0, window = teb & ~UINT64_C(0xffffffff);
+    uint16_t machine = 0; int32_t offset = 0;
+    uint32_t self = 0, peb = 0, ldr = 0, link = 0;
+    if (!window || !sh_read(teb + 0x1488, &cpu, 8) || !cpu ||
+        !sh_read(cpu + 2, &machine, 2) || machine != 0x14c ||
+        !sh_read(teb + 0x180c, &offset, 4) || offset <= 0 || offset > 0x10000) return 0;
+    uint64_t teb32 = teb + (uint32_t)offset;
+    if (!sh_read(teb32 + 0x18, &self, 4) || window + self != teb32 ||
+        !sh_read(teb32 + 0x30, &peb, 4) || !peb ||
+        !sh_read(window + peb + 0x0c, &ldr, 4) || !ldr || ldr > UINT32_MAX - 0x0c ||
+        !sh_read(window + ldr + 0x0c, &link, 4)) return 0;
+    unsigned used = 0;
+    while (link && link != ldr + 0x0c && used < 128) {
+        uint32_t entry[13];
+        if (link > UINT32_MAX - sizeof(entry) || !sh_read(window + link, entry, sizeof(entry))) break;
+        if (!entry[6] || !entry[8] || (uint64_t)entry[6] + entry[8] > UINT64_C(0x100000000)) break;
+        struct sh_module *m = &modules[used++];
+        *m = (struct sh_module){.base = entry[6], .size = entry[8]};
+        uint16_t wide[47] = {0}; unsigned n = (entry[11] & 0xffff) / 2; if (n > 47) n = 47;
+        if (entry[12] && (uint64_t)entry[12] + n*2 <= UINT64_C(0x100000000) &&
+            sh_read(window + entry[12], wide, n*2))
+            for (unsigned i = 0; i < n; i++) m->name[i] = wide[i] < 128 ? (char)wide[i] : '?';
+        sh_clean(m->name); if (!m->name[0]) strcpy(m->name, "unknown-pe32");
+        if (entry[0] == link) break;
+        link = entry[0];
+    }
+    return used;
+}
 static int sh_module_desc(uint64_t pc, struct sh_module *modules, unsigned count, char *out, size_t capacity) {
     for (unsigned i = 0; i < count; i++) if (pc >= modules[i].base && pc - modules[i].base < modules[i].size) {
         snprintf(out, capacity, "%s+0x%llx", modules[i].name, (unsigned long long)((pc - modules[i].base) & ~0xffull)); return 1;
@@ -171,10 +223,12 @@ static enum sh_kind sh_describe(struct sh_candidate candidate, struct sh_registe
         dladdr((void *)(uintptr_t)regs.pc, &info) && info.dli_fname && info.dli_fbase;
     enum sh_kind kind = sh_classify(regs.pc, ab, size, in_c, copied, module, host);
     if (kind == SH_JIT_C || kind == SH_JIT_AB) {
-        if (regs.frame_rip) sh_module_desc(regs.frame_rip, modules, count, hint, sizeof(hint));
-        char *offset = strchr(hint, '+'); if (offset) *offset = 0;
-        snprintf(out, 176, "%s;page=0x%llx;guest_hint=%s", in_c ? "jit-C" : "jit-AB",
-            (unsigned long long)(regs.pc & ~0xfffull), hint[0] ? hint : "unresolved");
+        uint64_t guest = regs.block_rip ? regs.block_rip : regs.frame_rip;
+        unsigned wow_count = candidate.teb && guest <= UINT32_MAX ? sh_modules32(candidate.teb, modules) : 0;
+        if (guest) sh_module_desc(guest, modules, wow_count ? wow_count : count, hint, sizeof(hint));
+        snprintf(out, 176, "%s;page=0x%llx;%s=%s;guest=0x%llx", in_c ? "jit-C" : "jit-AB",
+            (unsigned long long)(regs.pc & ~0xfffull), regs.block_rip ? "guest_block" : "guest_hint",
+            hint[0] ? hint : "unresolved", (unsigned long long)guest);
         return kind;
     }
     if (copied || module) {
@@ -241,6 +295,37 @@ static void sh_report(struct sh_run *run, const char *reason) {
     run->report_at = now;
 }
 static int sh_current(uint64_t epoch) { return atomic_load(&sh_enabled) && atomic_load(&sh_active) && atomic_load(&sh_epoch) == epoch; }
+static void sh_fex_report(struct sh_run *run, const char *reason) {
+    static const char *names[SF_STAGES] = {"compile-block-inclusive", "lookup-cpp", "compile-code-inclusive",
+                                         "cache-clear-inclusive", "map-migrate", "sweep-inclusive"};
+    uint64_t now = sh_now();
+    if (!sh_current(run->epoch) || !sh_fex.frequency) return;
+    unsigned rows = 0, busy = 0;
+    for (unsigned i = 0; i < SF_SLOTS; i++) {
+        struct sf_slot *s = &sh_fex.slots[i], copy;
+        if (!sf_lock(s)) { busy++; continue; }
+        copy = *s; sf_unlock(s);
+        if (copy.epoch != run->epoch) continue;
+        for (unsigned stage = 0; stage < SF_STAGES; stage++) {
+            struct sf_metric *m = &copy.metric[stage];
+            if (!m->calls) continue;
+            rows++;
+            double ms = m->ticks * (1000.0 / sh_fex.frequency);
+            dprintf(STDERR_FILENO, "[steam-fex-stage] session=%llu t+%.3f mach_tid=%llu pid=%04x tid=%04x stage=%s "
+                "calls=%llu timed=%llu stride=%u sampled_wall_ms=%.6f mean_ms=%.6f max_ms=%.6f cumulative=1\n",
+                (unsigned long long)run->epoch, (now-run->started)/1e9, (unsigned long long)copy.mach_tid,
+                copy.pid, copy.tid, names[stage], (unsigned long long)m->calls, (unsigned long long)m->samples,
+                sf_stride(stage), ms, m->samples ? ms/m->samples : 0, m->max_ticks*(1000.0/sh_fex.frequency));
+        }
+    }
+    dprintf(STDERR_FILENO, "[steam-fex] session=%llu t+%.3f reason=%s attached_paths=%llu rows=%u "
+        "dropped=%llu report_busy=%u enroll_failed=%u wall-not-CPU=1 inclusive-do-not-sum=1 cumulative=1\n",
+        (unsigned long long)run->epoch, (now-run->started)/1e9, reason,
+        (unsigned long long)__atomic_load_n(&sh_fex.attached, __ATOMIC_RELAXED), rows,
+        (unsigned long long)(__atomic_load_n(&sh_fex.dropped, __ATOMIC_RELAXED)-run->fex_dropped_start),
+        busy, run->fex_enroll_failed);
+    run->fex_report_at = now;
+}
 static const char *sh_tick(struct sh_run *run) {
     thread_act_array_t threads = NULL; mach_msg_type_number_t count = 0;
     if (task_threads(mach_task_self(), &threads, &count) != KERN_SUCCESS) { run->query_failed++; return NULL; }
@@ -258,7 +343,7 @@ static const char *sh_tick(struct sh_run *run) {
         pthread_t pt = pthread_from_mach_thread_np(threads[i]); char name[64] = "";
         if (!pt || pthread_getname_np(pt, name, sizeof(name))) { run->query_failed++; continue; }
         uint64_t teb = sh_teb(pt); unsigned group = sh_cef_name(name) ? 1 : (!teb && !name[0] ? 2 : 0);
-        if (!group || cpu <= best[group-1].cpu_ms) continue;
+        if (!group) continue;
         thread_time_constraint_policy_data_t policy;
         mach_msg_type_number_t pc = THREAD_TIME_CONSTRAINT_POLICY_COUNT; boolean_t default_policy = 0;
         if (thread_policy_get(threads[i], THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&policy, &pc, &default_policy) != KERN_SUCCESS) {
@@ -267,7 +352,9 @@ static const char *sh_tick(struct sh_run *run) {
         if (!default_policy) continue; /* Core Audio and other realtime work. */
         struct sh_candidate c = {.id = id.thread_id, .teb = teb, .group = group, .index = i, .cpu_ms = cpu, .run_state = bi.run_state};
         if (teb) { sh_read(teb+0x40, &c.pid, 4); sh_read(teb+0x48, &c.tid, 4); }
-        snprintf(c.name, sizeof(c.name), "%s", name); best[group-1] = c;
+        snprintf(c.name, sizeof(c.name), "%s", name);
+        if (group == 1 && teb && !sf_enroll(&sh_fex, run->epoch, teb, c.id, c.pid, c.tid)) run->fex_enroll_failed++;
+        if (cpu > best[group-1].cpu_ms) best[group-1] = c;
     }
     const char *stop = NULL;
     if (!best[0].id && !best[1].id) run->no_candidate++;
@@ -298,20 +385,31 @@ static void *sh_worker(void *unused) {
     pthread_mutex_lock(&sh_control);
     for (;;) {
         while (!atomic_load(&sh_enabled)) pthread_cond_wait(&sh_wake, &sh_control);
-        struct sh_run run = {.epoch = atomic_load(&sh_epoch), .started = sh_now()}; run.report_at = run.started;
+        struct sh_run run = {.epoch = atomic_load(&sh_epoch), .started = sh_now()};
+        run.report_at = run.fex_report_at = run.started;
+        run.fex_dropped_start = __atomic_load_n(&sh_fex.dropped, __ATOMIC_RELAXED);
         pthread_mutex_unlock(&sh_control);
         const char *reason = "duration-complete";
         if (!atomic_load(&sh_main_id)) reason = "main-thread-unavailable";
         else while (sh_current(run.epoch)) {
             int phase = sh_phase(run.started, sh_now(), run.attempts, run.held_ns);
             if (phase < 0) { reason = run.attempts >= SH_MAX_SAMPLES ? "sample-budget" : "duration-complete"; break; }
-            if (phase == 1) { const char *stop = sh_tick(&run); if (stop) { reason = stop; break; } }
+            /* Discover busy CEF threads during the initial delay too. sh_tick
+             * still refuses all suspend attempts until SH_DELAY_NS. */
+            { const char *stop = sh_tick(&run); if (stop) { reason = stop; break; } }
+            if (sh_now() - run.fex_report_at >= 1000000000ull) sh_fex_report(&run, "sampling");
             if (sh_now() - run.report_at >= 5000000000ull) sh_report(&run, phase ? "sampling" : "waiting");
             pthread_mutex_lock(&sh_control); if (sh_current(run.epoch)) sh_wait_tick(); pthread_mutex_unlock(&sh_control);
         }
+        uint64_t ending_epoch = run.epoch;
+        __atomic_compare_exchange_n(&sh_fex.active_epoch, &ending_epoch, 0, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
         sh_report(&run, reason);
+        sh_fex_report(&run, reason);
         pthread_mutex_lock(&sh_control);
-        if (atomic_load(&sh_epoch) == run.epoch) atomic_store(&sh_enabled, 0);
+        if (atomic_load(&sh_epoch) == run.epoch) {
+            atomic_store(&sh_enabled, 0);
+            __atomic_store_n(&sh_fex.active_epoch, 0, __ATOMIC_RELEASE);
+        }
     }
     return NULL;
 }
@@ -324,6 +422,7 @@ void ios_steam_hotspot_configure(int enabled) {
     int saved = errno;
     pthread_mutex_lock(&sh_control);
     uint64_t epoch = atomic_fetch_add(&sh_epoch, 1) + 1;
+    __atomic_store_n(&sh_fex.active_epoch, 0, __ATOMIC_RELEASE);
     int was = atomic_exchange(&sh_enabled, !!enabled), activated = !!enabled;
     if (enabled && !atomic_load(&sh_active)) {
         activated = 0; atomic_store(&sh_enabled, 0);
@@ -335,6 +434,11 @@ void ios_steam_hotspot_configure(int enabled) {
         if (!error) { pthread_detach(thread); sh_worker_started = 1; }
         else { activated = 0; atomic_store(&sh_enabled, 0); dprintf(STDERR_FILENO, "[steam-hotspot] session=%llu reason=worker-create-failed error=%d\n", (unsigned long long)epoch, error); }
     }
+    if (!sh_fex.frequency) __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(sh_fex.frequency));
+    char address[32]; snprintf(address, sizeof(address), "%llx", (unsigned long long)(uintptr_t)&sh_fex);
+    if (setenv("MADEIRA_STEAM_FEX_BRIDGE", address, 1))
+        dprintf(STDERR_FILENO, "[steam-fex] bridge-publish-failed errno=%d\n", errno);
+    else if (activated) __atomic_store_n(&sh_fex.active_epoch, epoch, __ATOMIC_RELEASE);
     pthread_cond_broadcast(&sh_wake);
     pthread_mutex_unlock(&sh_control);
     if (activated) dprintf(STDERR_FILENO, "[steam-hotspot] enabled session=%llu delay=15s duration=30s tick=200ms max_samples=300 "

@@ -1,6 +1,10 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Also records translation and code cache timings once per second, and identifies Windows modules for sampled JIT blocks. Timings include waiting and nested work; they are not CPU time.": {
+      "extractionState": "manual",
+      "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "同时每秒汇总翻译和代码缓存耗时，并识别采样到的 JIT 代码块所对应的 Windows 模块。计时包含等待和子阶段，不等于 CPU 时间。" } } }
+    },
     "CEF hotspot capture": {
       "extractionState": "manual",
       "localizations": { "zh-Hans": { "stringUnit": { "state": "translated", "value": "CEF 热点检测" } } }

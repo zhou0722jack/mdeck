@@ -5037,6 +5037,8 @@ struct LibraryDetail: View {
                 .accessibilityIdentifier("steam-cef-hotspot-capture")
                 Text("Off by default. On the next Steam start, wait 15 seconds, then sample selected busy CEF and unnamed native threads for up to 30 seconds. Sampling briefly pauses each selected thread; the main thread is excluded. Stops at its sampling budget, when the app becomes inactive, or when the session ends. Sample counts are not CPU percentages.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Text("Also records translation and code cache timings once per second, and identifies Windows modules for sampled JIT blocks. Timings include waiting and nested work; they are not CPU time.")
+                    .font(.footnote).foregroundStyle(.secondary)
                 if model.current != nil {
                     Button("Stop CEF hotspot capture") { winios_hotspot_stop() }
                         .accessibilityIdentifier("steam-cef-hotspot-stop")

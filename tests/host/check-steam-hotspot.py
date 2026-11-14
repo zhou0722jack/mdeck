@@ -35,6 +35,10 @@ int main(void) {
  assert(sh_classify(0x1300,0x1400,0x100,0,0,0,0)==SH_UNKNOWN);
  assert(sh_classify(0x1500,0x1400,0x100,0,0,0,1)==SH_HOST);
  assert(sh_classify(UINT64_MAX,UINT64_MAX-20,10,0,0,0,0)==SH_UNKNOWN);
+ assert(sh_block_valid(0x120000f00ull,0x120001000ull,0x200,0x240,0x6a001234,0x40));
+ assert(!sh_block_valid(0x120000f00ull,0x120001200ull,0x200,0x240,0x6a001234,0x40));
+ assert(!sh_block_valid(0x120000f00ull,0x120001000ull,0x200,0x201,0x6a001234,0x40));
+ assert(!sh_block_valid(UINT64_MAX-0x100,UINT64_MAX-0x10,0x200,0x240,1,0x40));
  struct sh_bucket buckets[3]={0};unsigned over=0;sh_bucket_note(buckets,3,"early-a",1,&over);sh_bucket_note(buckets,3,"early-b",2,&over);sh_bucket_note(buckets,3,"early-c",3,&over);
  for(unsigned i=0;i<100;i++)sh_bucket_note(buckets,3,"late-hot",4,&over);
  unsigned found=0,sum=0;for(unsigned i=0;i<3;i++){sum+=buckets[i].hits;if(!strcmp(buckets[i].desc,"late-hot")){found++;assert(buckets[i].hits>=100&&buckets[i].hits-buckets[i].error<=100);}}
@@ -64,6 +68,9 @@ backend = r'''
 static uint64_t fake_time=1000000000ull;
 static unsigned round_no,ports_freed,arrays_freed,suspend_calls,resume_calls,held,read_error,slow_capture,cancel_capture;
 static unsigned selected[10];
+static unsigned fixture_memory,capture_reads;
+static unsigned char guest_window[0x10000],jit_block[0x400];
+static kern_return_t f_read(vm_map_t,vm_address_t,vm_size_t,vm_address_t,vm_size_t*);
 static kern_return_t f_tasks(task_t,thread_act_array_t*,mach_msg_type_number_t*);
 static kern_return_t f_info(thread_act_t,thread_flavor_t,thread_info_t,mach_msg_type_number_t*);
 static kern_return_t f_suspend(thread_act_t);
@@ -96,6 +103,7 @@ static int f_create(pthread_t*,const pthread_attr_t*,void*(*)(void*),void*);
 #define pthread_mutex_lock f_lock
 #define dprintf f_log
 #define pthread_create f_create
+#define vm_read_overwrite f_read
 #include "steam_hotspot.c"
 #undef pthread_mutex_lock
 #undef dprintf
@@ -114,7 +122,21 @@ static kern_return_t f_resume(thread_act_t t){assert(held==t);held=0;resume_call
 static kern_return_t f_state(thread_act_t t,thread_state_flavor_t flavor,thread_state_t out,mach_msg_type_number_t *n){(void)flavor;(void)n;assert(held==t);
  fake_time+=slow_capture?SH_ONE_HOLD_NS+1:100000;if(cancel_capture){atomic_store(&sh_enabled,0);atomic_fetch_add(&sh_epoch,1);}
  if(read_error&&t==3)return KERN_FAILURE;
- arm_thread_state64_t *s=(void*)out;memset(s,0,sizeof(*s));__darwin_arm_thread_state64_set_pc_fptr(*s,(void*)(uintptr_t)(t==3?0x120001000ull:0x100001000ull));return 0;}
+ arm_thread_state64_t *s=(void*)out;memset(s,0,sizeof(*s));__darwin_arm_thread_state64_set_pc_fptr(*s,(void*)(uintptr_t)(t==3?0x120001000ull:0x100001000ull));
+ if(fixture_memory)s->__x[28]=0x7200008000ull;
+ return 0;}
+static kern_return_t f_read(vm_map_t task,vm_address_t address,vm_size_t size,vm_address_t out,vm_size_t *got){
+ (void)task;*got=0;if(!fixture_memory)return KERN_INVALID_ADDRESS;
+ if(held){capture_reads++;assert(size<=32);assert(address==0x7200008000ull||address==0x120000f00ull||address==0x120001100ull);}
+ if(address>=0x7200000000ull&&address-0x7200000000ull<=sizeof(guest_window)&&size<=sizeof(guest_window)-(address-0x7200000000ull)){
+  memcpy((void*)out,guest_window+(address-0x7200000000ull),size);*got=size;return 0;}
+ if(address>=0x120000f00ull&&address-0x120000f00ull<=sizeof(jit_block)&&size<=sizeof(jit_block)-(address-0x120000f00ull)){
+  memcpy((void*)out,jit_block+(address-0x120000f00ull),size);*got=size;return 0;}
+ return KERN_INVALID_ADDRESS;
+}
+static void put64(unsigned offset,uint64_t value){memcpy(guest_window+offset,&value,8);}
+static void put32(unsigned offset,uint32_t value){memcpy(guest_window+offset,&value,4);}
+static void put16(unsigned offset,uint16_t value){memcpy(guest_window+offset,&value,2);}
 static kern_return_t f_free(ipc_space_t task,mach_port_name_t port){(void)task;(void)port;assert(!held);ports_freed++;return 0;}
 static kern_return_t f_array(vm_map_t task,vm_address_t address,vm_size_t size){(void)task;(void)address;assert(size==7*sizeof(thread_t)&&!held);arrays_freed++;return 0;}
 static kern_return_t f_policy(thread_t t,thread_policy_flavor_t flavor,thread_policy_t out,mach_msg_type_number_t *count,boolean_t *get_default){(void)flavor;(void)out;(void)count;assert(!held);*get_default=t!=7;return 0;}
@@ -144,6 +166,46 @@ int main(void){
  r=fresh();ios_steam_hotspot_set_active(0);assert(!atomic_load(&sh_enabled));ios_steam_hotspot_set_active(1);assert(!atomic_load(&sh_enabled));
  ios_steam_hotspot_configure(0);uint64_t e=atomic_load(&sh_epoch);assert(!atomic_load(&sh_enabled));
  sh_worker_started=0;ios_steam_hotspot_configure(1);assert(!atomic_load(&sh_enabled)&&atomic_load(&sh_epoch)>e);
+ // Exact production reads: validated WoW64 TEB32, guest loader list and
+ // bounded block-entry metadata captured before resume, symbols after resume.
+ r=fresh();fixture_memory=1;capture_reads=0;
+ put64(0x1000+0x1488,0x7200002000ull);put16(0x2002,0x14c);
+ put32(0x1000+0x180c,0x2000);put32(0x3018,0x3000);put32(0x3030,0x4000);
+ put32(0x400c,0x5000);put32(0x500c,0x6000);
+ put32(0x6000,0x500c);put32(0x6018,0x6a000000);put32(0x6020,0x100000);
+ put16(0x602c,20);put32(0x6030,0x7000);
+ const char *module="libcef.dll";for(unsigned j=0;j<10;j++)put16(0x7000+j*2,module[j]);
+ put64(0x8000,0x120000f00ull);put64(0x8018,0x6b000000);
+ uint32_t tailoff=0x200;memcpy(jit_block,&tailoff,4);
+ uint64_t tail[4]={0x240,0x6a001234,0x40,0};memcpy(jit_block+0x200,tail,32);
+ struct sh_capture snapshot=sh_capture_thread(&sh_ops,3);
+ assert(snapshot.resumed&&snapshot.state_ok&&snapshot.regs.block_rip==0x6a001234&&capture_reads==4&&!held);
+ c=(struct sh_candidate){.teb=0x7200001000ull};
+ assert(sh_describe(c,snapshot.regs,desc)==SH_JIT_C);
+ assert(strstr(desc,"guest_block=libcef.dll+0x1200")&&!strstr(desc,"unresolved"));
+ struct sh_module modules[128];assert(sh_modules32(c.teb,modules)==1);
+ put32(0x3018,0x3001);assert(sh_modules32(c.teb,modules)==0);put32(0x3018,0x3000);
+ put16(0x2002,0x8664);assert(sh_modules32(c.teb,modules)==0);put16(0x2002,0x14c);
+ // PC outside the block must fall back to an explicitly uncertain hint.
+ tailoff=4;memcpy(jit_block,&tailoff,4);capture_reads=0;
+ snapshot=sh_capture_thread(&sh_ops,3);assert(!snapshot.regs.block_rip&&!held);
+ assert(sh_describe(c,snapshot.regs,desc)==SH_JIT_C&&strstr(desc,"guest_hint=unresolved"));
+ // Native 64-bit module table remains separate.
+ memset(guest_window,0,sizeof(guest_window));
+ put64(0x1060,0x7200004000ull);put64(0x4018,0x7200005000ull);
+ put64(0x5010,0x7200006000ull);put64(0x6000,0x7200005010ull);
+ put64(0x6030,0x140000000ull);put32(0x6040,0x100000);
+ put16(0x6058,20);put64(0x6060,0x7200007000ull);
+ for(unsigned j=0;j<10;j++)put16(0x7000+j*2,module[j]);
+ assert(sh_describe(c,(struct sh_registers){.pc=0x120001000ull,.block_rip=0x140001234ull},desc)==SH_JIT_C);
+ assert(strstr(desc,"guest_block=libcef.dll+0x1200"));
+ // Same-session final stage output is cumulative, with sampled wall units.
+ sh_fex.frequency=24000000;__atomic_store_n(&sh_fex.active_epoch,r.epoch,__ATOMIC_RELEASE);
+ assert(sf_enroll(&sh_fex,r.epoch,c.teb,103,0xe8,0x23c));
+ struct sf_ticket ticket=sf_enter(&sh_fex,c.teb,0x23c,SF_COMPILE);assert(ticket.slot);
+ sf_leave(&sh_fex,ticket,0,24000);sh_fex_report(&r,"fixture-stages");
+ fixture_memory=0;
+ puts("PASS native block snapshot and 32/64 module resolution: PC containment, bounds, TEB validation, uncertain fallback and stage report");
  puts("PASS production hotspot backend: busy CEF plus unnamed native selection, self/main/suspended exclusion, no lookup/log/locks while held, all ports released, failure/cancel resume pairing, A/B/C and host classification, limits, foreground gating and worker-create failure");
 }
 '''
@@ -161,6 +223,8 @@ with tempfile.TemporaryDirectory() as folder:
             assert 'reason=fixture-complete' in result.stderr and 'jit_C=1' in result.stderr and 'host=1' in result.stderr
             assert '/private/path/' not in result.stderr
             assert 'reason=worker-create-failed' in result.stderr
+            assert 'reason=fixture-stages' in result.stderr
+            assert 'stage=compile-code-inclusive calls=1 timed=1 stride=1 sampled_wall_ms=1.000000' in result.stderr
     sdk = subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
     subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,
                     '-std=c11','-Wall','-Wextra','-Werror','-fsyntax-only',str(native/'steam_hotspot.c')],check=True)

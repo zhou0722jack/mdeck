@@ -29,7 +29,16 @@ static inline void sh_bucket_note(struct sh_bucket *b, unsigned count, const cha
     b[best].error = b[best].hits; b[best].hits++;
     b[best].pc = pc; snprintf(b[best].desc, sizeof(b[best].desc), "%s", desc);
 }
-struct sh_registers { uint64_t pc, lr, frame_rip; };
+struct sh_registers { uint64_t pc, lr, frame_rip, block_rip; };
+/* Block-entry attribution, not exact instruction reconstruction. Capture the
+ * small fixed header/tail while held; never walk a variable-size RIP table. */
+static inline int sh_block_valid(uint64_t block, uint64_t pc, uint32_t tail_offset,
+                                 uint64_t size, uint64_t guest, uint64_t guest_size) {
+    return block >= 0x100000000ull && !(block & 3) && tail_offset >= 4 &&
+        tail_offset <= 0x100000 && size >= (uint64_t)tail_offset + 32 && size <= 0x200000 &&
+        block <= UINT64_MAX - size && pc >= block + 4 && pc < block + tail_offset &&
+        guest && guest_size && guest_size <= 0x100000 && guest <= UINT64_MAX - guest_size;
+}
 struct sh_capture {
     struct sh_registers regs;
     uint64_t held_ns;
