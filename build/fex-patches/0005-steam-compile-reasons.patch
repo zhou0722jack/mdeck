@@ -559,22 +559,30 @@ diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Co
 diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
 --- a/Source/Windows/ARM64EC/Module.cpp
 +++ b/Source/Windows/ARM64EC/Module.cpp
-@@ -51,6 +51,8 @@
+@@ -51,6 +51,9 @@
  #include "Windows/Common/SHMStats.h"
 
  #include <cstdint>
 +#include <FEXCore/Utils/SteamCompileReason.h>
 +#include <FEXCore/Utils/DFEScratch.h>
++#include <FEXCore/Utils/PreviousCode.h>
  #include <cstdio>
  #include <type_traits>
  #include <FEXCore/Utils/L1CacheIndex.h>
-@@ -1206,6 +1208,15 @@
+@@ -1206,6 +1209,22 @@
      const char* CallRetOpt = getenv("MADEIRA_FEX_CALLRET_ELIDE");
      IosCallRetStackElided = !(CallRetOpt && strcmp(CallRetOpt, "0") == 0);
      LogMan::Msg::IFmt("FEX: callret-elide-v1 madeira-bcd enabled={}", IosCallRetStackElided != 0);
 +  }
 +#endif
 +#ifdef FEX_IOS_HOST
++  {
++    const auto* Params = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
++    const bool CEF = Params && FEXCore::CompileReason::IsCEFImage(
++        reinterpret_cast<const uint16_t*>(Params->ImagePathName.Buffer), Params->ImagePathName.Length);
++    LogMan::Msg::IFmt("[fex-prev] path=arm64ec mode={} target={} previous-budget-mib=128",
++        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF) ? "on" : "off", CEF ? "cef" : "other");
++  }
 +  LogMan::Msg::IFmt("[fex-dfe] path=arm64ec mode={}",
 +      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");
 +  if (const char* ReasonBridge = getenv("MADEIRA_COMPILE_REASON_BRIDGE")) {
@@ -587,20 +595,28 @@ diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.c
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp
 +++ b/Source/Windows/WOW64/Module.cpp
-@@ -40,6 +40,8 @@
+@@ -40,6 +40,9 @@
  #include "Common/Exception.h"
  #include "Common/TSOHandlerConfig.h"
  #include "Common/ImageTracker.h"
 +#include <FEXCore/Utils/SteamCompileReason.h>
 +#include <FEXCore/Utils/DFEScratch.h>
++#include <FEXCore/Utils/PreviousCode.h>
  #include "Common/InvalidationTracker.h"
  #include "Common/OvercommitTracker.h"
  #include "Common/CPUFeatures.h"
-@@ -1311,6 +1313,15 @@
+@@ -1311,6 +1314,22 @@
    }
  #endif
 
 +#ifdef FEX_IOS_HOST
++  {
++    const auto* Params = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
++    const bool CEF = Params && FEXCore::CompileReason::IsCEFImage(
++        reinterpret_cast<const uint16_t*>(Params->ImagePathName.Buffer), Params->ImagePathName.Length);
++    LogMan::Msg::IFmt("[fex-prev] path=wow64 mode={} target={} previous-budget-mib=128",
++        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF) ? "on" : "off", CEF ? "cef" : "other");
++  }
 +  LogMan::Msg::IFmt("[fex-dfe] path=wow64 mode={}",
 +      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");
 +  if (const char* ReasonBridge = getenv("MADEIRA_COMPILE_REASON_BRIDGE")) {

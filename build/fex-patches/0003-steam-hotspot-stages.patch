@@ -9,8 +9,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
  ContextImpl::CompileCodeResult ContextImpl::CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst) {
 +  MDECK_STEAM_SCOPE(SF_COMPILE);
    // [iOS-Madeira] verbose CompileCode logs suppressed — flooding log faster than splash
-@@ -1463,2 +1465,3 @@
- uintptr_t ContextImpl::CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
+@@ -1464,1 +1466,2 @@
 +  MDECK_STEAM_SCOPE(SF_DISPATCH);
    if constexpr (BLOCK_DEBUGGING) {
 diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interface/Core/LookupCache.h

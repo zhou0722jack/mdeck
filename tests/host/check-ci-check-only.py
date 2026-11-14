@@ -49,7 +49,7 @@ assert checks.index('name: Run check group') < checks.index('name: Retain succes
 groups = json.loads((root / 'tools/build/ci-check-groups.json').read_text())
 assert set(groups) == {'frontend', 'runtime', 'build'}
 names = [name for group in groups.values() for name in group]
-assert len(names) == len(set(names)) == 52
+assert len(names) == len(set(names)) == 53
 for name in names:
     assert (root / 'tests/host' / name).is_file(), name
 

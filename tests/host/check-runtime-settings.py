@@ -204,6 +204,24 @@ for reuse in [false,true] { for logging in [false,true] {
            && SteamCompileReasonSettings.enabled(global:[:],profile:combination)==logging
            && !SteamCacheLookupSettings.enabled(global:[:],profile:combination), "DFE, RA capture and L1 choices are independent")
 } }
+expect(!SteamPreviousCodeSettings.enabled(global: [:], profile: ""), "previous-code reuse defaults off")
+let previousOn = SteamPreviousCodeSettings.text("# keep\npool=1152\nenv.MADEIRA_FEX_PREVIOUS_CODE=0\nenv.MADEIRA_FEX_PREVIOUS_CODE=1\n", enabled:true)
+expect(SteamPreviousCodeSettings.enabled(global:[:],profile:previousOn)
+       && previousOn.components(separatedBy:SteamPreviousCodeSettings.key).count == 2
+       && previousOn.contains("# keep") && previousOn.contains("pool=1152"), "previous-code key deduplicates and preserves unrelated options")
+expect(SteamPreviousCodeSettings.text(previousOn,enabled:true)==previousOn, "previous-code writes are idempotent")
+expect(!SteamPreviousCodeSettings.enabled(global:[SteamPreviousCodeSettings.key:"1"],profile:SteamPreviousCodeSettings.text(previousOn,enabled:false)), "previous-code profile off overrides global on")
+expect(SteamPreviousCodeSettings.enabled(global:[SteamPreviousCodeSettings.key:"1"],profile:""), "previous-code inherits global choice")
+for invalid in ["", "true", "2", "1junk"] {
+    expect(!SteamPreviousCodeSettings.enabled(global:[SteamPreviousCodeSettings.key:invalid],profile:""), "previous-code requires exact one")
+}
+for reuse in [false,true] { for logging in [false,true] {
+    let combination = SteamCompileReasonSettings.text(SteamPreviousCodeSettings.text("",enabled:reuse),enabled:logging)
+    expect(SteamPreviousCodeSettings.enabled(global:[:],profile:combination)==reuse
+           && SteamCompileReasonSettings.enabled(global:[:],profile:combination)==logging
+           && SteamDFEScratchSettings.enabled(global:[:],profile:combination)
+           && !SteamCacheLookupSettings.enabled(global:[:],profile:combination), "previous-code choice is independent of DFE, L1 and logging")
+} }
 expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
 let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
 expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)

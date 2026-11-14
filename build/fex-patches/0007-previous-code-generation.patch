@@ -1,0 +1,347 @@
+diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interface/Context/Context.h
+--- a/FEXCore/Source/Interface/Context/Context.h
++++ b/FEXCore/Source/Interface/Context/Context.h
+@@ -427,7 +427,8 @@
+   };
+   [[nodiscard]]
+   CompileCodeResult CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst = 0);
+-  uintptr_t CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst = 0);
++  uintptr_t CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst = 0, bool FromDispatcher = false);
++  uintptr_t CompileBlockFromDispatcher(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst);
+   uintptr_t CompileSingleStep(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP);
+
+   FEXCore::JITSymbols Symbols;
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+--- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
++++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+@@ -396,6 +396,85 @@
+   } // namespace
+ #endif
+
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  auto CodeBufferManager::GetReuseCandidates() -> ReuseCandidates {
++    std::scoped_lock lk {LatestMutex};
++    if (PreviousSlot.Stopped) return {};
++    return {Latest, PreviousSlot.Previous};
++  }
++  bool CodeBufferManager::IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer) {
++    std::scoped_lock lk {LatestMutex};
++    return !PreviousSlot.Stopped && Buffer && (Buffer == Latest || Buffer == PreviousSlot.Previous);
++  }
++  void CodeBufferManager::StopPreviousReuse() {
++    fextl::shared_ptr<CodeBuffer> Retired;
++    { std::scoped_lock lk {LatestMutex}; Retired = PreviousSlot.Stop(); }
++    // Destruction / VirtualFree must be outside LatestMutex.
++  }
++  void CodeBufferManager::ReportPreviousReuse() {
++    auto Candidates = GetReuseCandidates();
++    LogMan::Msg::IFmt("[fex-prev] owner={} attempts={} latest_hits={} previous_hits={} misses={} latest_rx={} previous_rx={} retained_bytes={}",
++      static_cast<void*>(this), ReuseAttempts.load(std::memory_order_relaxed), ReuseLatestHits.load(std::memory_order_relaxed),
++      ReusePreviousHits.load(std::memory_order_relaxed), ReuseMisses.load(std::memory_order_relaxed),
++      Candidates.Latest ? static_cast<void*>(Candidates.Latest->Ptr) : nullptr,
++      Candidates.Previous ? static_cast<void*>(Candidates.Previous->Ptr) : nullptr,
++      Candidates.Previous ? Candidates.Previous->AllocatedSize : 0);
++  }
++  bool CPUBackend::IsInCurrentBuffer(uintptr_t Address) const {
++    IosMigrateLockGuard g {IosMigrateLock};
++    const auto Base = reinterpret_cast<uintptr_t>(CurrentCodeBuffer->Ptr);
++    return Address >= Base && Address - Base < CurrentCodeBuffer->UsableSize();
++  }
++  uintptr_t CPUBackend::TryPreviousCode(uint64_t GuestRIP) {
++    // Never re-enter migration while delivery is using an interrupted compiler.
++    if (!FEXCore::MDeckPrevious::Enabled() || ThreadState->CurrentFrame->SignalHandlerRefCounter ||
++        FEXCore::Utils::WritePriorityMutex::IosEmissionLocksHeldBySelf() ||
++        FEXCore::Utils::WritePriorityMutex::IosUnpublishedCompileActive()) return 0;
++    const auto Attempt = CodeBuffers.ReuseAttempts.fetch_add(1, std::memory_order_relaxed) + 1;
++    auto Candidates = CodeBuffers.GetReuseCandidates();
++    uintptr_t Result = 0;
++    for (auto Candidate : {Candidates.Latest, Candidates.Previous}) {
++      if (!Candidate) continue;
++      fextl::shared_ptr<CodeBuffer> Old;
++      { IosMigrateLockGuard g {IosMigrateLock}; Old = CurrentCodeBuffer; }
++      if (Old == Candidate) continue;
++      uintptr_t Host = 0;
++      {
++        auto Read = Candidate->LookupCache->AcquireReadLock();
++        auto* Entry = Candidate->LookupCache->FindBlock(GuestRIP, Read);
++        if (Entry && Entry->MDeckNormal) Host = Entry->HostCode;
++      }
++      if (!Host) continue;
++      const auto Base = reinterpret_cast<uintptr_t>(Candidate->Ptr);
++      if (Host < Base || Host - Base >= Candidate->UsableSize()) continue;
++      {
++        // Global invalidation shared -> OLD map write -> migration -> leaf.
++        // No two map locks at once; Old pins the lock until its destruction.
++        auto Write = Old->LookupCache->AcquireWriteLock();
++        IosMigrateLockGuard g {IosMigrateLock};
++        if (CurrentCodeBuffer != Old || ThreadState->CurrentFrame->SignalHandlerRefCounter ||
++            !CodeBuffers.IsReuseCandidate(Candidate)) continue;
++        CurrentCodeBuffer = Candidate;
++        ThreadState->LookupCache->ChangeGuestToHostMapping(*Old, *Candidate->LookupCache, Write);
++        FEXCore::Core::ResetCallRetStack(ThreadState, "previous-code");
++        RegisterForSignalHandler(Old);
++      }
++      // Revalidate identity/eligibility under the selected map lock, then fill
++      // its normal L1/L2 and CachedCodePages. Concurrent publications may replace entries.
++      // No foreign HostCode is inserted into another generation's L3.
++      Result = ThreadState->LookupCache->RefillPreviousBlock(GuestRIP, Host);
++      if (Result) {
++        auto& Hits = Candidate == Candidates.Latest ? CodeBuffers.ReuseLatestHits : CodeBuffers.ReusePreviousHits;
++        Hits.fetch_add(1, std::memory_order_relaxed);
++      }
++      break;
++    }
++    if (!Result) CodeBuffers.ReuseMisses.fetch_add(1, std::memory_order_relaxed);
++    if (Attempt <= 8 || (Attempt & 1023) == 0) CodeBuffers.ReportPreviousReuse();
++    return Result;
++  }
++#endif
++
+   auto CPUBackend::GetEmptyCodeBuffer() -> CodeBuffer* {
+ #ifdef FEX_IOS_HOST
+     IosMigrateLockGuard g {IosMigrateLock};
+@@ -561,6 +640,14 @@
+ #endif
+
+   auto CodeBufferManager::AllocateNew(size_t Size) -> fextl::shared_ptr<CodeBuffer> {
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    // Remove the older search entry BEFORE allocating, so it can return pool
++    // space. Existing execution / exception refs remain authoritative.
++    {
++      fextl::shared_ptr<CodeBuffer> Retired;
++      { std::scoped_lock lk {LatestMutex}; Retired = std::move(PreviousSlot.Previous); }
++    }
++#endif
+ #if defined(__linux__)
+ // MDWE (Memory-Deny-Write-Execute) is a new Linux 6.3 feature.
+ // It's equivalent to systemd's `MemoryDenyWriteExecute` but implemented entirely in the kernel.
+@@ -600,8 +687,15 @@
+       static std::atomic<int> GenLogCount {0};
+       long PrevUseCount = 0;
+       size_t PrevSize = 0;
++#if defined(_WIN32)
++      fextl::shared_ptr<CodeBuffer> RetiredPrevious;
++#endif
+       {
+         std::scoped_lock lk {LatestMutex};
++#if defined(_WIN32)
++        RetiredPrevious = PreviousSlot.Rotate(Latest, FEXCore::MDeckPrevious::Enabled(),
++                                              MDeckReasonRequestBytes != 0, Latest ? Latest->AllocatedSize : 0);
++#endif
+         if (Latest) {
+           PrevUseCount = Latest.use_count();
+           PrevSize = Latest->AllocatedSize;
+@@ -626,6 +720,9 @@
+ #endif
+
+     OnCodeBufferAllocated(Buffer);
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    if (FEXCore::MDeckPrevious::Enabled()) ReportPreviousReuse();
++#endif
+
+     return Buffer;
+   }
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interface/Core/CPUBackend.h
+--- a/FEXCore/Source/Interface/Core/CPUBackend.h
++++ b/FEXCore/Source/Interface/Core/CPUBackend.h
+@@ -11,6 +11,7 @@
+
+ #include <FEXCore/Utils/CompilerDefs.h>
+ #include <FEXCore/Utils/SignalScopeGuards.h>
++#include <FEXCore/Utils/PreviousCode.h>
+ #include <FEXCore/fextl/memory.h>
+ #include <FEXCore/fextl/string.h>
+ #include <FEXCore/fextl/vector.h>
+@@ -98,6 +99,15 @@
+     // Subsequent calls to GetLatest will point to the returned buffer.
+     fextl::shared_ptr<CodeBuffer> StartLargerCodeBuffer();
+
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    struct ReuseCandidates { fextl::shared_ptr<CodeBuffer> Latest, Previous; };
++    ReuseCandidates GetReuseCandidates();
++    bool IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer);
++    void StopPreviousReuse();
++    void ReportPreviousReuse();
++    std::atomic<uint64_t> ReuseAttempts {}, ReuseLatestHits {}, ReusePreviousHits {}, ReuseMisses {};
++#endif
++
+     // Write offset into the latest CodeBuffer
+     std::size_t LatestOffset {};
+
+@@ -117,6 +127,9 @@
+
+   private:
+     fextl::shared_ptr<CodeBuffer> Latest;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    FEXCore::MDeckPrevious::Slot<fextl::shared_ptr<CodeBuffer>> PreviousSlot;
++#endif
+
+     fextl::shared_ptr<CodeBuffer> AllocateNew(size_t Size);
+   };
+@@ -207,6 +220,11 @@
+     virtual void ClearRelocations() {}
+
+     bool IsAddressInCodeBuffer(uintptr_t Address) const;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    // Dispatcher miss only; caller holds CodeInvalidationMutex shared.
++    uintptr_t TryPreviousCode(uint64_t GuestRIP);
++    bool IsInCurrentBuffer(uintptr_t Address) const;
++#endif
+
+     // Updates the CodeBuffer if needed and returns a reference to the old one.
+     // The returned reference should be kept alive carefully to avoid early deletion of resources.
+diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
+--- a/FEXCore/Source/Interface/Core/Core.cpp
++++ b/FEXCore/Source/Interface/Core/Core.cpp
+@@ -684,6 +684,9 @@
+     // Clear L1+L2 cache of this thread, and clear L3 cache across any threads using it
+     auto lk = Thread->LookupCache->AcquireWriteLock();
+     Thread->LookupCache->ClearCache(lk);
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    if (FEXCore::MDeckPrevious::Enabled()) Thread->CPUBackend->GetCodeBufferManager().StopPreviousReuse();
++#endif
+   }
+   FEXCore::Core::ResetCallRetStack(Thread, "core");
+ }
+@@ -1494,7 +1497,11 @@
+ }
+ #endif
+
+-uintptr_t ContextImpl::CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
++uintptr_t ContextImpl::CompileBlockFromDispatcher(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
++  return CompileBlock(Frame, GuestRIP, MaxInst, true);
++}
++
++uintptr_t ContextImpl::CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst, bool FromDispatcher) {
+   MDECK_STEAM_SCOPE(SF_DISPATCH);
+   if constexpr (BLOCK_DEBUGGING) {
+     // Block debugging logic is hand-written and needs to be handled with care.
+@@ -2227,6 +2234,15 @@
+   }
+ #endif
+
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  if (FromDispatcher && !IosUnpublished && MaxInst == 0 &&
++      !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]) {
++    if (auto HostCode = Thread->CPUBackend->TryPreviousCode(GuestRIP)) return HostCode;
++  }
++#else
++  (void)FromDispatcher;
++#endif
++
+   // iOS-Madeira: cache miss reached — count as true compile.
+   __sync_add_and_fetch(&g_cb_real_compiles, 1);
+
+@@ -2342,7 +2358,8 @@
+   // Insert to lookup cache
+
+   for (auto [GuestAddr, HostAddr] : CompiledCode.EntryPoints) {
+-    Thread->LookupCache->AddBlockMapping(Thread, GuestAddr, CodePages, HostAddr);
++    Thread->LookupCache->AddBlockMapping(Thread, GuestAddr, CodePages, HostAddr,
++        MaxInst == 0 && NeedsAddGuestCodeRanges && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]);
+   }
+
+   if (CodeMapWriter) {
+diff --git a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+--- a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
++++ b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
+@@ -838,7 +838,7 @@
+   (void)Bind(&l_Sleep);
+   dc64(reinterpret_cast<uint64_t>(SleepThread));
+   (void)Bind(&l_CompileBlock);
+-  FEXCore::Utils::MemberFunctionToPointerCast PMFCompileBlock(&FEXCore::Context::ContextImpl::CompileBlock);
++  FEXCore::Utils::MemberFunctionToPointerCast PMFCompileBlock(&FEXCore::Context::ContextImpl::CompileBlockFromDispatcher);
+   dc64(PMFCompileBlock.GetConvertedPointer());
+   (void)Bind(&l_CompileSingleStep);
+
+diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
+@@ -601,6 +601,12 @@
+       HostCode = Thread->LookupCache->FindBlock(Thread, GuestRip);
+     }
+     if (!HostCode) {
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++      if (FEXCore::MDeckPrevious::Enabled()) {
++        Frame->State.rip = GuestRip;
++        return Frame->Pointers.DispatcherLoopTop;
++      }
++#endif
+       // Hold a reference to the code buffer, to avoid linking unmapped code if compilation triggers a recreation.
+       auto CodeBuffer = static_cast<Arm64JITCore*>(Thread->CPUBackend.get())->CurrentCodeBuffer;
+       HostCode = static_cast<Context::ContextImpl*>(Thread->CTX)->CompileBlock(Frame, GuestRip, 0);
+@@ -622,6 +628,14 @@
+     }
+   }
+
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  if (FEXCore::MDeckPrevious::Enabled() &&
++      (!Thread->CPUBackend->IsInCurrentBuffer(reinterpret_cast<uintptr_t>(Record)) ||
++       !Thread->CPUBackend->IsInCurrentBuffer(HostCode))) {
++    Frame->State.rip = GuestRip;
++    return Frame->Pointers.DispatcherLoopTop;
++  }
++#endif
+   // See ExitFunction in BranchOps.cpp for an assembly level view of the handled cases.
+   uintptr_t JumpThunkStartAddress = reinterpret_cast<uintptr_t>(Record) - 0x10;
+   uintptr_t CallerAddress = JumpThunkStartAddress + Record->CallerOffset;
+diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interface/Core/LookupCache.h
+--- a/FEXCore/Source/Interface/Core/LookupCache.h
++++ b/FEXCore/Source/Interface/Core/LookupCache.h
+@@ -110,6 +110,7 @@
+   struct BlockEntry {
+     uint64_t HostCode;
+     fextl::vector<uint64_t> CodePages;
++    bool MDeckNormal {};
+   };
+
+   fextl::robin_map<uint64_t, BlockEntry> BlockList;
+@@ -119,13 +120,13 @@
+   GuestToHostMap();
+
+   // Adds to Guest -> Host code mapping
+-  const BlockEntry& AddBlockMapping(uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, const LookupCacheWriteLockToken&) {
++  const BlockEntry& AddBlockMapping(uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, const LookupCacheWriteLockToken&, bool MDeckNormal = false) {
+     // This may replace an existing mapping
+     // NOTE: Generally no previous entry should exist, however there is one exception:
+     //       If the backend updates the active thread's CodeBuffer, the new associated LookupCache
+     //       may already contain the block address. Since is comparatively rare, we'll just leak
+     //       one of the two blocks in this case.
+-    return BlockList.insert_or_assign(Address, BlockEntry {(uintptr_t)HostCode, CodePages}).first->second;
++    return BlockList.insert_or_assign(Address, BlockEntry {(uintptr_t)HostCode, CodePages, MDeckNormal}).first->second;
+   }
+
+   const BlockEntry* FindBlock(uint64_t Address, const LookupCacheReadLockToken&) {
+@@ -256,6 +257,16 @@
+
+     return HostPtr;
+   }
++
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  uintptr_t RefillPreviousBlock(uint64_t Address, uintptr_t ExpectedHost) {
++    auto lk = Shared->AcquireReadLock();
++    const auto* Entry = Shared->FindBlock(Address, lk);
++    if (!Entry || !Entry->MDeckNormal || Entry->HostCode != ExpectedHost) return 0;
++    CacheBlockMapping(Address, *Entry, false, lk);
++    return Entry->HostCode;
++  }
++#endif
+
+   void UpdateDynamicL1Stats(FEXCore::Core::InternalThreadState* Thread) {
+     // If host pointer was found in L2 or L3, then add it to the counter.
+@@ -337,13 +348,13 @@
+   }
+
+   // Adds to Guest -> Host code mapping
+-  void AddBlockMapping(FEXCore::Core::InternalThreadState* Thread, uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode) {
++  void AddBlockMapping(FEXCore::Core::InternalThreadState* Thread, uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, bool MDeckNormal = false) {
+     std::optional<FEXCore::SHMStats::AccumulationBlock<uint64_t>> LockTime(
+       Thread->ThreadStats ? &Thread->ThreadStats->AccumulatedCacheWriteLockTime : nullptr);
+     auto lk = Shared->AcquireWriteLock();
+     LockTime.reset();
+
+-    const auto& Entry = Shared->AddBlockMapping(Address, CodePages, HostCode, lk);
++    const auto& Entry = Shared->AddBlockMapping(Address, CodePages, HostCode, lk, MDeckNormal);
+
+     // There is no need to update L1 or L2, they will get updated on first lookup
+     // However, adding to L1 here increases performance

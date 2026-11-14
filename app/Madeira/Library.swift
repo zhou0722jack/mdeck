@@ -5022,6 +5022,21 @@ struct LibraryDetail: View {
                 .accessibilityIdentifier("steam-dfe-scratch-reuse")
                 Text("Reuse temporary storage during code translation. On by default; turn it off to compare performance. Independent of diagnostic logging. Takes effect on the next Steam launch; games following this profile inherit the choice.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Toggle("Previous generation code reuse (experimental)", isOn: Binding(get: {
+                    SteamPreviousCodeSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamPreviousCodeSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The generation reuse setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-previous-code-reuse")
+                Text("Keep the previous translated-code generation for the Steam interface. Off by default; may use additional memory. Independent of diagnostics. Takes effect on the next Steam launch.")
+                    .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Diagnostics") {
                 Toggle("Compilation reason logging", isOn: Binding(get: {
