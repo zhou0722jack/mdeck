@@ -5,6 +5,7 @@ Run in GitHub Actions. No IPA, simulator or product linking is performed. The
 full Winios translation unit also receives an iPhoneOS syntax-only check.
 """
 from pathlib import Path
+import json
 import re
 import subprocess
 import tempfile
@@ -13,7 +14,6 @@ root = Path(__file__).resolve().parents[2]
 native = root / 'app/Madeira/Winios'
 source = (native / 'Winios.m').read_text()
 bridge = (root / 'app/Madeira/WineProcessBridge.m').read_text()
-workflow = (root / '.github/workflows/build.yml').read_text()
 
 c_test = r'''
 #include <assert.h>
@@ -257,5 +257,5 @@ assert len(re.findall(r'winios_allocation_stats_configure\(0\);\s+winios_surface
 assert bridge.index('unsetenv("MADEIRA_STEAM_ALLOC_STATS")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
 assert bridge.index('e = getenv("MADEIRA_STEAM_ALLOC_STATS");') > bridge.index('dup2(logfd, STDERR_FILENO);')
 assert 'winios_allocation_stats_configure(e && *e && strcmp(e, "0"));' in bridge
-assert 'python3 tests/host/check-steam-surface-stats.py' in workflow
+assert 'check-steam-surface-stats.py' in json.loads((root / 'tools/build/ci-check-groups.json').read_text())['runtime']
 print('PASS integration: independent lifecycle, all surface exits accounted for, environment precedence and checks-only workflow')

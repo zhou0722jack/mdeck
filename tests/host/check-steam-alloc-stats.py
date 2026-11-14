@@ -5,6 +5,7 @@ The allocator bodies beneath the wrappers are controlled fixtures; no Wine task,
 guest allocator, app build or physical-device success is implied.
 """
 from pathlib import Path
+import json
 import re
 import subprocess
 import tempfile
@@ -234,5 +235,5 @@ assert 'ios_steam_alloc_stats_configure' not in surface_adapter and 'ios_steam_a
 assert 'g_allocation_stats_timer' in allocation_adapter and 'g_surface_stats_timer' not in allocation_adapter
 assert 'ios_steam_alloc_stats_configure(enabled, epoch);' in allocation_adapter
 assert 'ios_steam_alloc_stats_report(epoch);' in allocation_adapter
-assert 'python3 tests/host/check-steam-alloc-stats.py' in (root / '.github/workflows/build.yml').read_text()
+assert 'check-steam-alloc-stats.py' in json.loads((root / 'tools/build/ci-check-groups.json').read_text())['runtime']
 print('PASS integration: independent allocation switch, timer and epoch; window diagnostics cannot enable/reset it; allocation search and return policies unchanged')
