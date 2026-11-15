@@ -149,8 +149,8 @@ int main(void){
   for(unsigned q=0;q<sizeof(values)/sizeof(values[0]);q++) {
     struct sr_metric m={0};sr_add(&m,values[q]);assert(sr_metric_p95_ticks(&m)==values[q]);
   }
-  struct sr_metric q={0},other={0};for(unsigned i=0;i<95;i++)sr_add(&q,3);
-  for(unsigned i=0;i<5;i++)sr_add(&other,100);sr_metric_merge(&q,&other);
+  struct sr_metric q={0},quantile_tail={0};for(unsigned i=0;i<95;i++)sr_add(&q,3);
+  for(unsigned i=0;i<5;i++)sr_add(&quantile_tail,100);sr_metric_merge(&q,&quantile_tail);
   assert(sr_metric_p95_ticks(&q)==4&&q.count==100);
   struct sr_metric huge={0};huge.count=UINT64_MAX;huge.quantile[SR_QUANTILE_BUCKETS-1]=UINT64_MAX;huge.max_ticks=UINT64_MAX;
   assert(sr_metric_p95_ticks(&huge)==UINT64_MAX);
