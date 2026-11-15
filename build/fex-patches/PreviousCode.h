@@ -19,6 +19,11 @@ inline bool Enabled() {
   return false;
 #endif
 }
+// Entry was checked before acquiring the normal invalidation read lock. At
+// lookup time require exactly that one read, no writer and no unpublished mode.
+inline bool NormalReadScope(bool valid, unsigned sharedDepth, bool bufferWriter, bool unpublished) {
+  return valid && sharedDepth == 1 && !bufferWriter && !unpublished;
+}
 // Externally serialized by LatestMutex. Return retired refs to the caller so
 // their destructor (VirtualFree / notifications) runs AFTER that leaf lock.
 template<typename Pointer> struct Slot {

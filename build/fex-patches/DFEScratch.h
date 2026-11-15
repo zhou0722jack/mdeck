@@ -60,6 +60,7 @@ public:
     std::optional<Storage> Fallback;
     Storage* Data;
     bool Borrowed;
+    bool Released {};
   public:
     explicit Lease(DFEScratch& Owner, bool Reuse = true) : Owner(Owner), Borrowed(Reuse && !Owner.Busy) {
       if (Borrowed) {
@@ -68,8 +69,13 @@ public:
         Owner.Busy = true;
       } else Data = &Fallback.emplace();
     }
-    ~Lease() {
+    ~Lease() { Release(); }
+    bool IsBorrowed() const { return Borrowed; }
+    void Release() {
+      if (Released) return;
+      Released = true;
       if (Borrowed) { Data->Reset(); Owner.Busy = false; }
+      else Fallback.reset();
       // Fresh/off and reentrant fallback storage is destroyed normally. No
       // extra cleanup walk is needed when none of its capacity is retained.
     }

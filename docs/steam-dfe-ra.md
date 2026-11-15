@@ -137,7 +137,7 @@ TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和
 - `check-dfe-scratch.py` 在临时副本应用补丁，提取真实前后 CFG 编译为 ASAN/UBSAN
   fixture，比较边顺序、digest、sentinel 和工作队列轨迹；计数分配器检查同尺寸
   热存储不重复分配 BlockMap/前驱/Seen，覆盖变大变小、嵌套、异常退出、容量释放。
-  同时要求原分析/IR 重写函数和传播/恢复代码保持逐字一致。这不是 guest IR 执行测试。
+  同时要求仅剥除明确新增的观测语句后，原分析/IR 重写函数和传播/恢复代码保持逐字一致。这不是 guest IR 执行测试。
 - `check-steam-compile-reasons.py` 增加 RA stride、正常/未完成样本、阶段对账、默认
   关闭、跨实例汇总、旧 epoch 丢弃及宿主格式用例；原完整补丁链检查继续覆盖所有补丁。
   新细项用例检查请求数与实际发出次数分开、正常和异常扫描、扫描计时嵌套、合并计数、
@@ -156,3 +156,24 @@ TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和
 未启用复用时不创建缓存 deque，配置继承/覆盖/去重、与诊断开关独立、两条 PE
 路径先于 InitCore 初始化、会话环境重置和中文界面。新增用例尚未执行；静态审查
 不能代替完整 FEX 编译与实机对比。
+
+## ABI v6：容量、扫描与 merge 结果
+
+DFE 在第 1、65、129……个有效调用观测 BlockMap、单个 predecessor vector、Seen
+的容量变化及 payload 增长，统计 CFG gather/validation/digest、实际 reverse/parity
+节点访问、边、队列 push/pop 与逻辑长度高水位，以及借用缓存/独立 fallback。
+保留现有容量上限与 oversize 释放策略；本轮没有扩大缓存或删除 gather/校验/传播。
+清理通过幂等 Lease.Release 执行，正常返回、提前返回及 C++ 展开都记录嵌套 cleanup。
+
+RA 沿已有 stride=64 样本记录 PreferredReg/SSAToReg/Seen/NextUses/SpillSlots/
+SourcesNextUses 容量，并观测数组初始化/清理。Seen 的 capacity/used 单位为字节，
+其余 vector 为元素；日志明确 unit。没有新增完整扫描，原 reverse/forward 计数保留。
+merge 输出区分返回 true、发生改写但返回 false，以及末尾因寄存器不同或 move 条件不满足
+而返回 false。后两项仅解释末尾判断，不是每种 opcode 资格失败的完整分类；没有提前跳过
+merge，CPUID/XGETBV/除法中的有用改写保留。
+
+已有所有 pass 的调用数、输入/输出 SSA、wall 与新 p95 上界仍全量记录；实际循环工作量
+本轮覆盖 DFE/RA 指定位置，x87/validation/dump 的逐节点访问尚未单独插桩，不能拿 SSA
+槽位冒充其真实扫描数。vector 容量差也不是整个 pass 的 malloc 统计。详细字段边界见
+[编译原因日志](steam-compile-reasons.md)。先在同场景固定诊断设置比较 DFE_REUSE=0/1，
+再结合输入尺寸、DFE wall、renderer/进程 CPU 和容量增长决定是否继续优化。

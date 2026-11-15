@@ -59,7 +59,7 @@ Steam 根据保存的开关重新启用。本功能不暂停任何线程。
 留在其所在阶段。因此不能据 `backend_ms`、`decode_ir_ms` 或 `output_ms` 推导 CPU
 占用，也不能声称已经测到所有锁等待。与热点检测的包含式计时不可直接相加。
 
-## GenerateIR 内部分段（当前 ABI v5）
+## GenerateIR 内部分段（当前 ABI v6）
 
 沿用同一个开关、45 秒窗口和完成事件预算。没有给每条 guest 指令增加时钟读取；
 使用调用栈上的 Capture 指针传递上下文，不使用 TLS 或全局“当前编译”指针。
@@ -110,7 +110,7 @@ GenerateIR 总时间。`pass_manager_ms - pass_sum_ms` 是管理/检查/计时�
 新增统计在现有完成事件的 try-lock 内汇总，不增加每个 pass 的共享锁。线程本地
 Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读取新增时钟，不扫描 IR。
 新增每秒输出和快照复制仍有成本，快照放在报告线程堆上，避免扩大工作线程栈占用。
-宿主和 WoW64/ARM64EC 使用 ABI v5 配套 magic/大小，不支持混用旧版本。
+宿主和 WoW64/ARM64EC 使用 ABI v6 配套 magic/大小，不支持混用旧版本。
 
 ## RA 抽样分段（ABI v5）
 
@@ -127,6 +127,40 @@ Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读
 
 DFE 临时存储复用由独立的 `env.MADEIRA_FEX_DFE_REUSE` 控制，默认开启，精确 `0` 关闭；不依赖日志开关。容量限制、状态清理、采样边界与验收细节见
 [DFE/RA 说明](steam-dfe-ra.md)。当前版本没有改变 RA 分配算法或移除安全校验。
+
+## 容量、遍历和分位统计（ABI v6）
+
+沿用原开关；共享 magic 升至 v6，宿主与两套 PE 必须一起更新。
+新增三类累计日志，同一事件的 global/instance/thread 视图不可相加：
+
+- `steam-compile-storage`：container、unit、observations、growths、no_growth、
+  capacity_max、used_max、growth_payload_bytes。vector 在原有 resize/reserve/插入
+  前后读取容量；growth_payload_bytes 是正容量差乘元素大小，不是 malloc 次数或总分配字节。
+  no_growth 表示该观测没有扩容，不保证没有其他分配。前驱的 max 是单个前驱 vector，
+  不是所有块前驱容量总和。RA Seen 是位压缩 vector，按向上取整的字节统计。
+- `steam-compile-work`：沿已有工作点统计每次 CompileCode 的总量/最大量/有观测调用数。
+  DFE/RA 细项按各自每 64 次调用抽样，附 dfe_samples/ra_samples；不能乘 64 外推。
+  工作队列 high 是一次调用观察到的最大逻辑长度，不是 deque 内部分段容量。
+- `steam-compile-operation`：原操作的嵌套 wall、调用次数、最大值及 p95 上界。
+  包括 decoder reset/pool claim、IR reset、DFE init/Seen/cleanup、RA init/cleanup；
+  resize 包括可能的扩容与初始化，不能把整个时间称为纯清零或纯分配时间。
+
+Decode 的 Blocks vector 插入/拆块/坏重定位回退有容量观测；解码池及 IR data/list
+是固定 backing，记录容量和已用量。pool claim 可能重用或新分配，当前没有 allocator
+hook，因此不会声称记录到完整的堆分配次数。set、JumpTargets 只记录逻辑节点数；
+尚未统计其节点分配和 deque 分段分配。诊断输出显式写 allocator_calls=unmeasured。
+
+CompileCode 总 wall、各 pass、RA 样本调用和辅助操作增加 `p95_upper_ms`。
+采用 24 桶 ceil(log2 ticks) 直方图，nearest-rank p95 返回所在桶上界，并限制为实际
+最大值；饱和桶返回观测最大值。它是近似上界，可能明显高于精确 p95。
+GenerateIR 的 `phase_visit_p95_upper_ms` 按 other/setup/decode/build/finalize/pass_manager
+顺序输出，分母是阶段访问，不是整次调用。分位数不能跨秒相加、平均或直接相减求区间分位；
+总 wall 的 p95 才以完成的 CompileCode 调用为单位。
+
+容量读取、抽样计数、固定直方图合并和输出都会增加开销；没有新增共享锁、每节点时钟或
+为统计而增加 IR 遍历。默认关闭不初始化新增 frontend 大数组；应以同场景诊断开关 A/B
+确认测量开销。Actions 用例覆盖桶边界/饱和/大计数、合并/epoch、容量增长/复用、C++ 展开和
+原生 logger 字段；本轮只完成静态审查，尚未执行这些用例或构建。
 
 ## 代码身份、指纹与实例配额
 
@@ -156,7 +190,7 @@ ABI v2 不再共用一个 65,536 槽的历史表。PE 初始化时只读自身 P
   完成事件计数；只有 generated 且指纹和代信息有效时归入同名 unknown 原因。
   未识别为 CEF 的进程使用普通配额，须检查实际 `target` 和 `pid`。
 
-历史存储共 1,179,648 槽，每槽 112 字节，约 126 MiB，另有不到 1 MiB 的汇总元数据。
+历史存储共 1,179,648 槽，每槽 112 字节，约 126 MiB，另有汇总元数据；ABI v6 的直方图增加元数据体积，以 enabled 行的 storage_bytes/metric_bytes/frontend_bytes/report_bytes 为准。
 仅首次开启时 calloc，之后永久保留；未触及的页可按需提交，实际 footprint 不等于
 预留大小，但大量分散写入会显著增加驻留内存。开启日志的内存和计时开销必须实测，
 不能假定无成本。默认关闭时不分配共享区。使用 epoch 隔离会话，不扫描或清空整个

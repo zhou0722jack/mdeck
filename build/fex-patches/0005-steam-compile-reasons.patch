@@ -141,12 +141,25 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    FEX_MadeiraIRCapClear(); // ml623: never inherit a previous compile's mark
 
    /* iOS-Madeira ml250: Thread->OpDispatcher has been observed NULL here, faulting as
-@@ -936,11 +938,14 @@
+@@ -906,7 +908,10 @@
+     return {};
+   }
+
+-  Thread->OpDispatcher->ResetWorkingList();
++  {
++    FEXCore::CompileReason::AuxScope ResetTiming(Reason, SR_AUX_IR_POOL);
++    Thread->OpDispatcher->ResetWorkingList();
++  }
+
+   uint64_t TotalInstructions {0};
+   uint64_t TotalInstructionsLength {0};
+@@ -936,11 +941,14 @@
      bool HadInvalidInst {false};
 
      /* perf-silenced */ // LogMan::Msg::IFmt("[iOS] GenerateIR: Calling DecodeInstructionsAtEntry...");
+-    Thread->FrontendDecoder->DecodeInstructionsAtEntry(Thread, GuestCode, GuestRIP, MaxInst);
 +    if (Reason) Reason->IRStage(SR_IR_DECODE);
-     Thread->FrontendDecoder->DecodeInstructionsAtEntry(Thread, GuestCode, GuestRIP, MaxInst);
++    Thread->FrontendDecoder->DecodeInstructionsAtEntry(Thread, GuestCode, GuestRIP, MaxInst, Reason);
 +    if (Reason) Reason->IRStage(SR_IR_BUILD);
      /* perf-silenced */ // LogMan::Msg::IFmt("[iOS] GenerateIR: DecodeInstructionsAtEntry returned");
 
@@ -156,7 +169,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
      /* perf-silenced GenerateIR Blocks log */
 
-@@ -973,6 +978,7 @@
+@@ -973,6 +981,7 @@
 
      for (size_t j = 0; j < CodeBlocks->size(); ++j) {
        const FEXCore::Frontend::Decoder::DecodedBlocks& Block = CodeBlocks->at(j);
@@ -164,7 +177,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
  #ifdef ZYDIS_DISASSEMBLER
        if (FEXCore::Config::Get_X86DISASSEMBLE() && CodeBlocks->size() > 1) {
-@@ -1016,6 +1022,7 @@
+@@ -1016,6 +1025,7 @@
 
          TableInfo = Block.DecodedInstructions[i].TableInfo;
          DecodedInfo = &Block.DecodedInstructions[i];
@@ -172,11 +185,12 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
  #ifdef ZYDIS_DISASSEMBLER
          if (FEXCore::Config::Get_X86DISASSEMBLE()) {
-@@ -1203,12 +1210,17 @@
+@@ -1203,12 +1213,18 @@
      }
  #endif
 
 +    if (Reason) Reason->IRStage(SR_IR_FINALIZE);
++    if (Reason) Reason->Work(SR_SCAN_IR_JUMP_TARGETS, Thread->OpDispatcher->MDeckJumpTargetCount());
      Thread->OpDispatcher->Finalize();
 +    if (Reason) Reason->IRStage(SR_IR_OTHER);
 
@@ -190,7 +204,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
    auto ShouldDump = Thread->OpDispatcher->ShouldDumpIR();
    // Debug
-@@ -1217,13 +1229,16 @@
+@@ -1217,13 +1233,19 @@
    }
 
    // Run the passmanager over the IR from the dispatcher
@@ -204,11 +218,14 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
      IRDumper(Thread, IREmitter, GuestRIP);
    }
 
-+  if (Reason) Reason->IRReturned(IREmitter->ViewIR().GetSSACount());
++  if (Reason) {
++    Reason->IRReturned(IREmitter->ViewIR().GetSSACount());
++    IREmitter->MDeckStorage(Reason);
++  }
    return {
      .IRView = IREmitter->ViewIR(),
      .TotalInstructions = TotalInstructions,
-@@ -1237,6 +1252,9 @@
+@@ -1237,6 +1259,9 @@
  ContextImpl::CompileCodeResult ContextImpl::CompileCode(FEXCore::Core::InternalThreadState* Thread, uint64_t GuestRIP, uint64_t MaxInst) {
    MDECK_STEAM_SCOPE(SF_COMPILE);
    // [iOS-Madeira] verbose CompileCode logs suppressed — flooding log faster than splash
@@ -218,7 +235,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
    if (SourcecodeResolver && Config.GDBSymbols()) {
      auto MappedSection = SyscallHandler->LookupExecutableFileSection(Thread, GuestRIP);
-@@ -1246,9 +1264,11 @@
+@@ -1246,9 +1271,11 @@
      }
    }
 
@@ -231,7 +248,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    if (!IRView) {
      // OpDispatcher IR already released in this case.
      FEX_MadeiraIRCapClear(); // ml623
-@@ -1262,9 +1282,11 @@
+@@ -1262,9 +1289,11 @@
    // as expensive and are easily reverted.
    /* ml455 (#74): skip the recheck under a delivery compile — FindBlock takes
     * the lookup read lock our interrupted frame may write-own. */
@@ -243,7 +260,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
        FEX_MadeiraIRCapClear(); // ml623
        Thread->OpDispatcher->DelayedDisownBuffer();
        return {.CompiledCode = {.BlockBegin = reinterpret_cast<uint8_t*>(Block), .EntryPoints = {{GuestRIP, reinterpret_cast<uint8_t*>(Block)}}},
-@@ -1275,12 +1297,22 @@
+@@ -1275,12 +1304,22 @@
      }
    }
 
@@ -267,6 +284,173 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 
    /* ml623: the final arm of the capture -- the host bytes actually emitted for the
     * target instruction, bounded to [its HostEntryOffset, the next one). This is the
+diff --git a/FEXCore/Source/Interface/Core/Frontend.cpp b/FEXCore/Source/Interface/Core/Frontend.cpp
+--- a/FEXCore/Source/Interface/Core/Frontend.cpp
++++ b/FEXCore/Source/Interface/Core/Frontend.cpp
+@@ -1126,7 +1126,7 @@
+   return DecodedBlockStatus::SUCCESS;
+ }
+
+-void Decoder::BranchTargetInMultiblockRange() {
++void Decoder::BranchTargetInMultiblockRange(FEXCore::CompileReason::Capture* Reason) {
+   if (!CTX->Config.Multiblock) {
+     return;
+   }
+@@ -1145,7 +1145,7 @@
+       return;
+     }
+
+-    AddBranchTarget(InstEnd);
++    AddBranchTarget(InstEnd, Reason);
+     BlockInfo.EntryPoints.emplace(InstEnd);
+     return;
+   }
+@@ -1178,7 +1178,7 @@
+
+   if (Conditional) {
+     // If we are conditional then a target can be the instruction past the conditional instruction
+-    AddBranchTarget(InstEnd);
++    AddBranchTarget(InstEnd, Reason);
+   }
+
+   // If the target RIP is x86 code within the symbol ranges then we are golden
+@@ -1198,7 +1198,7 @@
+       MaxCondBranchBackwards = std::min(MaxCondBranchBackwards, TargetRIP);
+     }
+
+-    AddBranchTarget(TargetRIP);
++    AddBranchTarget(TargetRIP, Reason);
+   } else {
+     if (ExternalBranches) {
+       ExternalBranches->insert(TargetRIP);
+@@ -1320,7 +1320,7 @@
+   return false;
+ }
+
+-void Decoder::AddBranchTarget(uint64_t Target) {
++void Decoder::AddBranchTarget(uint64_t Target, FEXCore::CompileReason::Capture* Reason) {
+   if (VisitedBlocks.contains(Target)) {
+     return;
+   }
+@@ -1360,7 +1360,10 @@
+         BlockIt->Size = SplitOffset;
+         BlockIt->NumInstructions = SplitIdx;
+
+-        BlockInfo.Blocks.insert(BlockSuccIt, SplitBlock);
++        {
++          FEXCore::CompileReason::VectorScope Capacity(Reason, SR_CAP_IR_BLOCKS, BlockInfo.Blocks);
++          BlockInfo.Blocks.insert(BlockSuccIt, SplitBlock);
++        }
+       } // else misaligned, leave as a branch out of the block
+
+       // If we split a block then the target has already been visited as part of that, if it was
+@@ -1480,16 +1483,24 @@
+   return !Uncacheable;
+ }
+
+-void Decoder::DecodeInstructionsAtEntry(FEXCore::Core::InternalThreadState* Thread, const uint8_t* _InstStream, uint64_t PC, uint64_t MaxInst) {
++void Decoder::DecodeInstructionsAtEntry(FEXCore::Core::InternalThreadState* Thread, const uint8_t* _InstStream, uint64_t PC, uint64_t MaxInst, FEXCore::CompileReason::Capture* Reason) {
+   FEXCORE_PROFILE_SCOPED("DecodeInstructions");
+   BlockInfo.TotalInstructionCount = 0;
+-  BlockInfo.Blocks.clear();
+-  VisitedBlocks.clear();
++  {
++    FEXCore::CompileReason::AuxScope ResetTiming(Reason, SR_AUX_DECODE_RESET);
++    BlockInfo.Blocks.clear();
++    VisitedBlocks.clear();
++  }
+   // Reset internal state management
+   DecodedSize = 0;
+   MaxCondBranchForward = 0;
+   MaxCondBranchBackwards = ~0ULL;
+-  DecodedBuffer = PoolObject.ReownOrClaimBuffer();
++  {
++    FEXCore::CompileReason::AuxScope PoolTiming(Reason, SR_AUX_DECODE_POOL);
++    DecodedBuffer = PoolObject.ReownOrClaimBuffer();
++  }
++  if (Reason) Reason->Storage(SR_CAP_DECODE_POOL, DefaultDecodedBufferSize, DefaultDecodedBufferSize,
++                              sizeof(FEXCore::X86Tables::DecodedInst), 0);
+
+   // Decode operating mode from thread's CS segment.
+   const auto CSSegment = Core::CPUState::GetSegmentFromIndex(Thread->CurrentFrame->State, Thread->CurrentFrame->State.cs_idx);
+@@ -1556,7 +1567,9 @@
+     LOGMAN_THROW_A_FMT(NextBlockStartAddress > RIPToDecode, "unexpected");
+
+     // Insert the block now so it can be looked up and split if necessary on a backward edge
++    const auto BeforeCapacity = Reason ? BlockInfo.Blocks.capacity() : 0;
+     auto BlockIt = BlockInfo.Blocks.emplace(BlockSuccIt);
++    if (Reason) Reason->Storage(SR_CAP_IR_BLOCKS, BeforeCapacity, BlockInfo.Blocks.capacity(), sizeof(DecodedBlocks), BlockInfo.Blocks.size());
+
+     BlockIt->Entry = RIPToDecode;
+     BlockIt->Size = 0;
+@@ -1605,7 +1618,10 @@
+       BlockIt->BlockStatus = DecodeInstruction(OpAddress);
+       if (HitBadRelocation) {
+         BlockInfo.TotalInstructionCount = 0;
+-        BlockInfo.Blocks = {*BlockIt};
++        {
++          FEXCore::CompileReason::VectorScope Capacity(Reason, SR_CAP_IR_BLOCKS, BlockInfo.Blocks);
++          BlockInfo.Blocks = {*BlockIt};
++        }
+         BlockInfo.EntryPoints.clear();
+         BlockInfo.CodePages.clear();
+         return;
+@@ -1662,7 +1678,7 @@
+           // NOTE: This will invalidate BlockIt, this is fine as we immediately break from the loop and EraseBlock cannot be true
+           BlockIt->ForceFullSMCDetection =
+             (CTX->AreMonoHacksActive() && IsBranchMonoTailcall(BlockIt->NumInstructions)) || IsBranchToSelf();
+-          BranchTargetInMultiblockRange();
++          BranchTargetInMultiblockRange(Reason);
+         }
+
+         break;
+@@ -1684,6 +1700,12 @@
+   }
+
+   BlockInfo.TotalInstructionCount = TotalInstructions;
++  if (Reason) {
++    Reason->Work(SR_SCAN_DECODE_BLOCKS, BlockInfo.Blocks.size());
++    Reason->Work(SR_SCAN_DECODE_SET_NODES, VisitedBlocks.size()+BlockInfo.EntryPoints.size()+BlockInfo.CodePages.size());
++    Reason->Storage(SR_CAP_DECODE_POOL, DefaultDecodedBufferSize, DefaultDecodedBufferSize,
++                    sizeof(FEXCore::X86Tables::DecodedInst), DecodedSize);
++  }
+   /* [iOS-Madeira] verbose Decoder log suppressed */ // LogMan::Msg::IFmt("[iOS] Decoder: Done! TotalInstructions={}, Blocks={}", TotalInstructions, BlockInfo.Blocks.size());
+
+   for (auto& Block : BlockInfo.Blocks) {
+diff --git a/FEXCore/Source/Interface/Core/Frontend.h b/FEXCore/Source/Interface/Core/Frontend.h
+--- a/FEXCore/Source/Interface/Core/Frontend.h
++++ b/FEXCore/Source/Interface/Core/Frontend.h
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ #pragma once
++#include <FEXCore/Utils/SteamCompileReason.h>
+
+ #include "Interface/Core/X86Tables/X86Tables.h"
+ #include "Interface/IR/IR.h"
+@@ -57,7 +58,7 @@
+   Decoder(FEXCore::Core::InternalThreadState* Thread);
+   bool CheckIfCacheable(FEXCore::Core::InternalThreadState&, const uint8_t* InstStream, uint64_t PC, uint64_t MaxInst);
+
+-  void DecodeInstructionsAtEntry(FEXCore::Core::InternalThreadState* Thread, const uint8_t* InstStream, uint64_t PC, uint64_t MaxInst);
++  void DecodeInstructionsAtEntry(FEXCore::Core::InternalThreadState* Thread, const uint8_t* InstStream, uint64_t PC, uint64_t MaxInst, FEXCore::CompileReason::Capture* Reason = nullptr);
+
+   const DecodedBlockInformation* GetDecodedBlockInfo() const {
+     return &BlockInfo;
+@@ -96,12 +97,12 @@
+   DecodedBlockStatus DecodeInstructionImpl(uint64_t PC);
+   DecodedBlockStatus DecodeInstruction(uint64_t PC);
+
+-  void BranchTargetInMultiblockRange();
++  void BranchTargetInMultiblockRange(FEXCore::CompileReason::Capture* Reason);
+   bool IsBranchMonoTailcall(uint64_t NumInstructions) const;
+   bool IsBranchToSelf() const;
+   bool InstCanContinue() const;
+
+-  void AddBranchTarget(uint64_t Target);
++  void AddBranchTarget(uint64_t Target, FEXCore::CompileReason::Capture* Reason);
+
+   bool CheckRangeExecutable(uint64_t Address, uint64_t Size);
+
 diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 --- a/FEXCore/Source/Interface/Core/JIT/JIT.cpp
 +++ b/FEXCore/Source/Interface/Core/JIT/JIT.cpp
@@ -372,6 +556,39 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Inter
 
    void ClearRelocations() override {
      Relocations.clear();
+diff --git a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+--- a/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
++++ b/FEXCore/Source/Interface/Core/OpcodeDispatcher.h
+@@ -122,6 +122,7 @@
+
+ class OpDispatchBuilder final : public IREmitter {
+ public:
++  size_t MDeckJumpTargetCount() const { return JumpTargets.size(); }
+   Ref GetNewJumpBlock(uint64_t RIP) {
+     auto it = JumpTargets.find(RIP);
+     LOGMAN_THROW_A_FMT(it != JumpTargets.end(), "Couldn't find block generated for 0x{:x}", RIP);
+diff --git a/FEXCore/Source/Interface/IR/IREmitter.h b/FEXCore/Source/Interface/IR/IREmitter.h
+--- a/FEXCore/Source/Interface/IR/IREmitter.h
++++ b/FEXCore/Source/Interface/IR/IREmitter.h
+@@ -1,5 +1,6 @@
+ // SPDX-License-Identifier: MIT
+ #pragma once
++#include <FEXCore/Utils/SteamCompileReason.h>
+
+ #include "CodeEmitter/Emitter.h"
+ #include "Interface/IR/IR.h"
+@@ -36,6 +37,11 @@
+     DualListData.DelayedDisownBuffer();
+   }
+
++  void MDeckStorage(FEXCore::CompileReason::Capture* Reason) const {
++    if (!Reason) return;
++    Reason->Storage(SR_CAP_IR_DATA, DualListData.DataBackingSize(), DualListData.DataBackingSize(), 1, DualListData.DataSize());
++    Reason->Storage(SR_CAP_IR_LIST, DualListData.ListBackingSize(), DualListData.ListBackingSize(), 1, DualListData.ListSize());
++  }
+   IRListView ViewIR() {
+     return IRListView(&DualListData);
+   }
 diff --git a/FEXCore/Source/Interface/IR/PassManager.cpp b/FEXCore/Source/Interface/IR/PassManager.cpp
 --- a/FEXCore/Source/Interface/IR/PassManager.cpp
 +++ b/FEXCore/Source/Interface/IR/PassManager.cpp

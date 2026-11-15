@@ -14,7 +14,7 @@ diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interfa
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -396,6 +396,123 @@
+@@ -396,6 +396,132 @@
    } // namespace
  #endif
 
@@ -38,6 +38,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +    LogMan::Msg::IFmt("[fex-prev] owner={} dispatcher_misses={} attempts={} latest_candidates={} previous_candidates={} latest_entries={} previous_entries={} "
 +      "reject_maxinst={} reject_tf={} reject_delivery={} reject_signal={} reject_no_entry={} reject_non_normal={} reject_host_range={} "
 +      "migration_attempts={} migration_switches={} refill_attempts={} refill_hits={} refill_misses={} fallback_compiles={} "
++      "entry_delivery={} normal_read_scope={} reject_read_depth={} reject_buffer_writer={} reject_unpublished={} reject_unknown_context={} "
 +      "latest_hits={} previous_hits={} misses={} latest_rx={} previous_rx={} retained_bytes={}",
 +      static_cast<void*>(this), ReuseDispatcherMisses.load(std::memory_order_relaxed), ReuseAttempts.load(std::memory_order_relaxed),
 +      ReuseLatestCandidates.load(std::memory_order_relaxed), ReusePreviousCandidates.load(std::memory_order_relaxed),
@@ -48,7 +49,10 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      ReuseRejectHostRange.load(std::memory_order_relaxed), ReuseMigrationAttempts.load(std::memory_order_relaxed),
 +      ReuseMigrationSwitches.load(std::memory_order_relaxed), ReuseRefillAttempts.load(std::memory_order_relaxed),
 +      ReuseRefillHits.load(std::memory_order_relaxed), ReuseRefillMisses.load(std::memory_order_relaxed),
-+      ReuseFallbackCompiles.load(std::memory_order_relaxed), ReuseLatestHits.load(std::memory_order_relaxed),
++      ReuseFallbackCompiles.load(std::memory_order_relaxed), ReuseEntryDelivery.load(std::memory_order_relaxed),
++      ReuseNormalReadScope.load(std::memory_order_relaxed), ReuseRejectReadDepth.load(std::memory_order_relaxed),
++      ReuseRejectBufferWriter.load(std::memory_order_relaxed), ReuseRejectUnpublished.load(std::memory_order_relaxed),
++      ReuseRejectUnknownContext.load(std::memory_order_relaxed), ReuseLatestHits.load(std::memory_order_relaxed),
 +      ReusePreviousHits.load(std::memory_order_relaxed), ReuseMisses.load(std::memory_order_relaxed),
 +      Candidates.Latest ? static_cast<void*>(Candidates.Latest->Ptr) : nullptr,
 +      Candidates.Previous ? static_cast<void*>(Candidates.Previous->Ptr) : nullptr,
@@ -66,11 +70,16 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      CodeBuffers.ReuseRejectSignal.fetch_add(1, std::memory_order_relaxed);
 +      return 0;
 +    }
-+    if (FEXCore::Utils::WritePriorityMutex::IosEmissionLocksHeldBySelf() ||
-+        FEXCore::Utils::WritePriorityMutex::IosUnpublishedCompileActive()) {
++    const auto Scope = FEXCore::Utils::WritePriorityMutex::IosGetReuseScopeState();
++    if (!FEXCore::MDeckPrevious::NormalReadScope(Scope.Valid, Scope.SharedDepth, Scope.BufferWriter, Scope.Unpublished)) {
++      if (!Scope.Valid) CodeBuffers.ReuseRejectUnknownContext.fetch_add(1, std::memory_order_relaxed);
++      if (Scope.SharedDepth != 1) CodeBuffers.ReuseRejectReadDepth.fetch_add(1, std::memory_order_relaxed);
++      if (Scope.BufferWriter) CodeBuffers.ReuseRejectBufferWriter.fetch_add(1, std::memory_order_relaxed);
++      if (Scope.Unpublished) CodeBuffers.ReuseRejectUnpublished.fetch_add(1, std::memory_order_relaxed);
 +      CodeBuffers.ReuseRejectDelivery.fetch_add(1, std::memory_order_relaxed);
 +      return 0;
 +    }
++    CodeBuffers.ReuseNormalReadScope.fetch_add(1, std::memory_order_relaxed);
 +    CodeBuffers.ReuseAttempts.fetch_add(1, std::memory_order_relaxed);
 +    auto Candidates = CodeBuffers.GetReuseCandidates();
 +    uintptr_t Result = 0;
@@ -138,7 +147,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
    auto CPUBackend::GetEmptyCodeBuffer() -> CodeBuffer* {
  #ifdef FEX_IOS_HOST
      IosMigrateLockGuard g {IosMigrateLock};
-@@ -561,6 +640,14 @@
+@@ -561,6 +687,14 @@
  #endif
 
    auto CodeBufferManager::AllocateNew(size_t Size) -> fextl::shared_ptr<CodeBuffer> {
@@ -153,7 +162,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
  #if defined(__linux__)
  // MDWE (Memory-Deny-Write-Execute) is a new Linux 6.3 feature.
  // It's equivalent to systemd's `MemoryDenyWriteExecute` but implemented entirely in the kernel.
-@@ -600,8 +687,15 @@
+@@ -600,8 +734,15 @@
        static std::atomic<int> GenLogCount {0};
        long PrevUseCount = 0;
        size_t PrevSize = 0;
@@ -169,7 +178,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
          if (Latest) {
            PrevUseCount = Latest.use_count();
            PrevSize = Latest->AllocatedSize;
-@@ -626,6 +720,9 @@
+@@ -626,6 +767,9 @@
  #endif
 
      OnCodeBufferAllocated(Buffer);
@@ -190,7 +199,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
  #include <FEXCore/fextl/memory.h>
  #include <FEXCore/fextl/string.h>
  #include <FEXCore/fextl/vector.h>
-@@ -98,6 +99,19 @@
+@@ -98,6 +99,21 @@
      // Subsequent calls to GetLatest will point to the returned buffer.
      fextl::shared_ptr<CodeBuffer> StartLargerCodeBuffer();
 
@@ -204,13 +213,15 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
 +      ReuseLatestEntries {}, ReusePreviousEntries {}, ReuseRejectMaxInst {}, ReuseRejectTF {}, ReuseRejectDelivery {},
 +      ReuseRejectSignal {}, ReuseRejectNoEntry {}, ReuseRejectNonNormal {}, ReuseRejectHostRange {}, ReuseMigrationAttempts {},
 +      ReuseMigrationSwitches {}, ReuseRefillAttempts {}, ReuseRefillHits {}, ReuseRefillMisses {}, ReuseFallbackCompiles {},
-+      ReuseLatestHits {}, ReusePreviousHits {}, ReuseMisses {};
++      ReuseLatestHits {}, ReusePreviousHits {}, ReuseMisses {},
++      ReuseEntryDelivery {}, ReuseNormalReadScope {}, ReuseRejectReadDepth {},
++      ReuseRejectBufferWriter {}, ReuseRejectUnpublished {}, ReuseRejectUnknownContext {};
 +#endif
 +
      // Write offset into the latest CodeBuffer
      std::size_t LatestOffset {};
 
-@@ -117,6 +127,9 @@
+@@ -117,6 +133,9 @@
 
    private:
      fextl::shared_ptr<CodeBuffer> Latest;
@@ -220,7 +231,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
 
      fextl::shared_ptr<CodeBuffer> AllocateNew(size_t Size);
    };
-@@ -207,6 +220,11 @@
+@@ -207,6 +226,11 @@
      virtual void ClearRelocations() {}
 
      bool IsAddressInCodeBuffer(uintptr_t Address) const;
@@ -258,7 +269,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    MDECK_STEAM_SCOPE(SF_DISPATCH);
    if constexpr (BLOCK_DEBUGGING) {
      // Block debugging logic is hand-written and needs to be handled with care.
-@@ -2227,6 +2234,27 @@
+@@ -2227,6 +2234,29 @@
    }
  #endif
 
@@ -271,12 +282,14 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 +    } else if (Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]) {
 +      Reuse.ReuseRejectTF.fetch_add(1, std::memory_order_relaxed);
 +    } else if (IosUnpublished) {
++      Reuse.ReuseEntryDelivery.fetch_add(1, std::memory_order_relaxed);
 +      Reuse.ReuseRejectDelivery.fetch_add(1, std::memory_order_relaxed);
 +    } else if (auto HostCode = Thread->CPUBackend->TryPreviousCode(GuestRIP)) {
++      if (DispatcherMiss <= 8 || (DispatcherMiss & 1023) == 0) Reuse.ReportPreviousReuse();
 +      return HostCode;
-+    } else {
-+      Reuse.ReuseFallbackCompiles.fetch_add(1, std::memory_order_relaxed);
 +    }
++    // All no-hit paths fall through to CompileCode, including guarded rejects.
++    Reuse.ReuseFallbackCompiles.fetch_add(1, std::memory_order_relaxed);
 +    if (DispatcherMiss <= 8 || (DispatcherMiss & 1023) == 0) Reuse.ReportPreviousReuse();
 +  }
 +#else
@@ -286,7 +299,7 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    // iOS-Madeira: cache miss reached — count as true compile.
    __sync_add_and_fetch(&g_cb_real_compiles, 1);
 
-@@ -2342,7 +2358,8 @@
+@@ -2342,7 +2372,8 @@
    // Insert to lookup cache
 
    for (auto [GuestAddr, HostAddr] : CompiledCode.EntryPoints) {
@@ -399,3 +412,23 @@ diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interf
 
      // There is no need to update L1 or L2, they will get updated on first lookup
      // However, adding to L1 here increases performance
+diff --git a/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h b/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
+--- a/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
++++ b/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
+@@ -824,4 +824,16 @@
+   return false;
+ }
+ #endif
++// A normal synchronous CompileBlock owns ONE WPM shared hold here. Testing
++// IosEmissionLocksHeldBySelf() at this point mistakes our own read for delivery.
++struct IosReuseScopeState { uint32_t SharedDepth; bool BufferWriter, Unpublished, Valid; };
++static inline IosReuseScopeState IosGetReuseScopeState() {
++#if defined(_WIN32) && defined(ARCHITECTURE_arm64)
++  const uint64_t Teb = IosDeliveryProbeTeb();
++  if (Teb) return {*reinterpret_cast<const uint32_t*>(Teb + 0x16f0),
++                  *reinterpret_cast<const uint64_t*>(Teb + 0x16e8) != 0,
++                  *reinterpret_cast<const uint64_t*>(Teb + 0x16d0) != 0, true};
++#endif
++  return {0, false, false, false}; // unknown context fails closed
++}
+ } // namespace FEXCore::Utils::WritePriorityMutex

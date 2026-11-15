@@ -20,6 +20,7 @@ fixture = r'''
 #include <stdexcept>
 #include <cstdio>
 #include "DFEScratch.h"
+#include "SteamCompileReason.h"
 static size_t allocations[4]{};
 template<class T, int Tag> struct CountingAllocator {
   using value_type=T;
@@ -149,7 +150,9 @@ int main(int argc,char** argv) {
   {Scratch::Lease lease(owner);fill(lease.Get(),1);
    lease.Get().BlockMap[0].Predecessors.reserve(Scratch::MaxRetainedPredecessors+1);}
   {Scratch::Lease lease(owner);assert(lease.Get().BlockMap.capacity()==0);fill(lease.Get(),1);}
-  puts("PASS actual DFE CFG order/digest/sentinel equivalence; scratch allocation reuse, nesting, unwind and retention bounds");
+  {Scratch::Lease lease(owner);fill(lease.Get(),2);lease.Release();lease.Release();}
+ {Scratch::Lease lease(owner);assert(lease.Get().Worklist.empty());}
+ puts("PASS actual DFE CFG order/digest/sentinel equivalence; scratch allocation reuse, nesting, unwind and retention bounds");
 }
 '''
 
@@ -168,12 +171,17 @@ with tempfile.TemporaryDirectory(prefix='mdeck-dfe-') as tmp:
     assert '.Reuse = ReuseScratch' in updated
 
     # The full analysis/rewriting functions and all propagation/recovery guards
-    # must remain byte-for-byte unchanged; only scratch initialization is altered.
+    # remain byte-for-byte unchanged after stripping ONLY the explicit observation
+    # statements below. Changes to guards or traversal/control flow still fail.
+    import re
+    def strip_work(text):
+        return re.sub(r'^ +if \((?:CFG\.)?Reason\) (?:CFG\.)?Reason->Work\(SR_SCAN_[^;]+;\n', '', text, flags=re.M)
     start='unsigned DeadFlagCalculationEliminination::FlagsForCondClassType'
     end='void DeadFlagCalculationEliminination::Run('
-    assert originals[dfe].split(start,1)[1].split(end,1)[0]==updated.split(start,1)[1].split(end,1)[0]
+    assert originals[dfe].split(start,1)[1].split(end,1)[0]==strip_work(updated.split(start,1)[1].split(end,1)[0])
     before=originals[dfe].split('  // Gather CFG',1)[1]
-    after=updated.split('  // Gather CFG',1)[1]
+    after=strip_work(updated.split('  // Gather CFG',1)[1])
+    after=after.replace('      {\n        FEXCore::CompileReason::AuxScope ClearTiming(Reason, SR_AUX_DFE_SEEN);\n        FEXCore::CompileReason::VectorScope Capacity(Reason, SR_CAP_DFE_SEEN, Seen);\n        Seen.assign(CFG.BlockMap.size(), 0);\n      }', '      Seen.assign(CFG.BlockMap.size(), 0);')
     after=after.replace('      fextl::vector<uint8_t> LocalSeen;\n      auto& Seen = ReuseScratch ? Storage.SeenIDs : LocalSeen;\n      Seen.assign(CFG.BlockMap.size(), 0);',
                         '      fextl::vector<uint8_t> Seen(CFG.BlockMap.size(), 0);')
     assert before==after,'DFE propagation/validation/rewriting changed'

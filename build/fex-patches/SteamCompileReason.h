@@ -1,6 +1,7 @@
 // mdeck-only compilation observations; default off and diagnostic-only.
 #pragma once
 #include "steam_compile_reason_abi.h"
+#include <type_traits>
 namespace FEXCore::CompileReason {
 // Counted UTF-16 basename, read once from the initializing process's own PEB.
 inline bool IsCEFImage(const uint16_t* text,unsigned bytes) {
@@ -74,6 +75,8 @@ class Capture {
   sr_output output {};
   sr_frontend frontend; // Initialized only for an enrolled diagnostic call.
   uint64_t ir_last {};
+  uint64_t scan_values[SR_SCAN_KINDS];
+  uint64_t scan_seen {};
   unsigned ir_phase=SR_IR_OTHER;
   void CloseIRPhase(uint64_t now) {
     if(now>=ir_last)sr_add(&frontend.phases[ir_phase],now-ir_last);
@@ -88,7 +91,7 @@ public:
     const auto* ids=reinterpret_cast<const uint64_t*>(teb+0x40);
     ticket=sr_begin(bridge,Instance,(unsigned)ids[0],(unsigned)ids[1],Path);ticket.cef=CEF;
     key={ticket.instance,owner,rip,max_inst,mode};fallback=delivery?SR_DELIVERY:SR_FAILED;
-    if(ticket.epoch){frontend={};start=last=Clock();}
+    if(ticket.epoch){frontend={};for(auto& v:scan_values)v=0;start=last=Clock();}
   }
   bool Active() const { return ticket.epoch&&fallback!=SR_DELIVERY; }
   void Block(uint64_t address) {if(Active())sr_fingerprint_block(&fingerprint,address);}
@@ -118,6 +121,27 @@ public:
   void IRReturned(uint64_t slots) {
     if(!Active())return;
     frontend.returned++;sr_work_add(&frontend.ssa_after,slots);
+  }
+  void Capacity(unsigned kind,uint64_t value,unsigned grew) {
+    if(!Active()||kind>=SR_CAPACITY_KINDS)return;
+    sr_capacity_add(&frontend.capacity[kind],value,grew);
+  }
+  void Storage(unsigned kind,uint64_t before,uint64_t after,uint64_t element,uint64_t used) {
+    if(Active()&&kind<SR_CAPACITY_KINDS)sr_storage_add(&frontend.capacity[kind],before,after,element,used);
+  }
+  void Work(unsigned kind,uint64_t n=1,bool high=false) {
+    if(!Active()||kind>=SR_SCAN_KINDS)return;
+    scan_seen|=UINT64_C(1)<<kind;
+    if(high){if(n>scan_values[kind])scan_values[kind]=n;}else scan_values[kind]+=n;
+  }
+  bool DetailBegin(unsigned pass,uint64_t& sequence) {
+    if(!Active()||pass>=SR_IR_PASSES_COUNT)return false;
+    if(sequence++%SR_RA_STRIDE)return false;
+    frontend.detail_samples[pass]++;return true;
+  }
+  void Aux(unsigned kind,uint64_t start) {
+    if(!Active()||!start||kind>=SR_AUX_KINDS)return;
+    const auto end=Clock();if(end>=start)sr_add(&frontend.aux[kind],end-start);
   }
   uint64_t PassBegin(unsigned pass,uint64_t slots) {
     if(!Active()||stage!=SR_DECODE_IR)return 0;
@@ -156,6 +180,7 @@ public:
     const uint64_t end=Clock();
     if(stage==SR_DECODE_IR)CloseIRPhase(end);
     if(end>=last)timing.ticks[stage]+=end-last;
+    for(unsigned i=0;i<SR_SCAN_KINDS;i++)if(scan_seen&(UINT64_C(1)<<i))sr_work_add(&frontend.scans[i],scan_values[i]);
     sr_finish_full(bridge,ticket,key,fingerprint,generation,fallback==SR_DELIVERY?SR_DELIVERY:outcome,
                      end>=start?end-start:0,&timing,output,&frontend);
     ticket.epoch=0;
@@ -177,6 +202,11 @@ public:
    void Decoded(uint64_t,uint64_t){}
    void Emitted(uint64_t,uint64_t,bool){}
    void IRReturned(uint64_t){}
+   void Capacity(unsigned,uint64_t,unsigned){}
+   void Storage(unsigned,uint64_t,uint64_t,uint64_t,uint64_t){}
+   void Work(unsigned,uint64_t=1,bool=false){}
+   bool DetailBegin(unsigned,uint64_t&){return false;}
+   void Aux(unsigned,uint64_t){}
    uint64_t PassBegin(unsigned,uint64_t){return 0;}
    void PassEnd(unsigned,uint64_t,bool,uint64_t){}
    uint64_t RABegin(uint64_t&){return 0;}
@@ -186,6 +216,31 @@ public:
   void Finish(uint64_t,unsigned){}
 };
 #endif
+// Scoped operation observations, no allocator hooks or extra traversal.
+class AuxScope {
+  Capture* capture;unsigned kind;uint64_t start;
+public:
+  AuxScope(Capture* c,unsigned k):capture(c),kind(k),start(c&&c->Active()?Capture::RAClock():0){}
+  ~AuxScope(){if(capture)capture->Aux(kind,start);}
+};
+template<class Vector> class VectorScope {
+  Capture* capture;unsigned kind;Vector& vector;uint64_t before;
+public:
+  VectorScope(Capture* c,unsigned k,Vector& v):capture(c),kind(k),vector(v),before(c?v.capacity():0){}
+  ~VectorScope(){
+    if(!capture)return;
+    if constexpr(std::is_same_v<typename Vector::value_type,bool>)
+      capture->Storage(kind,(before+7)/8,(vector.capacity()+7)/8,1,(vector.size()+7)/8);
+    else capture->Storage(kind,before,vector.capacity(),sizeof(typename Vector::value_type),vector.size());
+  }
+};
+// DFE cleanup is explicitly idempotent; normal and C++ early exits observed.
+template<class Lease> class ScratchCleanup {
+  Capture* capture;Lease& lease;
+public:
+  ScratchCleanup(Capture* c,Lease& l):capture(c),lease(l){}
+  ~ScratchCleanup(){AuxScope t(capture,SR_AUX_DFE_CLEANUP);lease.Release();}
+};
 // Sample entire RA invocations. All phase boundaries share one clock reading;
 // no clock reads per node and no additional IR walk. Total is nested in RA pass.
 class RAScope {
@@ -196,6 +251,8 @@ public:
   RAScope(Capture* capture,uint64_t& sequence):capture(capture),
     begin(capture?capture->RABegin(sequence):0),last(begin){if(begin)sample={};}
   bool Active() const {return begin!=0;}
+  Capture* Detail() const {return begin?capture:nullptr;}
+  void Work(unsigned kind,uint64_t n=1){if(begin)capture->Work(kind,n);}
   void Stage(unsigned next){if(!begin||next>=SR_RA_PHASES||phase==next)return;Close(Capture::RAClock());phase=next;}
   void Slots(uint64_t n){if(begin)sample.slots=n;}
   void Block(){if(begin)sample.blocks++;}

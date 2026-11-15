@@ -8,6 +8,24 @@ Steam 设置 → 高级 → 性能 →「上一代代码复用（实验性）」
 
 WoW64、ARM64EC 各自初始化时，以当前进程映像 basename `steamwebhelper.exe` 判定 CEF，并冻结选择。其他映像即使继承配置也不开启。选择在 `InitCore` 前完成，与编译原因日志、DFE 临时存储复用和 L1 索引开关独立；宿主在应用新配置前清理旧环境值，避免跨会话遗留。启动日志为 `[fex-prev] path=... mode=on|off target=cef|other previous-budget-mib=128`。
 
+## 普通入口误判修正
+
+日志 30 中普通 dispatcher miss 全被记为 reject_delivery，根因是 TryPreviousCode
+在调用者已经取得 CodeInvalidationMutex 共享锁之后，重复使用了“入口不能持锁”的
+检查。这时 shared depth=1 是普通调用自身的锁，不是异常投递留下的锁。
+
+入口处原有 IosUnpublished 检查保留；进入受控查找后只接受有效上下文、共享深度恰为 1、
+无 CodeBufferWriteMutex 标记、无 unpublished depth。深度 0/2+、未知上下文、写锁、
+真正 delivery、TF/MaxInst、异常引用仍拒绝。没有移除失效锁或跨代链接限制。
+新增 entry_delivery、normal_read_scope、reject_read_depth、reject_buffer_writer、
+reject_unpublished、reject_unknown_context 区分入口拒绝与内部状态；拒绝原因可重叠。
+
+回归夹具现在模拟调用者自身的 depth=1，并覆盖 0/2、写锁、unpublished、未知上下文。
+这是源码修正与待运行的 Actions 用例，不等于实机已经出现命中。设备验收先要求普通路径的
+attempts、候选和 refill_attempts 大于 0，再比较 previous_hits、fallback_compiles 和
+CPU/wall/内存。fallback_compiles 包含资格检查未通过的普通编译回退；命中返回前也参与
+按 dispatcher miss 的节流输出。
+
 ## 查找及执行所有权
 
 原有当前代 L1/L2/L3 查找先执行。只有 dispatcher 的普通 miss 才进入新增查找：按最新代、最近上一代的顺序检查，跳过线程已经所属的代。仅接受正常发布的条目：`MaxInst == 0`、非 TF、具备普通 guest executable-range 元数据；自定义 IR、单步、未发布的 delivery 编译不作为复用入口。存在异常处理引用、当前线程持有输出锁或处于未发布编译时不迁移。

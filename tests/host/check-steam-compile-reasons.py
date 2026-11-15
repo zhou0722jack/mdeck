@@ -144,11 +144,25 @@ int main(void){
  for(unsigned i=1;i<SR_BUFFER_EVENTS+1;i++)sr_buffer_record(b,e);
  assert(b->buffer_count==SR_BUFFER_EVENTS&&b->buffer_overflow==1);
  b->active_epoch=8;sr_buffer_record(b,e);assert(b->buffer_count==SR_BUFFER_EVENTS);
- // Frontend is nested in decode_ir, independent of generation classification.
+   // Quantile upper bounds: zero, exact powers, just above, saturation, merge.
+  const uint64_t values[]={0,1,2,3,4,5,UINT64_C(1)<<23,(UINT64_C(1)<<23)+1,UINT64_MAX};
+  for(unsigned q=0;q<sizeof(values)/sizeof(values[0]);q++) {
+    struct sr_metric m={0};sr_add(&m,values[q]);assert(sr_metric_p95_ticks(&m)==values[q]);
+  }
+  struct sr_metric q={0},other={0};for(unsigned i=0;i<95;i++)sr_add(&q,3);
+  for(unsigned i=0;i<5;i++)sr_add(&other,100);sr_metric_merge(&q,&other);
+  assert(sr_metric_p95_ticks(&q)==4&&q.count==100);
+  struct sr_metric huge={0};huge.count=UINT64_MAX;huge.quantile[SR_QUANTILE_BUCKETS-1]=UINT64_MAX;huge.max_ticks=UINT64_MAX;
+  assert(sr_metric_p95_ticks(&huge)==UINT64_MAX);
+// Frontend is nested in decode_ir, independent of generation classification.
  memset(b,0,sizeof(*b));b->active_epoch=9;
  struct sr_frontend ir={0};ir.calls=ir.returned=1;
  sr_add(&ir.phases[SR_IR_BUILD],12);sr_add(&ir.phases[SR_IR_PASSES],8);
  sr_add(&ir.passes[SR_PASS_X87],6);
+ sr_storage_add(&ir.capacity[SR_CAP_DFE_SEEN],0,16,4,12);
+ sr_storage_add(&ir.capacity[SR_CAP_DFE_SEEN],16,16,4,8);
+ sr_work_add(&ir.scans[SR_SCAN_DFE_POP],12);sr_add(&ir.aux[SR_AUX_DFE_INIT],3);
+ ir.detail_samples[SR_PASS_DFE]=1;
  ir.ra.eligible=65;ir.ra.sampled=2;ir.ra.returned=1;
  sr_add(&ir.ra.total,3);sr_add(&ir.ra.total,4);
  sr_add(&ir.ra.phases[SR_RA_CHECK],2);sr_add(&ir.ra.phases[SR_RA_FORWARD],5);
@@ -174,6 +188,10 @@ int main(void){
  struct sr_ticket stale=begin();b->active_epoch=10;
  assert(!sr_finish_full(b,stale,key,bytes(1),55,SR_FAILED,20,&ir_time,(struct sr_output){0},&ir));
  assert(b->frontend.calls==2);
+ assert(b->frontend.capacity[SR_CAP_DFE_SEEN].growths==2&&b->frontend.capacity[SR_CAP_DFE_SEEN].growth_bytes==128);
+ assert(b->frontend.capacity[SR_CAP_DFE_SEEN].reused==2&&b->frontend.capacity[SR_CAP_DFE_SEEN].used_max==12);
+ assert(b->frontend.scans[SR_SCAN_DFE_POP].total==24&&b->frontend.detail_samples[SR_PASS_DFE]==2);
+ assert(b->frontend.aux[SR_AUX_DFE_INIT].count==2&&sr_metric_p95_ticks(&b->frontend.aux[SR_AUX_DFE_INIT])==3);
  assert(b->frontend.ra.eligible==130&&b->frontend.ra.sampled==4&&b->frontend.ra.returned==2);
  assert(b->frontend.ra.total.ticks==14&&b->frontend.ra.total.max_ticks==4);
  assert(b->frontend.ra.reverse_nodes.total==60&&b->frontend.ra.reverse_nodes.max==20);
@@ -196,6 +214,7 @@ producer=r'''
 #include <cstdint>
 #include <cstring>
 #include "steam_compile_reason_abi.h"
+#include <vector>
 #define _WIN32 1
 #define FEX_IOS_HOST 1
 #include "SteamCompileReason.h"
@@ -219,6 +238,15 @@ int main(){
  assert(NextId()!=NextId());
  const uint8_t code[]={0x90};
  { Capture r(1,0x10000,0,0,false);assert(r.Active());r.Stage(SR_DECODE_IR);
+   std::vector<bool> bits;
+   {VectorScope obs(&r,SR_CAP_RA_SEEN,bits);bits.resize(9);}
+   std::vector<unsigned> v;
+   {VectorScope obs(&r,SR_CAP_DFE_SEEN,v);v.resize(16);}
+   try {VectorScope obs(&r,SR_CAP_DFE_SEEN,v);v.clear();throw 1;}catch(int){}
+   r.Work(SR_SCAN_DFE_POP,2);r.Work(SR_SCAN_DFE_POP,3);
+   r.Work(SR_SCAN_DFE_QUEUE_HIGH,8,true);r.Work(SR_SCAN_DFE_QUEUE_HIGH,3,true);
+   uint64_t detail_sequence=0;for(unsigned i=0;i<129;i++)assert(r.DetailBegin(SR_PASS_DFE,detail_sequence)==(i%64==0));
+   {AuxScope operation(&r,SR_AUX_DFE_INIT);}
    r.IRStage(SR_IR_SETUP);r.IRStage(SR_IR_DECODE);r.Decoded(1,1);
    r.IRStage(SR_IR_BUILD);r.Block(0x10000);r.Instruction(0x10000,code,1);
    r.IRStage(SR_IR_FINALIZE);r.Emitted(1,8,false);r.IRStage(SR_IR_PASSES);
@@ -243,6 +271,13 @@ int main(){
    }
    r.IRStage(SR_IR_OTHER);r.IRReturned(9);r.Stage(SR_OTHER);r.Finish(10,SR_GENERATED);
  }
+ assert(b->frontend.capacity[SR_CAP_RA_SEEN].used_max==2);
+ assert(b->frontend.capacity[SR_CAP_RA_SEEN].growth_bytes==b->frontend.capacity[SR_CAP_RA_SEEN].max);
+ assert(b->frontend.capacity[SR_CAP_DFE_SEEN].observations==2&&b->frontend.capacity[SR_CAP_DFE_SEEN].growths==1);
+ assert(b->frontend.capacity[SR_CAP_DFE_SEEN].growth_bytes>=16*sizeof(unsigned)&&b->frontend.capacity[SR_CAP_DFE_SEEN].used_max==16);
+ assert(b->frontend.scans[SR_SCAN_DFE_POP].count==1&&b->frontend.scans[SR_SCAN_DFE_POP].total==5);
+ assert(b->frontend.scans[SR_SCAN_DFE_QUEUE_HIGH].max==8&&b->frontend.detail_samples[SR_PASS_DFE]==3);
+ assert(b->frontend.aux[SR_AUX_DFE_INIT].count==1);
  assert(b->frontend.calls==1&&b->frontend.returned==1&&b->frontend.decoded_instructions.total==1);
  assert(b->frontend.passes[SR_PASS_X87].count==1&&b->frontend.pass_ssa_out[SR_PASS_X87].count==1);
  assert(b->frontend.passes[SR_PASS_DFE].count==1&&!b->frontend.pass_ssa_out[SR_PASS_DFE].count);
@@ -319,6 +354,10 @@ int main(void){
  struct sr_frontend ir={0};ir.calls=ir.returned=1;
  sr_add(&ir.phases[SR_IR_BUILD],12000);sr_add(&ir.phases[SR_IR_PASSES],12000);
  sr_add(&ir.passes[SR_PASS_X87],6000);sr_work_add(&ir.pass_ssa_in[SR_PASS_X87],8);sr_work_add(&ir.pass_ssa_out[SR_PASS_X87],9);
+ sr_storage_add(&ir.capacity[SR_CAP_DFE_SEEN],0,16,4,12);
+ sr_storage_add(&ir.capacity[SR_CAP_DFE_SEEN],16,16,4,8);
+ sr_work_add(&ir.scans[SR_SCAN_DFE_POP],12);sr_add(&ir.aux[SR_AUX_DFE_INIT],3);
+ ir.detail_samples[SR_PASS_DFE]=1;
  ir.ra.eligible=65;ir.ra.sampled=ir.ra.returned=1;
  sr_add(&ir.ra.total,3000);sr_add(&ir.ra.phases[SR_RA_CHECK],1000);sr_add(&ir.ra.phases[SR_RA_FORWARD],2000);
  sr_work_add(&ir.ra.slots,9);sr_work_add(&ir.ra.reverse_nodes,7);sr_work_add(&ir.ra.forward_nodes,6);
@@ -369,7 +408,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert 'reason=fixture-complete' in result.stderr
                 assert 'kind=first-observed count=1 total_wall_ms=1.000000' in result.stderr
                 assert 'first_observed=1' in result.stderr and 'reason=worker-create-failed' in result.stderr
-                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass','steam-compile-ra','steam-compile-ra-work','steam-compile-ra-detail','steam-compile-ra-next-use']:
+                for prefix in ['steam-compile-instance','steam-compile-unknown','steam-compile-time','steam-compile-generation','steam-compile-buffer','steam-compile-ir','steam-compile-ir-work','steam-compile-ir-pass','steam-compile-ra','steam-compile-ra-work','steam-compile-ra-detail','steam-compile-ra-next-use','steam-compile-storage','steam-compile-work','steam-compile-operation']:
                     assert '['+prefix+']' in result.stderr
                 assert 'parent_ticks=24000 accounted_ticks=24000' in result.stderr
                 assert 'parent_ticks=3000 accounted_ticks=3000' in result.stderr
@@ -448,7 +487,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     assert fill.index('Timing.Remat()')>fill.index('IREmit->_Constant(')
     assert fill.index('Timing.Fill()')>fill.index('IREmit->_FillRegister(')
     assert 'LastNode && TryPostRAMergeWithReason(LastNode, CodeNode, IROp, Timing)' in ra_text
-    assert 'const bool Merged = TryPostRAMerge(LastNode, CodeNode, IROp);' in ra_text
+    assert 'const bool Merged = TryPostRAMerge(LastNode, CodeNode, IROp, Timing);' in ra_text
     assert 'if (Merged) Timing.MergeSuccess();' in ra_text
     # Native builds must not gain PE symbol dependencies from the header.
     noop=work/'noop.cpp';noop.write_text('#include "SteamCompileReason.h"\nint main(){MDECK_COMPILE_CAPTURE(r,unused,0,0,0,false);r.IRStage(SR_IR_BUILD);r.Decoded(1,1);r.Emitted(1,8,false);r.IRReturned(8);FEXCore::CompileReason::PassScope p(&r,SR_PASS_X87,8);p.Complete(8);uint64_t seq=0;FEXCore::CompileReason::RAScope ra(&r,seq);ra.Stage(SR_RA_FORWARD);ra.ForwardNode();ra.SpillRequest(true);ra.Spill();ra.FillRequest();ra.Fill();ra.Remat();ra.MergeAttempt();ra.MergeSuccess();{FEXCore::CompileReason::RANextUseScope scan(ra);ra.NextUseNode();scan.Complete();}ra.Complete();r.Finish(0,SR_FAILED);}\n')

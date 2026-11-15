@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#define SR_MAGIC UINT64_C(0x4d4452434d503035)
+#define SR_MAGIC UINT64_C(0x4d4452434d503036)
 /* Private banks: ordinary startup can never consume a CEF bank. */
 #define SR_ORDINARY_INSTANCES 16
 #define SR_CEF_INSTANCES 2
@@ -29,7 +29,14 @@ enum sr_stage { SR_OTHER, SR_DECODE_IR, SR_RECHECK, SR_BACKEND, SR_BUFFER_WAIT, 
 enum sr_ir_phase { SR_IR_OTHER, SR_IR_SETUP, SR_IR_DECODE, SR_IR_BUILD, SR_IR_FINALIZE, SR_IR_PASSES, SR_IR_PHASES };
 enum sr_ir_pass { SR_PASS_OTHER, SR_PASS_X87, SR_PASS_DFE, SR_PASS_RA, SR_PASS_VALIDATE, SR_PASS_DUMP, SR_IR_PASSES_COUNT };
 #define SR_RA_STRIDE 64
+#define SR_QUANTILE_BUCKETS 24
 enum sr_ra_phase { SR_RA_SETUP, SR_RA_CHECK, SR_RA_REVERSE, SR_RA_FORWARD, SR_RA_CLEANUP, SR_RA_PHASES };
+enum { SR_CAP_IR_BLOCKS, SR_CAP_IR_DATA, SR_CAP_IR_LIST, SR_CAP_DECODE_POOL, SR_CAP_DFE_BLOCKMAP, SR_CAP_DFE_PREDECESSORS, SR_CAP_DFE_SEEN, SR_CAP_RA_PREFERRED, SR_CAP_RA_SSA, SR_CAP_RA_SEEN, SR_CAP_RA_NEXT_USES, SR_CAP_RA_SPILL, SR_CAP_RA_SOURCES, SR_CAPACITY_KINDS };
+static const char *const sr_capacity_names[] = {"ir-blocks","ir-data","ir-list","decode-pool","dfe-blockmap","dfe-predecessors","dfe-seen","ra-preferred","ra-ssa","ra-seen","ra-next-uses","ra-spill","ra-sources"};
+enum { SR_SCAN_DECODE_BLOCKS, SR_SCAN_DECODE_SET_NODES, SR_SCAN_IR_JUMP_TARGETS, SR_SCAN_DFE_GATHER, SR_SCAN_DFE_VALIDATE, SR_SCAN_DFE_DIGEST, SR_SCAN_DFE_REVERSE, SR_SCAN_DFE_PARITY, SR_SCAN_DFE_EDGES, SR_SCAN_DFE_PUSH, SR_SCAN_DFE_POP, SR_SCAN_DFE_QUEUE_HIGH, SR_SCAN_DFE_BORROWED, SR_SCAN_DFE_FALLBACK, SR_SCAN_RA_MERGE_TRUE, SR_SCAN_RA_MERGE_REWRITE_FALSE, SR_SCAN_RA_MERGE_REG_MISMATCH, SR_SCAN_RA_MERGE_MOVE_INELIGIBLE, SR_SCAN_KINDS };
+static const char *const sr_scan_names[] = {"decode-blocks","decode-set-nodes","ir-jump-targets","dfe-gather","dfe-validate","dfe-digest","dfe-reverse","dfe-parity","dfe-edges","dfe-push","dfe-pop","dfe-queue-high","dfe-borrowed","dfe-fallback","ra-merge-true","ra-merge-rewrite-false","ra-merge-reg-mismatch","ra-merge-move-ineligible"};
+enum { SR_AUX_DECODE_RESET, SR_AUX_DECODE_POOL, SR_AUX_IR_POOL, SR_AUX_DFE_INIT, SR_AUX_DFE_SEEN, SR_AUX_DFE_CLEANUP, SR_AUX_RA_INIT, SR_AUX_RA_CLEANUP, SR_AUX_KINDS };
+static const char *const sr_aux_names[] = {"decode-reset","decode-pool","ir-reset","dfe-init","dfe-seen","dfe-cleanup","ra-init","ra-cleanup"};
 enum sr_buffer_reason { SR_BUFFER_INITIAL, SR_BUFFER_CAPACITY, SR_BUFFER_EXPLICIT };
 struct sr_fingerprint {
     uint64_t shape, content_a, content_b, bytes, instructions;
@@ -73,8 +80,12 @@ struct sr_history {
     struct sr_fingerprint fingerprint;
     uint64_t generation, order;
 };
-struct sr_metric { uint64_t count, ticks, max_ticks; };
+struct sr_metric {
+    uint64_t count, ticks, max_ticks;
+    uint64_t quantile[SR_QUANTILE_BUCKETS];
+};
 struct sr_work { uint64_t count, total, max; };
+struct sr_capacity { uint64_t observations, growths, total, max, growth_bytes, reused, used_max; };
 /* RA phase totals cover sampled invocations only, never extrapolated. */
 struct sr_ra {
     uint64_t eligible, sampled, returned;
@@ -98,6 +109,10 @@ struct sr_frontend {
     struct sr_metric phases[SR_IR_PHASES], passes[SR_IR_PASSES_COUNT];
     struct sr_work decoded_instructions, decoded_blocks, emitted_instructions, ssa_before, ssa_after;
     struct sr_work pass_ssa_in[SR_IR_PASSES_COUNT], pass_ssa_out[SR_IR_PASSES_COUNT];
+    struct sr_capacity capacity[SR_CAPACITY_KINDS];
+    struct sr_work scans[SR_SCAN_KINDS];
+    struct sr_metric aux[SR_AUX_KINDS];
+    uint64_t detail_samples[SR_IR_PASSES_COUNT];
 };
 struct sr_timing { uint64_t ticks[SR_STAGES]; };
 struct sr_output { uint64_t rx, used, capacity; };
@@ -217,8 +232,35 @@ static inline struct sr_ticket sr_begin(struct sr_bridge *b,uint64_t instance,un
     t.order=__atomic_fetch_add(&b->begun,1,__ATOMIC_RELAXED)+1;
     return t;
 }
+static inline unsigned sr_quantile_bucket(uint64_t ticks) {
+    const unsigned bucket=ticks<=1?0:64u-(unsigned)__builtin_clzll(ticks-1);
+    return bucket<SR_QUANTILE_BUCKETS?bucket:SR_QUANTILE_BUCKETS-1;
+}
+static inline uint64_t sr_metric_p95_ticks(const struct sr_metric *m) {
+    if(!m||!m->count)return 0;
+    const uint64_t rank=m->count-m->count/20; /* ceil(.95*n), no multiply overflow */
+    uint64_t seen=0;
+    for(unsigned i=0;i<SR_QUANTILE_BUCKETS;i++) {
+        seen+=m->quantile[i];
+        if(seen>=rank) {
+            const uint64_t upper=i+1==SR_QUANTILE_BUCKETS?m->max_ticks:UINT64_C(1)<<i;
+            return upper<m->max_ticks?upper:m->max_ticks;
+        }
+    }
+    return m->max_ticks;
+}
+static inline void sr_capacity_add(struct sr_capacity *c,uint64_t value,unsigned grew) {
+    c->observations++;c->total+=value;if(value>c->max)c->max=value;if(grew)c->growths++;
+}
+/* Capacity snapshots: bytes of vector payload, NOT allocator call/heap overhead. */
+static inline void sr_storage_add(struct sr_capacity *c,uint64_t before,uint64_t after,uint64_t element,uint64_t used) {
+    sr_capacity_add(c,after,after>before);
+    if(after>before)c->growth_bytes+=(after-before)*element;else c->reused++;
+    if(used>c->used_max)c->used_max=used;
+}
 static inline void sr_add(struct sr_metric *m,uint64_t ticks) {
     m->count++;m->ticks+=ticks;if(ticks>m->max_ticks)m->max_ticks=ticks;
+    m->quantile[sr_quantile_bucket(ticks)]++;
 }
 static inline void sr_add_timing(struct sr_metric *stages,struct sr_metric *total,const struct sr_timing *timing,uint64_t ticks) {
     sr_add(total,ticks);
@@ -228,7 +270,13 @@ static inline void sr_work_add(struct sr_work *w,uint64_t n) {
     w->count++;w->total+=n;if(n>w->max)w->max=n;
 }
 static inline void sr_metric_merge(struct sr_metric *dst,const struct sr_metric *src) {
+    if(!src->count)return;
     dst->count+=src->count;dst->ticks+=src->ticks;if(src->max_ticks>dst->max_ticks)dst->max_ticks=src->max_ticks;
+    for(unsigned i=0;i<SR_QUANTILE_BUCKETS;i++)dst->quantile[i]+=src->quantile[i];
+}
+static inline void sr_capacity_merge(struct sr_capacity *dst,const struct sr_capacity *src) {
+    dst->observations+=src->observations;dst->growths+=src->growths;dst->total+=src->total;if(src->max>dst->max)dst->max=src->max;
+    dst->growth_bytes+=src->growth_bytes;dst->reused+=src->reused;if(src->used_max>dst->used_max)dst->used_max=src->used_max;
 }
 static inline void sr_work_merge(struct sr_work *dst,const struct sr_work *src) {
     dst->count+=src->count;dst->total+=src->total;if(src->max>dst->max)dst->max=src->max;
@@ -261,6 +309,10 @@ static inline void sr_frontend_merge(struct sr_frontend *dst,const struct sr_fro
     sr_work_merge(&dst->decoded_blocks,&src->decoded_blocks);
     sr_work_merge(&dst->emitted_instructions,&src->emitted_instructions);
     sr_work_merge(&dst->ssa_before,&src->ssa_before);sr_work_merge(&dst->ssa_after,&src->ssa_after);
+    for(unsigned i=0;i<SR_CAPACITY_KINDS;i++)sr_capacity_merge(&dst->capacity[i],&src->capacity[i]);
+    for(unsigned i=0;i<SR_SCAN_KINDS;i++)sr_work_merge(&dst->scans[i],&src->scans[i]);
+    for(unsigned i=0;i<SR_AUX_KINDS;i++)sr_metric_merge(&dst->aux[i],&src->aux[i]);
+    for(unsigned i=0;i<SR_IR_PASSES_COUNT;i++)dst->detail_samples[i]+=src->detail_samples[i];
 }
 static inline int sr_finish_full(struct sr_bridge *b,struct sr_ticket t,struct sr_key key,
                             struct sr_fingerprint f,uint64_t generation,unsigned outcome,uint64_t ticks,

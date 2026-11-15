@@ -65,10 +65,11 @@ static uint64_t cr_thread_count(const struct sr_thread *t) {
  * All stages are exclusive, including other; all completed outcomes are included. */
 static void cr_stages(uint64_t epoch,double elapsed,double scale,const char *scope,uint64_t instance,unsigned tid,
                       const struct sr_metric *stages,const struct sr_metric *total) {
-    dprintf(2,"[steam-compile-time] session=%llu t+%.3f scope=%s instance=%llu tid=%04x completed=%llu total_wall_ms=%.6f max_wall_ms=%.6f "
+    dprintf(2,"[steam-compile-time] session=%llu t+%.3f scope=%s instance=%llu tid=%04x completed=%llu total_wall_ms=%.6f max_wall_ms=%.6f p95_upper_ms=%.6f "
         "other_ms=%.6f/%.6f decode_ir_ms=%.6f/%.6f recheck_ms=%.6f/%.6f backend_ms=%.6f/%.6f "
         "buffer_lock_wait_ms=%.6f/%.6f lookup_lock_wait_ms=%.6f/%.6f output_ms=%.6f/%.6f exclusive=1 outcomes=all cumulative=1\n",
         (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,(unsigned long long)total->count,total->ticks*scale,total->max_ticks*scale,
+        sr_metric_p95_ticks(total)*scale,
         stages[0].ticks*scale,stages[0].max_ticks*scale,stages[1].ticks*scale,stages[1].max_ticks*scale,
         stages[2].ticks*scale,stages[2].max_ticks*scale,stages[3].ticks*scale,stages[3].max_ticks*scale,
         stages[4].ticks*scale,stages[4].max_ticks*scale,stages[5].ticks*scale,stages[5].max_ticks*scale,
@@ -103,7 +104,7 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
         "decode_ir_ms=%.6f accounted_ms=%.6f parent_ticks=%llu accounted_ticks=%llu "
         "other_ms=%.6f/%.6f/%llu setup_ms=%.6f/%.6f/%llu decode_ms=%.6f/%.6f/%llu "
         "build_ms=%.6f/%.6f/%llu finalize_ms=%.6f/%.6f/%llu pass_manager_ms=%.6f/%.6f/%llu "
-        "pass_sum_ms=%.6f fingerprint_in=build format=total-max-visits outcomes=all cumulative=1\n",
+        "phase_visit_p95_upper_ms=%.6f/%.6f/%.6f/%.6f/%.6f/%.6f pass_sum_ms=%.6f fingerprint_in=build format=total-max-visits+p95 outcomes=all cumulative=1\n",
         (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
         (unsigned long long)f->calls,(unsigned long long)f->returned,(unsigned long long)f->custom,
         parent->ticks*scale,accounted*scale,(unsigned long long)parent->ticks,(unsigned long long)accounted,
@@ -112,7 +113,10 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
         f->phases[2].ticks*scale,f->phases[2].max_ticks*scale,(unsigned long long)f->phases[2].count,
         f->phases[3].ticks*scale,f->phases[3].max_ticks*scale,(unsigned long long)f->phases[3].count,
         f->phases[4].ticks*scale,f->phases[4].max_ticks*scale,(unsigned long long)f->phases[4].count,
-        f->phases[5].ticks*scale,f->phases[5].max_ticks*scale,(unsigned long long)f->phases[5].count,pass_ticks*scale);
+        f->phases[5].ticks*scale,f->phases[5].max_ticks*scale,(unsigned long long)f->phases[5].count,
+         sr_metric_p95_ticks(&f->phases[0])*scale,sr_metric_p95_ticks(&f->phases[1])*scale,
+         sr_metric_p95_ticks(&f->phases[2])*scale,sr_metric_p95_ticks(&f->phases[3])*scale,
+         sr_metric_p95_ticks(&f->phases[4])*scale,sr_metric_p95_ticks(&f->phases[5])*scale,pass_ticks*scale);
 #define CR_WORK(w) (unsigned long long)(w).total,(unsigned long long)(w).max,(unsigned long long)(w).count
     dprintf(2,"[steam-compile-ir-work] session=%llu t+%.3f scope=%s instance=%llu tid=%04x "
         "decoded_instructions=%llu/%llu/%llu decoded_blocks=%llu/%llu/%llu emitted_instructions=%llu/%llu/%llu "
@@ -124,21 +128,40 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
     for(unsigned i=0;i<SR_IR_PASSES_COUNT;i++) {
         const struct sr_metric *m=&f->passes[i];if(!m->count)continue;
         dprintf(2,"[steam-compile-ir-pass] session=%llu t+%.3f scope=%s instance=%llu tid=%04x pass=%s calls=%llu "
-            "total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f ssa_in=%llu/%llu/%llu ssa_out=%llu/%llu/%llu "
-            "parent=pass_manager work_format=total-max-samples cumulative=1\n",
+            "total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f p95_upper_ms=%.6f ssa_in=%llu/%llu/%llu ssa_out=%llu/%llu/%llu "
+            "parent=pass_manager work_format=total-max-samples+p95 cumulative=1\n",
             (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,names[i],(unsigned long long)m->count,
-            m->ticks*scale,m->ticks*scale/m->count,m->max_ticks*scale,CR_WORK(f->pass_ssa_in[i]),CR_WORK(f->pass_ssa_out[i]));
+            m->ticks*scale,m->ticks*scale/m->count,m->max_ticks*scale,sr_metric_p95_ticks(m)*scale,CR_WORK(f->pass_ssa_in[i]),CR_WORK(f->pass_ssa_out[i]));
+    }
+    for(unsigned i=0;i<SR_CAPACITY_KINDS;i++) {
+        const struct sr_capacity *c=&f->capacity[i];if(!c->observations)continue;
+        dprintf(2,"[steam-compile-storage] session=%llu t+%.3f scope=%s instance=%llu tid=%04x container=%s unit=%s observations=%llu growths=%llu no_growth=%llu capacity_max=%llu used_max=%llu growth_payload_bytes=%llu allocator_calls=unmeasured cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,sr_capacity_names[i],
+             (i==SR_CAP_IR_DATA||i==SR_CAP_IR_LIST||i==SR_CAP_RA_SEEN)?"bytes":"elements",
+            (unsigned long long)c->observations,(unsigned long long)c->growths,(unsigned long long)c->reused,
+            (unsigned long long)c->max,(unsigned long long)c->used_max,(unsigned long long)c->growth_bytes);
+    }
+    for(unsigned i=0;i<SR_SCAN_KINDS;i++)if(f->scans[i].count) {
+        dprintf(2,"[steam-compile-work] session=%llu t+%.3f scope=%s instance=%llu tid=%04x work=%s total_max_calls=%llu/%llu/%llu dfe_samples=%llu ra_samples=%llu coverage=instrumented-sites cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,sr_scan_names[i],CR_WORK(f->scans[i]),
+            (unsigned long long)f->detail_samples[SR_PASS_DFE],(unsigned long long)f->ra.sampled);
+    }
+    for(unsigned i=0;i<SR_AUX_KINDS;i++)if(f->aux[i].count) {
+        const struct sr_metric *m=&f->aux[i];
+        dprintf(2,"[steam-compile-operation] session=%llu t+%.3f scope=%s instance=%llu tid=%04x operation=%s calls=%llu total_ms=%.6f max_ms=%.6f p95_upper_ms=%.6f quantile=log2-upper nested=1 cumulative=1\n",
+            (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,sr_aux_names[i],
+            (unsigned long long)m->count,m->ticks*scale,m->max_ticks*scale,sr_metric_p95_ticks(m)*scale);
     }
     const struct sr_ra *ra=&f->ra;
     if(ra->eligible) {
         uint64_t ra_accounted=0;for(unsigned i=0;i<SR_RA_PHASES;i++)ra_accounted+=ra->phases[i].ticks;
         dprintf(2,"[steam-compile-ra] session=%llu t+%.3f scope=%s instance=%llu tid=%04x eligible=%llu samples=%llu returned=%llu "
-            "stride=%u total_wall_ms=%.6f max_wall_ms=%.6f parent_ticks=%llu accounted_ticks=%llu "
+            "stride=%u total_wall_ms=%.6f max_wall_ms=%.6f p95_upper_ms=%.6f parent_ticks=%llu accounted_ticks=%llu "
             "setup_ms=%.6f/%.6f check_ms=%.6f/%.6f reverse_ms=%.6f/%.6f forward_ms=%.6f/%.6f cleanup_ms=%.6f/%.6f "
             "format=total-max-per-sampled-call sampled-only=1 parent=register-allocation cumulative=1\n",
             (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
             (unsigned long long)ra->eligible,(unsigned long long)ra->sampled,(unsigned long long)ra->returned,SR_RA_STRIDE,
-            ra->total.ticks*scale,ra->total.max_ticks*scale,(unsigned long long)ra->total.ticks,(unsigned long long)ra_accounted,
+            ra->total.ticks*scale,ra->total.max_ticks*scale,sr_metric_p95_ticks(&ra->total)*scale,(unsigned long long)ra->total.ticks,(unsigned long long)ra_accounted,
             ra->phases[0].ticks*scale,ra->phases[0].max_ticks*scale,ra->phases[1].ticks*scale,ra->phases[1].max_ticks*scale,
             ra->phases[2].ticks*scale,ra->phases[2].max_ticks*scale,ra->phases[3].ticks*scale,ra->phases[3].max_ticks*scale,
             ra->phases[4].ticks*scale,ra->phases[4].max_ticks*scale);
@@ -158,12 +181,12 @@ static void cr_frontend(uint64_t epoch,double elapsed,double scale,const char *s
             CR_WORK(ra->fill_requests),CR_WORK(ra->fills),CR_WORK(ra->remats),
             CR_WORK(ra->next_use_nodes),CR_WORK(ra->merge_attempts),CR_WORK(ra->merge_successes));
         dprintf(2,"[steam-compile-ra-next-use] session=%llu t+%.3f scope=%s instance=%llu tid=%04x "
-            "calls=%llu returned=%llu total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f "
+            "calls=%llu returned=%llu total_wall_ms=%.6f mean_wall_ms=%.6f max_wall_ms=%.6f p95_upper_ms=%.6f "
             "parent=forward sampled-only=1 max=per-scan nodes=inspected-including-until cumulative=1\n",
             (unsigned long long)epoch,elapsed,scope,(unsigned long long)instance,tid,
             (unsigned long long)ra->next_uses.count,(unsigned long long)ra->next_use_returned,
             ra->next_uses.ticks*scale,ra->next_uses.count?ra->next_uses.ticks*scale/ra->next_uses.count:0,
-            ra->next_uses.max_ticks*scale);
+            ra->next_uses.max_ticks*scale,sr_metric_p95_ticks(&ra->next_uses)*scale);
     }
 #undef CR_WORK
 }
@@ -332,10 +355,10 @@ void ios_steam_compile_log_configure(int enabled) {
         pthread_detach(thread);cr_worker_started=1;
     }
     __atomic_store_n(&b->active_epoch,epoch,__ATOMIC_RELEASE);
-    dprintf(2,"[steam-compile-reason] enabled session=%llu duration=45s interval=1s max_events=%u history_capacity=%u storage_bytes=%zu "
+    dprintf(2,"[steam-compile-reason] enabled session=%llu duration=45s interval=1s max_events=%u history_capacity=%u storage_bytes=%zu metric_bytes=%zu frontend_bytes=%zu report_bytes=%zu quantile=log2-upper-24 "
         "cef_banks=%u cef_capacity=%u ordinary_banks=%u ordinary_capacity=%u probes=%u "
         "source=decoder-snapshots fingerprint=128bit first=first-observed-in-window classification=observational\n",
-        (unsigned long long)epoch,SR_MAX_COMPLETIONS,SR_HISTORY,sizeof(*b),
+        (unsigned long long)epoch,SR_MAX_COMPLETIONS,SR_HISTORY,sizeof(*b),sizeof(struct sr_metric),sizeof(struct sr_frontend),sizeof(struct cr_report),
         SR_CEF_INSTANCES,SR_CEF_HISTORY,SR_ORDINARY_INSTANCES,SR_ORDINARY_HISTORY,SR_PROBES);
 done:
     pthread_cond_broadcast(&cr_wake);pthread_mutex_unlock(&cr_control);errno=saved;

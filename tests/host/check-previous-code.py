@@ -51,11 +51,14 @@ with tempfile.TemporaryDirectory(prefix='mdeck-previous-') as tmp:
 #include "PreviousCode.h"
 namespace fextl { template<class T> using shared_ptr=std::shared_ptr<T>; }
 static int map_locks=0, destructions=0, resets=0;
-static bool delivery=false, unpublished=false;
+static bool delivery=false, unpublished=false, valid_context=true;
+static uint32_t shared_depth=1; // normal caller already holds global invalidation shared
 static std::function<void()> migrate_hook;
 namespace FEXCore::Utils { struct WritePriorityMutex {
  static bool IosEmissionLocksHeldBySelf(){return delivery;}
  static bool IosUnpublishedCompileActive(){return unpublished;}
+ struct IosReuseScopeState {uint32_t SharedDepth;bool BufferWriter,Unpublished,Valid;};
+ static IosReuseScopeState IosGetReuseScopeState(){return {shared_depth,delivery,unpublished,valid_context};}
 }; }
 struct Token { bool write; explicit Token(bool w):write(w){assert(++map_locks==1);} ~Token(){--map_locks;} };
 struct Entry { uintptr_t HostCode; std::vector<uint64_t> CodePages; bool MDeckNormal; };
@@ -89,7 +92,7 @@ struct CodeBufferManager {
  std::atomic<uint64_t> ReuseDispatcherMisses{},ReuseAttempts{},ReuseLatestCandidates{},ReusePreviousCandidates{},
   ReuseLatestEntries{},ReusePreviousEntries{},ReuseRejectMaxInst{},ReuseRejectTF{},ReuseRejectDelivery{},ReuseRejectSignal{},
   ReuseRejectNoEntry{},ReuseRejectNonNormal{},ReuseRejectHostRange{},ReuseMigrationAttempts{},ReuseMigrationSwitches{},
-  ReuseRefillAttempts{},ReuseRefillHits{},ReuseRefillMisses{},ReuseFallbackCompiles{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{};
+  ReuseRefillAttempts{},ReuseRefillHits{},ReuseRefillMisses{},ReuseFallbackCompiles{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{},ReuseEntryDelivery{},ReuseNormalReadScope{},ReuseRejectReadDepth{},ReuseRejectBufferWriter{},ReuseRejectUnpublished{},ReuseRejectUnknownContext{};
  ReuseCandidates GetReuseCandidates();bool IsReuseCandidate(const Ptr&);void StopPreviousReuse();void ReportPreviousReuse(){}
 };
 struct CPUBackend {
@@ -108,6 +111,10 @@ int main(int argc,char** argv){
  if(mode=="other"){assert(!Configure("1",false));assert(!Configure("1",true));return 0;}
  if(mode=="invalid"){assert(!Configure("1junk",true));return 0;}
  assert(Configure("1",true));assert(Enabled());assert(Configure("0",false));
+ assert(NormalReadScope(true,1,false,false));
+ assert(!NormalReadScope(true,0,false,false)&&!NormalReadScope(true,2,false,false));
+ assert(!NormalReadScope(true,1,true,false)&&!NormalReadScope(true,1,false,true));
+ assert(!NormalReadScope(false,1,false,false));
  // Actual retention policy: one slot, bounded, no forced execution-ref release.
  using Ptr=std::shared_ptr<CodeBuffer>;Slot<Ptr> slot;
  auto a=buffer(0x10000,0x4000),b=buffer(0x20000,0x8000),c=buffer(0x30000,0xc000);
@@ -147,6 +154,12 @@ int main(int argc,char** argv){
  frame.SignalHandlerRefCounter=0;delivery=true;assert(!backend.TryPreviousCode(0x4000));delivery=false;
   assert(manager.ReuseRejectDelivery>=1);
  unpublished=true;assert(!backend.TryPreviousCode(0x4000));unpublished=false;assert(manager.ReuseAttempts==attempts);
+ shared_depth=0;assert(!backend.TryPreviousCode(0x4000));
+ shared_depth=2;assert(!backend.TryPreviousCode(0x4000));
+ shared_depth=1;valid_context=false;assert(!backend.TryPreviousCode(0x4000));valid_context=true;
+ assert(manager.ReuseAttempts==attempts&&manager.ReuseRejectReadDepth==2);
+ assert(manager.ReuseRejectBufferWriter==1&&manager.ReuseRejectUnpublished==1&&manager.ReuseRejectUnknownContext==1);
+ assert(manager.ReuseNormalReadScope==manager.ReuseAttempts);
  // Simulate concurrent publication between candidate inspection and refill.
  migrate_hook=[&]{a->LookupCache->entries[0x4000].MDeckNormal=false;};
  assert(!backend.TryPreviousCode(0x4000) && !lookup.local.count(0x4000));
@@ -176,6 +189,9 @@ int main(int argc,char** argv){
     assert 'ReuseRejectTF.fetch_add' in compile_block
     assert 'ReuseFallbackCompiles.fetch_add' in compile_block
     assert '!Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]' in compile_block
+    assert compile_block.index('IosEmissionLocksHeldBySelf()')<compile_block.index('CodeInvalidationMutex')
+    assert 'IosEmissionLocksHeldBySelf()' not in method(backend,'uintptr_t CPUBackend::TryPreviousCode(')
+    assert 'ReuseEntryDelivery.fetch_add' in compile_block
     assert compile_block.index('CodeInvalidationMutex')<compile_block.index('TryPreviousCode(GuestRIP)')<compile_block.index('auto [CompiledCode, DebugData, StartAddr, Length, NeedsAddGuestCodeRanges]')
     assert 'MaxInst == 0 && NeedsAddGuestCodeRanges && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]' in compile_block
     dispatcher=(source/'FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp').read_text()
