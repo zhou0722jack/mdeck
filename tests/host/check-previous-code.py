@@ -53,7 +53,7 @@ namespace fextl { template<class T> using shared_ptr=std::shared_ptr<T>; }
 static int map_locks=0, destructions=0, resets=0;
 static bool delivery=false, unpublished=false, valid_context=true;
 static uint32_t shared_depth=1; // normal caller already holds global invalidation shared
-static std::function<void()> migrate_hook;
+static std::function<void()> migrate_hook, before_write_hook;
 namespace FEXCore::Utils { struct WritePriorityMutex {
  static bool IosEmissionLocksHeldBySelf(){return delivery;}
  static bool IosUnpublishedCompileActive(){return unpublished;}
@@ -64,12 +64,18 @@ struct Token { bool write; explicit Token(bool w):write(w){assert(++map_locks==1
 struct Entry { uintptr_t HostCode; std::vector<uint64_t> CodePages; bool MDeckNormal; };
 struct Map {
  std::map<uint64_t,Entry> entries;
- Token AcquireReadLock(){return Token(false);} Token AcquireWriteLock(){return Token(true);}
+ Token AcquireReadLock(){return Token(false);} Token AcquireWriteLock(){
+   if(before_write_hook){auto hook=std::move(before_write_hook);before_write_hook={};hook();}
+   return Token(true);
+ }
  const Entry* FindBlock(uint64_t rip,const Token&){auto it=entries.find(rip);return it==entries.end()?nullptr:&it->second;}
 };
 struct CodeBuffer {
  uintptr_t base; std::size_t AllocatedSize=4096; uint8_t* Ptr; std::unique_ptr<Map> LookupCache=std::make_unique<Map>();
- explicit CodeBuffer(uintptr_t b):base(b),Ptr(reinterpret_cast<uint8_t*>(b)){}
+ uint64_t MDeckReasonGeneration;
+  explicit CodeBuffer(uintptr_t b):base(b),Ptr(reinterpret_cast<uint8_t*>(b)){
+    static uint64_t serial=0;MDeckReasonGeneration=++serial;
+  }
  ~CodeBuffer(){assert(map_locks==0);++destructions;}
  std::size_t UsableSize()const{return AllocatedSize;}
 };
@@ -92,12 +98,12 @@ struct CodeBufferManager {
  std::atomic<uint64_t> ReuseDispatcherMisses{},ReuseAttempts{},ReuseLatestCandidates{},ReusePreviousCandidates{},
   ReuseLatestEntries{},ReusePreviousEntries{},ReuseRejectMaxInst{},ReuseRejectTF{},ReuseRejectDelivery{},ReuseRejectSignal{},
   ReuseRejectNoEntry{},ReuseRejectNonNormal{},ReuseRejectHostRange{},ReuseMigrationAttempts{},ReuseMigrationSwitches{},
-  ReuseRefillAttempts{},ReuseRefillHits{},ReuseRefillMisses{},ReuseFallbackCompiles{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{},ReuseEntryDelivery{},ReuseNormalReadScope{},ReuseRejectReadDepth{},ReuseRejectBufferWriter{},ReuseRejectUnpublished{},ReuseRejectUnknownContext{};
- ReuseCandidates GetReuseCandidates();bool IsReuseCandidate(const Ptr&);void StopPreviousReuse();void ReportPreviousReuse(){}
+  ReuseRefillAttempts{},ReuseRefillHits{},ReuseRefillMisses{},ReuseFallbackCompiles{},ReuseLatestHits{},ReusePreviousHits{},ReuseMisses{},ReuseEntryDelivery{},ReuseNormalReadScope{},ReuseRejectReadDepth{},ReuseRejectBufferWriter{},ReuseRejectUnpublished{},ReuseRejectUnknownContext{},ReuseRejectBacktrackBudget{},ReuseRejectCandidateChanged{};
+ ReuseCandidates GetReuseCandidates();bool IsReuseCandidate(const Ptr&,const Ptr&);void StopPreviousReuse();void ReportPreviousReuse(){}
 };
 struct CPUBackend {
  Thread* ThreadState;CodeBufferManager& CodeBuffers;fextl::shared_ptr<CodeBuffer> CurrentCodeBuffer;
- mutable std::mutex IosMigrateLock;
+ mutable std::mutex IosMigrateLock;uint64_t PreviousBorrowedAtGeneration{};
  uintptr_t TryPreviousCode(uint64_t);bool IsInCurrentBuffer(uintptr_t)const;
  void RegisterForSignalHandler(const fextl::shared_ptr<CodeBuffer>&){assert(!ThreadState->CurrentFrame->SignalHandlerRefCounter);}
 };
@@ -141,35 +147,77 @@ int main(int argc,char** argv){
  assert(manager.ReuseMigrationSwitches==1 && manager.ReuseRefillAttempts==1 && manager.ReuseRefillHits==1);
  assert(manager.ReuseRefillMisses==0 && manager.ReuseFallbackCompiles==0);
  assert(backend.TryPreviousCode(0x8000)==0x20080 && manager.ReuseLatestHits==1);
- auto no_entry=manager.ReuseRejectNoEntry.load();assert(backend.TryPreviousCode(0x9000)==0);
- assert(manager.ReuseRejectNoEntry>no_entry);
- backend.CurrentCodeBuffer=b;lookup.Shared=b->LookupCache.get();a->LookupCache->entries[0x4000].HostCode=0xffff0000;
- assert(!backend.TryPreviousCode(0x4000) && manager.ReuseRejectHostRange>=1);
- a->LookupCache->entries[0x4000].HostCode=0x10080;
- a->LookupCache->entries[0x4000].MDeckNormal=false;assert(backend.TryPreviousCode(0x4000)==0);
- a->LookupCache->entries[0x4000].MDeckNormal=true;
- auto before_rejects=manager.ReuseRejectNonNormal.load();assert(before_rejects>=1);
-  auto attempts=manager.ReuseAttempts.load();frame.SignalHandlerRefCounter=1;assert(!backend.TryPreviousCode(0x4000));
+  // Ordinary hot-code alternation must no longer migrate on every miss.
+  const auto switches=manager.ReuseMigrationSwitches.load();const auto saved_resets=resets;
+  for(unsigned i=0;i<10000;++i){
+    assert(!backend.TryPreviousCode(0x4000)); // caller proceeds to ordinary compile on Latest
+    assert(backend.CurrentCodeBuffer==b && lookup.Shared==b->LookupCache.get());
+    assert(lookup.local.at(0x8000)==0x20080); // Latest hot block remains cached
+  }
+  assert(manager.ReuseMigrationSwitches==switches && resets==saved_resets);
+  assert(manager.ReuseRejectBacktrackBudget==10000);
+  // Erase/re-publish and a simulated forward compiler/sweeper migration do not
+  // refund the once-per-generation token. A second thread has its own token.
+  a->LookupCache->entries.erase(0x4000);
+  a->LookupCache->entries[0x4000]={0x10090,{4,5},true};
+  backend.CurrentCodeBuffer=b;assert(!backend.TryPreviousCode(0x4000));
+  Lookup second_lookup{b->LookupCache.get(),{}, {}};Frame second_frame;Thread second_thread{&second_frame,&second_lookup};
+  CPUBackend second{&second_thread,manager,b,{}};
+  assert(second.TryPreviousCode(0x4000)==0x10090);
+  // New Latest identity grants the first backend another backward migration.
+  // Reuse the RX address to prove this is not an address-based quota.
+  auto newer=buffer(b->base,0xc000);manager.Latest=newer;manager.PreviousSlot.Previous=b;
+  backend.CurrentCodeBuffer=newer;lookup.Shared=newer->LookupCache.get();lookup.local.clear();lookup.pages.clear();
+  assert(backend.TryPreviousCode(0x8000)==0x20080);
+  assert(backend.PreviousBorrowedAtGeneration==newer->MDeckReasonGeneration);
+  assert(backend.TryPreviousCode(0xc000)==newer->base+128);
+  assert(!backend.TryPreviousCode(0x8000));
+  // Independent backend exercises rejection paths before any quota is consumed.
+  manager.Latest=b;manager.PreviousSlot.Previous=a;
+  Lookup guard_lookup{b->LookupCache.get(),{}, {}};Frame guard_frame;Thread guard_thread{&guard_frame,&guard_lookup};
+  CPUBackend guards{&guard_thread,manager,b,{}};
+  auto no_entry=manager.ReuseRejectNoEntry.load();assert(!guards.TryPreviousCode(0x9000));
+  assert(manager.ReuseRejectNoEntry>no_entry && !guards.PreviousBorrowedAtGeneration);
+  a->LookupCache->entries[0x4000].HostCode=0xffff0000;
+  assert(!guards.TryPreviousCode(0x4000) && manager.ReuseRejectHostRange>=1);
+  a->LookupCache->entries[0x4000].HostCode=0x10080;
+  a->LookupCache->entries[0x4000].MDeckNormal=false;assert(!guards.TryPreviousCode(0x4000));
+  a->LookupCache->entries[0x4000].MDeckNormal=true;
+  assert(manager.ReuseRejectNonNormal>=1 && !guards.PreviousBorrowedAtGeneration);
+  auto attempts=manager.ReuseAttempts.load();guard_frame.SignalHandlerRefCounter=1;assert(!guards.TryPreviousCode(0x4000));
   assert(manager.ReuseRejectSignal>=1);
- frame.SignalHandlerRefCounter=0;delivery=true;assert(!backend.TryPreviousCode(0x4000));delivery=false;
+  guard_frame.SignalHandlerRefCounter=0;delivery=true;assert(!guards.TryPreviousCode(0x4000));delivery=false;
   assert(manager.ReuseRejectDelivery>=1);
- unpublished=true;assert(!backend.TryPreviousCode(0x4000));unpublished=false;assert(manager.ReuseAttempts==attempts);
- shared_depth=0;assert(!backend.TryPreviousCode(0x4000));
- shared_depth=2;assert(!backend.TryPreviousCode(0x4000));
- shared_depth=1;valid_context=false;assert(!backend.TryPreviousCode(0x4000));valid_context=true;
- assert(manager.ReuseAttempts==attempts&&manager.ReuseRejectReadDepth==2);
- assert(manager.ReuseRejectBufferWriter==1&&manager.ReuseRejectUnpublished==1&&manager.ReuseRejectUnknownContext==1);
- assert(manager.ReuseNormalReadScope==manager.ReuseAttempts);
- // Simulate concurrent publication between candidate inspection and refill.
- migrate_hook=[&]{a->LookupCache->entries[0x4000].MDeckNormal=false;};
- assert(!backend.TryPreviousCode(0x4000) && !lookup.local.count(0x4000));
- assert(backend.TryPreviousCode(0x8000)==0x20080);a->LookupCache->entries.erase(0x4000);
- assert(!backend.TryPreviousCode(0x4000)); // invalidated/unmapped entry cannot be resurrected
- a->LookupCache->entries[0x4000]={0x10090,{4,5},true};assert(backend.TryPreviousCode(0x4000)==0x10090);
- std::weak_ptr<CodeBuffer> old=a;manager.StopPreviousReuse();a.reset();
- assert(!old.expired()); // active execution owner pins it after removing search entry
- assert(!backend.TryPreviousCode(0x8000)); // explicit stop fails closed
- backend.CurrentCodeBuffer=b;assert(old.expired());
+  unpublished=true;assert(!guards.TryPreviousCode(0x4000));unpublished=false;assert(manager.ReuseAttempts==attempts);
+  shared_depth=0;assert(!guards.TryPreviousCode(0x4000));
+  shared_depth=2;assert(!guards.TryPreviousCode(0x4000));
+  shared_depth=1;valid_context=false;assert(!guards.TryPreviousCode(0x4000));valid_context=true;
+  assert(manager.ReuseAttempts==attempts&&manager.ReuseRejectReadDepth==2);
+  assert(manager.ReuseRejectBufferWriter==1&&manager.ReuseRejectUnpublished==1&&manager.ReuseRejectUnknownContext==1);
+  assert(manager.ReuseNormalReadScope==manager.ReuseAttempts);
+  // Rotation after candidate inspection must reject the stale snapshot before
+  // switching or consuming a token, even if that candidate is still retained.
+  const auto before_rotation_switches=manager.ReuseMigrationSwitches.load();
+  before_write_hook=[&]{manager.Latest=newer;};
+  assert(!guards.TryPreviousCode(0x4000));
+  assert(manager.ReuseRejectCandidateChanged>=1 && manager.ReuseMigrationSwitches==before_rotation_switches);
+  assert(!guards.PreviousBorrowedAtGeneration && guards.CurrentCodeBuffer==b);
+  manager.Latest=b;
+  // Concurrent entry replacement after switching fails refill but consumes the
+  // token. Re-publishing that entry cannot cause another backward migration.
+  migrate_hook=[&]{a->LookupCache->entries[0x4000].MDeckNormal=false;};
+  assert(!guards.TryPreviousCode(0x4000) && !guard_lookup.local.count(0x4000));
+  assert(guards.PreviousBorrowedAtGeneration==b->MDeckReasonGeneration);
+  assert(guards.TryPreviousCode(0x8000)==0x20080);
+  a->LookupCache->entries.erase(0x4000);assert(!guards.TryPreviousCode(0x4000));
+  a->LookupCache->entries[0x4000]={0x10090,{4,5},true};assert(!guards.TryPreviousCode(0x4000));
+  // Lifetime: an active backend still pins the old buffer after explicit stop.
+  // Remove this fixture's separate slot reference before checking final release.
+  slot.Stop();
+  std::weak_ptr<CodeBuffer> old=a;manager.StopPreviousReuse();a.reset();
+  assert(!old.expired()); // second is still executing Previous
+  assert(!second.TryPreviousCode(0x8000));
+  second.CurrentCodeBuffer=b;assert(old.expired());
  assert(map_locks==0 && destructions>0);
 }
 '''.replace('REFILL_METHOD',refill).replace('ACTUAL_METHODS',methods)
@@ -203,6 +251,13 @@ int main(int argc,char** argv){
     alloc=method(backend,'auto CodeBufferManager::AllocateNew(')
     assert alloc.index('std::move(PreviousSlot.Previous)')<alloc.index('make_shared<CodeBuffer>')
     assert 'MDeckReasonRequestBytes != 0' in alloc
+    assert 'Buffer->MDeckReasonGeneration = FEXCore::CompileReason::NextId();' in alloc
+    reuse=method(backend,'uintptr_t CPUBackend::TryPreviousCode(')
+    assert 'IsReuseCandidate(Candidate, Candidates.Latest)' in reuse
+    assert reuse.index('PreviousBorrowedAtGeneration = Generation')<reuse.index('CurrentCodeBuffer = Candidate')<reuse.index('RefillPreviousBlock')
+    assert backend.count('PreviousBorrowedAtGeneration =')==1
+    backend_header=(source/'FEXCore/Source/Interface/Core/CPUBackend.h').read_text()
+    assert 'uint64_t PreviousBorrowedAtGeneration {};' in backend_header
     assert 'StopPreviousReuse()' in method(core,'void ContextImpl::ClearCodeCache(')
     # Existing invalidation traverses every live buffer, retained ones included.
     assert 'InvalidateRange' in method(core,'void ContextImpl::InvalidateCodeBuffersCodeRange(')
@@ -212,5 +267,5 @@ int main(int argc,char** argv){
         assert '"MADEIRA_FEX_PREVIOUS_CODE"), CEF)' in text
 bridge=(root/'app/Madeira/WineProcessBridge.m').read_text()
 assert bridge.index('unsetenv("MADEIRA_FEX_PREVIOUS_CODE")')<bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
-print('PASS previous-slot budget/lifetime, actual migration/refill methods with adapters, mode guards and full patch-chain contracts')
+print('PASS previous-slot lifetime, bounded backtracking/rotation/failed-refill, actual migration/refill adapters, mode guards and patch-chain contracts')
 print('UNRUN: ARM64 execution/linking, concurrent Windows SMC/unmap/exception integration, real-device safety and speed')

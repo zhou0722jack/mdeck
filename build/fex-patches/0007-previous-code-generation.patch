@@ -14,7 +14,7 @@ diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interfa
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -396,6 +396,132 @@
+@@ -396,6 +396,157 @@
    } // namespace
  #endif
 
@@ -24,9 +24,9 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +    if (PreviousSlot.Stopped) return {};
 +    return {Latest, PreviousSlot.Previous};
 +  }
-+  bool CodeBufferManager::IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer) {
++  bool CodeBufferManager::IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer, const fextl::shared_ptr<CodeBuffer>& ExpectedLatest) {
 +    std::scoped_lock lk {LatestMutex};
-+    return !PreviousSlot.Stopped && Buffer && (Buffer == Latest || Buffer == PreviousSlot.Previous);
++    return !PreviousSlot.Stopped && Latest == ExpectedLatest && Buffer && (Buffer == Latest || Buffer == PreviousSlot.Previous);
 +  }
 +  void CodeBufferManager::StopPreviousReuse() {
 +    fextl::shared_ptr<CodeBuffer> Retired;
@@ -39,7 +39,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      "reject_maxinst={} reject_tf={} reject_delivery={} reject_signal={} reject_no_entry={} reject_non_normal={} reject_host_range={} "
 +      "migration_attempts={} migration_switches={} refill_attempts={} refill_hits={} refill_misses={} fallback_compiles={} "
 +      "entry_delivery={} normal_read_scope={} reject_read_depth={} reject_buffer_writer={} reject_unpublished={} reject_unknown_context={} "
-+      "latest_hits={} previous_hits={} misses={} latest_rx={} previous_rx={} retained_bytes={}",
++      "reject_backtrack_budget={} reject_candidate_changed={} latest_hits={} previous_hits={} misses={} latest_rx={} previous_rx={} retained_bytes={}",
 +      static_cast<void*>(this), ReuseDispatcherMisses.load(std::memory_order_relaxed), ReuseAttempts.load(std::memory_order_relaxed),
 +      ReuseLatestCandidates.load(std::memory_order_relaxed), ReusePreviousCandidates.load(std::memory_order_relaxed),
 +      ReuseLatestEntries.load(std::memory_order_relaxed), ReusePreviousEntries.load(std::memory_order_relaxed),
@@ -52,7 +52,8 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      ReuseFallbackCompiles.load(std::memory_order_relaxed), ReuseEntryDelivery.load(std::memory_order_relaxed),
 +      ReuseNormalReadScope.load(std::memory_order_relaxed), ReuseRejectReadDepth.load(std::memory_order_relaxed),
 +      ReuseRejectBufferWriter.load(std::memory_order_relaxed), ReuseRejectUnpublished.load(std::memory_order_relaxed),
-+      ReuseRejectUnknownContext.load(std::memory_order_relaxed), ReuseLatestHits.load(std::memory_order_relaxed),
++      ReuseRejectUnknownContext.load(std::memory_order_relaxed), ReuseRejectBacktrackBudget.load(std::memory_order_relaxed),
++      ReuseRejectCandidateChanged.load(std::memory_order_relaxed), ReuseLatestHits.load(std::memory_order_relaxed),
 +      ReusePreviousHits.load(std::memory_order_relaxed), ReuseMisses.load(std::memory_order_relaxed),
 +      Candidates.Latest ? static_cast<void*>(Candidates.Latest->Ptr) : nullptr,
 +      Candidates.Previous ? static_cast<void*>(Candidates.Previous->Ptr) : nullptr,
@@ -89,7 +90,16 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      auto& CandidateCount = IsLatest ? CodeBuffers.ReuseLatestCandidates : CodeBuffers.ReusePreviousCandidates;
 +      CandidateCount.fetch_add(1, std::memory_order_relaxed);
 +      fextl::shared_ptr<CodeBuffer> Old;
-+      { IosMigrateLockGuard g {IosMigrateLock}; Old = CurrentCodeBuffer; }
++      {
++        IosMigrateLockGuard g {IosMigrateLock}; Old = CurrentCodeBuffer;
++        // One selection of Previous per thread and immutable Latest identity.
++        // Normal compilation / sweeper returns to Latest do not reset this token.
++        if (Old != Candidate && !IsLatest &&
++            (!Candidates.Latest || Candidates.Latest->MDeckReasonGeneration <= PreviousBorrowedAtGeneration)) {
++          CodeBuffers.ReuseRejectBacktrackBudget.fetch_add(1, std::memory_order_relaxed);
++          continue;
++        }
++      }
 +      if (Old == Candidate) continue;
 +      uintptr_t Host = 0;
 +      {
@@ -117,8 +127,23 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +        // No two map locks at once; Old pins the lock until its destruction.
 +        auto Write = Old->LookupCache->AcquireWriteLock();
 +        IosMigrateLockGuard g {IosMigrateLock};
-+        if (CurrentCodeBuffer != Old || ThreadState->CurrentFrame->SignalHandlerRefCounter ||
-+            !CodeBuffers.IsReuseCandidate(Candidate)) continue;
++        if (CurrentCodeBuffer != Old || ThreadState->CurrentFrame->SignalHandlerRefCounter) continue;
++        // Rotation while inspecting the entry must not consume an opportunity
++        // using a stale Latest identity. LatestMutex remains a leaf lock.
++        if (!CodeBuffers.IsReuseCandidate(Candidate, Candidates.Latest)) {
++          CodeBuffers.ReuseRejectCandidateChanged.fetch_add(1, std::memory_order_relaxed);
++          continue;
++        }
++        if (!IsLatest) {
++          const auto Generation = Candidates.Latest->MDeckReasonGeneration;
++          if (Generation <= PreviousBorrowedAtGeneration) {
++            CodeBuffers.ReuseRejectBacktrackBudget.fetch_add(1, std::memory_order_relaxed);
++            continue;
++          }
++          // Consume on switching, even if the subsequent refill fails. Never
++          // refund on invalidation / recompilation / a remote forward migration.
++          PreviousBorrowedAtGeneration = Generation;
++        }
 +        CurrentCodeBuffer = Candidate;
 +        ThreadState->LookupCache->ChangeGuestToHostMapping(*Old, *Candidate->LookupCache, Write);
 +        FEXCore::Core::ResetCallRetStack(ThreadState, "previous-code");
@@ -147,7 +172,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
    auto CPUBackend::GetEmptyCodeBuffer() -> CodeBuffer* {
  #ifdef FEX_IOS_HOST
      IosMigrateLockGuard g {IosMigrateLock};
-@@ -561,6 +687,14 @@
+@@ -561,6 +712,14 @@
  #endif
 
    auto CodeBufferManager::AllocateNew(size_t Size) -> fextl::shared_ptr<CodeBuffer> {
@@ -162,7 +187,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
  #if defined(__linux__)
  // MDWE (Memory-Deny-Write-Execute) is a new Linux 6.3 feature.
  // It's equivalent to systemd's `MemoryDenyWriteExecute` but implemented entirely in the kernel.
-@@ -600,8 +734,15 @@
+@@ -600,8 +759,15 @@
        static std::atomic<int> GenLogCount {0};
        long PrevUseCount = 0;
        size_t PrevSize = 0;
@@ -178,7 +203,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
          if (Latest) {
            PrevUseCount = Latest.use_count();
            PrevSize = Latest->AllocatedSize;
-@@ -626,6 +767,9 @@
+@@ -626,6 +792,9 @@
  #endif
 
      OnCodeBufferAllocated(Buffer);
@@ -199,14 +224,14 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
  #include <FEXCore/fextl/memory.h>
  #include <FEXCore/fextl/string.h>
  #include <FEXCore/fextl/vector.h>
-@@ -98,6 +99,21 @@
+@@ -98,6 +99,22 @@
      // Subsequent calls to GetLatest will point to the returned buffer.
      fextl::shared_ptr<CodeBuffer> StartLargerCodeBuffer();
 
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    struct ReuseCandidates { fextl::shared_ptr<CodeBuffer> Latest, Previous; };
 +    ReuseCandidates GetReuseCandidates();
-+    bool IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer);
++    bool IsReuseCandidate(const fextl::shared_ptr<CodeBuffer>& Buffer, const fextl::shared_ptr<CodeBuffer>& ExpectedLatest);
 +    void StopPreviousReuse();
 +    void ReportPreviousReuse();
 +    std::atomic<uint64_t> ReuseDispatcherMisses {}, ReuseAttempts {}, ReuseLatestCandidates {}, ReusePreviousCandidates {},
@@ -215,13 +240,14 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
 +      ReuseMigrationSwitches {}, ReuseRefillAttempts {}, ReuseRefillHits {}, ReuseRefillMisses {}, ReuseFallbackCompiles {},
 +      ReuseLatestHits {}, ReusePreviousHits {}, ReuseMisses {},
 +      ReuseEntryDelivery {}, ReuseNormalReadScope {}, ReuseRejectReadDepth {},
-+      ReuseRejectBufferWriter {}, ReuseRejectUnpublished {}, ReuseRejectUnknownContext {};
++      ReuseRejectBufferWriter {}, ReuseRejectUnpublished {}, ReuseRejectUnknownContext {},
++      ReuseRejectBacktrackBudget {}, ReuseRejectCandidateChanged {};
 +#endif
 +
      // Write offset into the latest CodeBuffer
      std::size_t LatestOffset {};
 
-@@ -117,6 +133,9 @@
+@@ -117,6 +134,9 @@
 
    private:
      fextl::shared_ptr<CodeBuffer> Latest;
@@ -231,7 +257,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
 
      fextl::shared_ptr<CodeBuffer> AllocateNew(size_t Size);
    };
-@@ -207,6 +226,11 @@
+@@ -207,6 +227,11 @@
      virtual void ClearRelocations() {}
 
      bool IsAddressInCodeBuffer(uintptr_t Address) const;
@@ -243,6 +269,18 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interfa
 
      // Updates the CodeBuffer if needed and returns a reference to the old one.
      // The returned reference should be kept alive carefully to avoid early deletion of resources.
+@@ -250,6 +275,11 @@
+     // This is the code buffer containing the main code under execution by this thread.
+     // CheckCodeBufferUpdate must be used before compiling new code.
+     fextl::shared_ptr<CodeBuffer> CurrentCodeBuffer;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    // Per backend/thread; protected by IosMigrateLock. Buffer IDs are assigned
++    // even with compile-reason diagnostics disabled, never derived from RX VA.
++    uint64_t PreviousBorrowedAtGeneration {};
++#endif
+
+     // Old CodeBuffer generations required to be valid until returning from signal handlers
+     fextl::vector<fextl::shared_ptr<CodeBuffer>> SignalHandlerCodeBuffers;
 diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
 --- a/FEXCore/Source/Interface/Core/Core.cpp
 +++ b/FEXCore/Source/Interface/Core/Core.cpp

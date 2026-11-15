@@ -340,6 +340,16 @@ static int failed_create(pthread_t* thread,const pthread_attr_t* attr,void*(*fn)
 #define pthread_create failed_create
 #include "steam_compile_log.c"
 #undef pthread_create
+/* Exercise the real report path on a native worker-sized stack, not main's
+ * larger stack. Keep the independent snapshot used for assertions on the heap. */
+static void *report_on_small_stack(void *opaque){
+ const uint64_t epoch=*(const uint64_t *)opaque;
+ cr_report(epoch,cr_started,cr_begun_start,cr_dropped_start,"fixture-complete");
+ struct cr_report *r=malloc(sizeof(*r));assert(r);
+ assert(cr_snapshot(cr_bridge,epoch,r)&&r->kind[SR_FIRST].count==1);
+ assert(sr_lock(cr_bridge));assert(!cr_snapshot(cr_bridge,epoch,r));sr_unlock(cr_bridge);
+ free(r);return NULL;
+}
 int main(void){
  assert(!cr_bridge);ios_steam_compile_log_configure(1);assert(!cr_bridge); // foreground gate
  ios_steam_compile_log_set_active(1);ios_steam_compile_log_configure(0);assert(!cr_bridge);
@@ -372,9 +382,12 @@ int main(void){
  // Force the CEF thread below top eight; frontend data must still be printed.
  for(unsigned i=0;i<8;i++)for(unsigned j=0;j<2;j++)
    assert(sr_finish(cr_bridge,sr_begin(cr_bridge,2,0xa8,0x100+i,1),(struct sr_key){.owner=6,.rip=0x20000+i*16},f,11,SR_RACED,1));
- cr_report(epoch,cr_started,cr_begun_start,cr_dropped_start,"fixture-complete");
- struct cr_report r;assert(cr_snapshot(cr_bridge,epoch,&r)&&r.kind[SR_FIRST].count==1);
- assert(sr_lock(cr_bridge));assert(!cr_snapshot(cr_bridge,epoch,&r));sr_unlock(cr_bridge);
+ pthread_attr_t attr;pthread_t reporter;
+ assert(!pthread_attr_init(&attr));
+ assert(!pthread_attr_setstacksize(&attr,512*1024));
+ assert(!pthread_create(&reporter,&attr,report_on_small_stack,&epoch));
+ assert(!pthread_attr_destroy(&attr));
+ assert(!pthread_join(reporter,NULL));
  assert(!cr_stop_reason(1,1,0));assert(!strcmp(cr_stop_reason(1,1+CR_DURATION_NS,0),"duration-complete"));
  assert(!strcmp(cr_stop_reason(1,1,SR_MAX_COMPLETIONS),"event-budget"));
  assert(!strcmp(cr_stop_reason(2,1,0),"clock-error"));
@@ -394,10 +407,11 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
         shutil.copyfile(patches/name,deps/name)
     for name,source,cpp in [('classify',core,False),('producer',producer,True),('native',native,False)]:
         src=work/(name+('.cpp' if cpp else '.c'));src.write_text(source)
-        for mode in (['wow64','arm64ec'] if cpp else ['host']):
+        modes=['wow64','arm64ec'] if cpp else (['host-O0','host'] if name=='native' else ['host'])
+        for mode in modes:
             out=work/(name+'-'+mode)
             flags=['xcrun','clang++' if cpp else 'clang','-std=c++20' if cpp else '-std=c11',
-                   '-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined',
+                   '-O0' if mode=='host-O0' else '-O1','-g','-Wall','-Wextra','-Werror','-Wno-unused-function','-fsanitize=address,undefined',
                    '-fno-sanitize-recover=all','-pthread','-I'+str(deps),'-I'+str(root/'build/ntdll-unix')]
             if mode=='arm64ec':flags.append('-DARCHITECTURE_arm64ec')
             subprocess.run(flags+[str(src),'-o',str(out)],check=True)
@@ -420,10 +434,16 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
                 assert re.search(r'\[steam-compile-ra-detail\].*scope=thread instance=1 tid=023c samples=1',result.stderr)
                 assert re.search(r'\[steam-compile-ir\].*scope=thread instance=1 tid=023c calls=1',result.stderr)
                 assert re.search(r'\[steam-compile-ir-pass\].*pass=x87-stack calls=1',result.stderr)
-    # Real iPhoneOS compiler sees the complete standalone source.
+    # Generate real iPhoneOS objects as well: syntax-only and host execution do
+    # not catch platform-specific lowering of aggregate temporaries/inlining.
+    # A 32 KiB per-function frame ceiling leaves room on the 512 KiB worker stack.
     sdk=subprocess.check_output(['xcrun','--sdk','iphoneos','--show-sdk-path'],text=True).strip()
-    subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,
-                    '-std=c11','-Wall','-Wextra','-Werror','-fsyntax-only',str(root/'build/ntdll-unix/steam_compile_log.c')],check=True)
+    for optimization in ['-O0','-O1','-O2','-Os']:
+        subprocess.run(['xcrun','--sdk','iphoneos','clang','-target','arm64-apple-ios17.0','-isysroot',sdk,
+                        '-std=c11','-Wall','-Wextra','-Werror','-Wframe-larger-than=32768',optimization,
+                        '-c',str(root/'build/ntdll-unix/steam_compile_log.c'),
+                        '-o',str(work/f'logger-frame{optimization}.o')],check=True)
+    print('PASS compile logger: 512 KiB pthread at O0/O1; iPhoneOS stack frames <=32 KiB at O0/O1/O2/Os')
     # Full patch chain on copies of the actual pin, preserving local FEX.
     source=work/'patched';source.mkdir();subprocess.run(['git','init','-q',str(source)],check=True)
     names=set()

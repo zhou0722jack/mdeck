@@ -43,12 +43,19 @@ struct cr_report {
 static int cr_snapshot(struct sr_bridge *b,uint64_t epoch,struct cr_report *r) {
     if(!sr_lock(b))return 0;
     if(atomic_load(&cr_epoch)!=epoch){sr_unlock(b);return 0;}
-    *r=(struct cr_report){.attempts=b->attempts,.classified=b->classified,.history_used=b->history_used,
-        .history_full=b->history_full,.shape_changed=b->shape_changed,.missing_fingerprint=b->missing_fingerprint,
-        .missing_generation=b->missing_generation,.out_of_order=b->out_of_order,.thread_overflow=b->thread_overflow,
-        .bytes=b->fingerprint_bytes,.instance_overflow=b->instance_overflow,.generation_overflow=b->generation_overflow,
-        .buffer_count=b->buffer_count,.buffer_overflow=b->buffer_overflow,
-        .buffer_dropped=__atomic_load_n(&b->buffer_dropped,__ATOMIC_RELAXED)-b->buffer_dropped_base,.started_ticks=b->started_ticks,.total=b->total};
+    /* Initialize the heap destination in place. A report-sized compound literal
+     * can become a stack temporary, including when this function is inlined into
+     * cr_report. The report is larger than the native worker's default stack. */
+    memset(r,0,sizeof(*r));
+    r->attempts=b->attempts;r->classified=b->classified;
+    r->history_used=b->history_used;r->history_full=b->history_full;
+    r->shape_changed=b->shape_changed;r->missing_fingerprint=b->missing_fingerprint;
+    r->missing_generation=b->missing_generation;r->out_of_order=b->out_of_order;
+    r->thread_overflow=b->thread_overflow;r->bytes=b->fingerprint_bytes;
+    r->instance_overflow=b->instance_overflow;r->generation_overflow=b->generation_overflow;
+    r->buffer_count=b->buffer_count;r->buffer_overflow=b->buffer_overflow;
+    r->buffer_dropped=__atomic_load_n(&b->buffer_dropped,__ATOMIC_RELAXED)-b->buffer_dropped_base;
+    r->started_ticks=b->started_ticks;r->total=b->total;
     r->frontend=b->frontend;
     memcpy(r->unknown,b->unknown,sizeof(r->unknown));
     memcpy(r->stages,b->stages,sizeof(r->stages));

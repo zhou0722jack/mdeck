@@ -1,6 +1,6 @@
 # Steam 最近一代代码复用（实验性）
 
-此实现位于 mdeck 自有 FEX 补丁 0007，FEX 子模块及 pin 不变。默认关闭；当前只完成源码实现，尚未执行本轮 Actions 检查、完整 PE 编译或实机验证，不能据此宣称稳定性或性能收益。
+此实现位于 mdeck 自有 FEX 补丁 0007，FEX 子模块及 pin 不变。默认关闭。Build45 已通过当时的 Actions 检查，但日志32显示整代切换反复往返，未交付净性能收益。下面的防往返修正尚未执行本轮 Actions 检查、完整 PE 编译或实机验证，不能据此宣称启动问题已解决或性能已改善。
 
 ## 开关与范围
 
@@ -20,10 +20,10 @@ WoW64、ARM64EC 各自初始化时，以当前进程映像 basename `steamwebhel
 新增 entry_delivery、normal_read_scope、reject_read_depth、reject_buffer_writer、
 reject_unpublished、reject_unknown_context 区分入口拒绝与内部状态；拒绝原因可重叠。
 
-回归夹具现在模拟调用者自身的 depth=1，并覆盖 0/2、写锁、unpublished、未知上下文。
-这是源码修正与待运行的 Actions 用例，不等于实机已经出现命中。设备验收先要求普通路径的
-attempts、候选和 refill_attempts 大于 0，再比较 previous_hits、fallback_compiles 和
-CPU/wall/内存。fallback_compiles 包含资格检查未通过的普通编译回退；命中返回前也参与
+回归夹具模拟调用者自身的 depth=1，并覆盖 0/2、写锁、unpublished、未知上下文。
+Build45 与日志32已确认普通入口能够进入尝试和回填，但同时暴露反复切代成本。因此
+attempts、候选和 refill_attempts 大于 0 只证明路径可达；验收还必须比较
+previous_hits、fallback_compiles、迁移/重置次数以及 CPU/wall/内存。fallback_compiles 包含资格检查未通过的普通编译回退；命中返回前也参与
 按 dispatcher miss 的节流输出。
 
 ## 查找及执行所有权
@@ -35,6 +35,19 @@ CPU/wall/内存。fallback_compiles 包含资格检查未通过的普通编译�
 这采用完整缓冲区所有权迁移。活动线程的强引用继续保护正在执行的代码，原有异常 PC 识别仍通过 `CurrentCodeBuffer` / `SignalHandlerCodeBuffers` 工作。后端生成新代码时仍按原机制切换到可写的最新缓冲区，旧代不重新开放追加写入。
 
 锁顺序为外层 `CodeInvalidationMutex` 共享锁、旧映射写锁、线程迁移锁、短暂 `LatestMutex`；候选检查先独立取得并释放候选读锁，不同时持有两张映射锁。迁移前在叶锁内重查该缓冲区仍属于最新/上一代候选。
+
+## 每线程、每个最新代的一次回退预算
+
+日志32中约220万次迁移在最新代和上一代之间交替。命中另一代会清理本线程缓存并重置 call/ret 存储，因此新增以下限制：
+
+- 每个 CPUBackend（线程）记录 `PreviousBorrowedAtGeneration`，在迁移锁内访问。候选快照的最新缓冲区使用既有 `MDeckReasonGeneration` 独立序号，序号在诊断关闭时仍分配，不依赖 RX 地址。只有更新的最新代序号才能获得下一次回退机会。
+- 当前代正常查找保持不变。需要迁往 Previous 时，若该最新代的机会已使用，计入 `reject_backtrack_budget` 并返回普通编译路径。当前线程已经在 Previous 内的命中不消耗额外机会。
+- 机会在实际切换到 Previous 前消耗，而不是等回填成功。回填失败、条目失效后重新发布、普通编译回到最新代、远程线程迁移均不返还机会。第一次未找到条目或条目不合法则不消耗。
+- 允许正常向最新代迁移；回到最新代后，缺失的旧块在最新代编译。每线程每个稳定最新代的主动向后迁移上限为一次；这是向后迁移上限，不是整个 manager、全部线程或所有迁移路径的总次数上限。
+- 迁移前在 `LatestMutex` 内同时确认候选仍有效、Latest 仍是检查条目时快照中的对象。候选检查期间换代，计入 `reject_candidate_changed`，不消费旧快照的预算。对象强引用保护地址重用场景。该检查之后仍允许正常并发换代；现有强引用保护寿命，新代序号的预算另算。
+- 只有新的容量代与有效 Previous 保留入口才可继续复用。显式清缓存仍使 manager 永久停止本会话复用；空候选或无有效代号不会开放回退。
+
+这不改变 SMC/卸载失效、生命周期、异常引用、TF/MaxInst/delivery 保护，也不建立跨代持久链接。没有跳过任何缓存清理。代价是主动放弃部分旧代命中并重新编译，以让交替使用的代码集中到最新代。此方案能约束整代往返，但是否有净收益仍需实机对照；不能把预算拒绝或命中次数当成性能结论。
 
 ## 不新增跨代持久链接
 
@@ -62,7 +75,11 @@ CPU/wall/内存。fallback_compiles 包含资格检查未通过的普通编译�
 
 `[fex-prev]` 现在记录 dispatcher miss、实际尝试、最新代/上一代候选与条目、`reject_maxinst`/`reject_tf`/`reject_delivery`/`reject_signal`、`reject_no_entry`/`reject_non_normal`/`reject_host_range`、migration attempt/switch、refill attempt/hit/miss 和最终 `fallback_compiles`，以及原有的 `latest_hits`/`previous_hits`/`misses`。候选和条目是按候选查找次数累计的；拒绝字段不是互斥分类，单次查找可能先后经过多个候选。`dispatcher_misses` 是从 dispatcher 进入 CompileBlock 后的缓存未命中次数，`fallback_compiles` 是本次受控查找没有返回 HostCode 而继续普通 CompileBlock 的次数。前 8 次 dispatcher miss、之后每 1024 次以及新缓冲区分配后输出。多线程字段以独立原子读取，报告可能不是同一时刻快照；没有最终完整快照保证。`owner` 是会话内 manager 地址；不要跨会话合并。`retained_bytes` 只反映保留入口，不是总存活旧代码内存。
 
-已添加 Actions 用例（尚未运行）：
+Build45 已运行既有 Actions 检查；本轮新增及受影响的 Actions 用例尚未运行：
+
+- 真实迁移方法在宿主适配器下完成一次往返后，重复访问上一代缺失块10000次，迁移与 call/ret 重置次数不再增加，最新代热块缓存保持。
+- 新最新代（包括复用同一 RX 地址）重新开放一次预算；第二个线程拥有独立预算；检查条目期间发生换代拒绝陈旧快照。
+- 回填失败仍消耗预算，失效/重新发布不返还；向前迁移不重置；显式停止和旧代码活动引用保护保持。
 
 - 精确开关值、CEF 限定、默认关闭、初始化后不变；配置覆盖、去重及诊断独立性。
 - 实际 `Slot` 的单代预算、轮换、显式停止、活动强引用保护和最终回收。
