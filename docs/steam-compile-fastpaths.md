@@ -1,6 +1,8 @@
 # 编译前端局部快路径
 
-mdeck 自有 `0008-compile-front-end-fast-paths.patch`，叠加在 0001–0007 后。
+mdeck 自有 RA 快路径合入 `0006-dfe-scratch-ra-sampling.patch`；Decode/IR 改动位于
+`0008-compile-front-end-fast-paths.patch`，叠加在 0001–0007 后。这样避免两个补丁
+交叠修改 RA 函数入口。
 不修改 FEX 子模块或 pin，不向上游提交。此补丁不增加诊断输出或新的设置，
 不依赖编译原因日志；三个改动会应用于使用这些代码的翻译实例，不仅是 CEF。
 已有尚未打包的 DFE 活动视图/保留存储分离改动仍在 0006 中。

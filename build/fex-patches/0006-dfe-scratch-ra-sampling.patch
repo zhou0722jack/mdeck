@@ -317,13 +317,28 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      }
 
      // Assign a free register in the appropriate class.
-@@ -473,4 +494,4 @@
+@@ -473,7 +494,19 @@
    return IROp->Op == OP_CONSTANT && IROp->C<IROp_Constant>()->Constant == 0;
  }
 
 -bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp) {
 +bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
-@@ -488,6 +509,7 @@
++  // Special rewrites may succeed even when the two destination registers differ
++  // (and CPUID/XGETBV may rewrite while returning false). Preserve their path.
++  switch (IROp->Op) {
++  case OP_PUSH: case OP_POP: case OP_DIV: case OP_UDIV: case OP_XGETBV: case OP_CPUID:
++    break;
++  default:
++    if (PhysicalRegister(LastNode) != PhysicalRegister(CodeNode)) {
++      Timing.Work(SR_SCAN_RA_MERGE_REG_MISMATCH);
++      return false;
++    }
++    break;
++  }
+   auto LastOp = IR->GetOp<IROp_Header>(LastNode);
+
+   if (IROp->Op == OP_PUSH && LastOp->Op == OP_PUSH) {
+@@ -488,6 +521,7 @@
        IREmit->SetWriteCursorBefore(LastNode);
        IREmit->_PushTwo(IROp->Size, Push->ValueSize, IROp->Args[0], LastOp->Args[0], IROp->Args[1]);
        IREmit->RemovePostRA(CodeNode);
@@ -331,7 +346,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        return true;
      }
    } else if (IROp->Op == OP_POP) {
-@@ -497,6 +519,7 @@
+@@ -497,6 +531,7 @@
        IREmit->SetWriteCursorBefore(LastNode);
        IREmit->_PopTwo(IROp->Size, IROp->Args[0], LastOp->Args[1], IROp->Args[1]);
        IREmit->RemovePostRA(CodeNode);
@@ -339,7 +354,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        return true;
      }
    } else if ((IROp->Op == OP_DIV || IROp->Op == OP_UDIV) && IROp->Size >= OpSize::i32Bit) {
-@@ -505,7 +528,9 @@
+@@ -505,7 +540,9 @@
      if (!Op->Upper.IsInvalid() && PhysicalRegister(Op->Upper) == PhysicalRegister(LastNode)) {
        if (IROp->Op == OP_DIV ? IsSignext(LastOp, Op->Lower, IROp->Size) : IsZero(LastOp)) {
          Op->Upper.SetInvalid();
@@ -350,7 +365,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        }
      }
    } else if (IROp->Op == OP_XGETBV && PhysicalRegister(IROp->Args[0]) == PhysicalRegister(LastNode) && LastOp->Op == OP_CONSTANT) {
-@@ -518,6 +543,7 @@
+@@ -518,6 +555,7 @@
        IREmit->_Constant(Result.eax).Node->Reg = PhysicalRegister(Op->OutEAX).Raw;
        IREmit->_Constant(Result.edx).Node->Reg = PhysicalRegister(Op->OutEDX).Raw;
        IREmit->RemovePostRA(CodeNode);
@@ -358,7 +373,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        return false;
      }
    } else if (IROp->Op == OP_CPUID && PhysicalRegister(IROp->Args[0]) == PhysicalRegister(LastNode) && LastOp->Op == OP_CONSTANT) {
-@@ -539,6 +565,7 @@
+@@ -539,6 +577,7 @@
        IREmit->_Constant(Result.ecx).Node->Reg = PhysicalRegister(Op->OutECX).Raw;
        IREmit->_Constant(Result.edx).Node->Reg = PhysicalRegister(Op->OutEDX).Raw;
        IREmit->RemovePostRA(CodeNode);
@@ -366,7 +381,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        return false;
      }
    }
-@@ -559,24 +586,41 @@
+@@ -559,24 +598,41 @@
        }
      }
 
@@ -412,7 +427,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // Spilling is local, so reset this per-block
      AnySpilled = false;
 
-@@ -603,12 +647,15 @@
+@@ -603,12 +659,15 @@
      // whereas walking a cyclic chain would set kill bits on nodes belonging to
      // other blocks and free their registers early -- a miscompile.
      // ml599b: cheap backward-only check here; full diagnosis only when it trips.
@@ -428,7 +443,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // Backwards pass: analyze kill bits and SRA affinities
      if (BackwardPassSafe) {
        // Reverse iteration is not yet working with the iterators
-@@ -630,6 +677,7 @@
+@@ -630,6 +689,7 @@
            break;
          }
          auto [CodeNode, IROp] = CodeLast();
@@ -436,7 +451,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
          // End of iteration gunk
 
          // Record preferred registers for SRA. We also record the Node accessing
-@@ -680,6 +728,7 @@
+@@ -680,6 +740,7 @@
        }
      }
 
@@ -444,7 +459,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      // NextUses currently contains first use distances, the exact initialization
      // assumed by the forward pass. Do not reset it.
 
-@@ -688,6 +737,7 @@
+@@ -688,6 +749,7 @@
 
      // Forward pass: Assign registers, spilling & optimizing as we go.
      for (auto [CodeNode, IROp] : IR->GetCode(BlockNode)) {
@@ -452,7 +467,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
        bool AnySpilledBeforeThisInstruction = AnySpilled;
 
        // These do not read or write registers, and must be skipped for merging.
-@@ -723,7 +773,7 @@
+@@ -723,7 +785,7 @@
              }
 
              FreeReg(Reg);
@@ -461,7 +476,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
              RemapReg(Old, PhysicalRegister(Copy));
            }
          }
-@@ -756,9 +806,9 @@
+@@ -756,9 +818,9 @@
              IREmit->SetWriteCursorBefore(CodeNode);
              LastNode = nullptr;
 
@@ -474,7 +489,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
              RemapReg(Old, PhysicalRegister(Fill));
            }
          }
-@@ -787,13 +837,13 @@
+@@ -787,13 +849,13 @@
 
        // Assign destinations.
        if (GetHasDest(IROp->Op) && PhysicalRegister(CodeNode).IsInvalid()) {
@@ -490,7 +505,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
          // Merge adjacent instructions
          IREmit->RemovePostRA(LastNode);
          LastNode = nullptr;
-@@ -807,6 +857,8 @@
+@@ -807,6 +869,8 @@
      }
    }
 
@@ -499,7 +514,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
    PreferredReg.clear();
    SSAToReg.clear();
    SpillSlots.clear();
-@@ -814,6 +866,7 @@
+@@ -814,6 +878,7 @@
    Seen.clear();
 
    IR->GetHeader()->PostRA = true;

@@ -209,11 +209,13 @@ with tempfile.TemporaryDirectory(prefix='mdeck-front-fast-') as tmp:
     for patch in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(source),'apply','--reverse','--check',str(patch)],check=True)
     after = {p: (source/p).read_text() for p in before}
-    old_body = body(before[ra_path], 'bool ConstrainedRAPass::TryPostRAMerge(')
     new_body = body(after[ra_path], 'bool ConstrainedRAPass::TryPostRAMerge(')
-    # The complete existing special/ordinary paths must be byte-identical.
-    suffix = old_body[old_body.index('  auto LastOp'):]
-    assert new_body.endswith(suffix)
+    # 0006 now owns both telemetry and the fast guard, avoiding overlapping
+    # signature hunks. Baseline removes only that leading guard; all existing
+    # special rewrites and diagnostic accounting execute in both variants.
+    suffix = new_body[new_body.index('  auto LastOp'):]
+    old_body = '{\n' + suffix
+    assert old_body.count('switch (IROp->Op)') == 0
     special = new_body[:new_body.index('  auto LastOp')]
     special_opcodes = set(re.findall(r'IROp->Op == (OP_[A-Z0-9_]+)',old_body.split('// Merge moves')[0]))
     assert special_opcodes == {'OP_PUSH','OP_POP','OP_DIV','OP_UDIV','OP_XGETBV','OP_CPUID'}

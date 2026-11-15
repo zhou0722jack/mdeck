@@ -1,25 +1,3 @@
-diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
---- a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
-+++ b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
-@@ -495,6 +495,18 @@
- }
-
- bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
-+  // Special rewrites may succeed even when the two destination registers differ
-+  // (and CPUID/XGETBV may rewrite while returning false). Preserve their path.
-+  switch (IROp->Op) {
-+  case OP_PUSH: case OP_POP: case OP_DIV: case OP_UDIV: case OP_XGETBV: case OP_CPUID:
-+    break;
-+  default:
-+    if (PhysicalRegister(LastNode) != PhysicalRegister(CodeNode)) {
-+      Timing.Work(SR_SCAN_RA_MERGE_REG_MISMATCH);
-+      return false;
-+    }
-+    break;
-+  }
-   auto LastOp = IR->GetOp<IROp_Header>(LastNode);
-
-   if (IROp->Op == OP_PUSH && LastOp->Op == OP_PUSH) {
 diff --git a/FEXCore/Source/Interface/Core/Frontend.h b/FEXCore/Source/Interface/Core/Frontend.h
 --- a/FEXCore/Source/Interface/Core/Frontend.h
 +++ b/FEXCore/Source/Interface/Core/Frontend.h
