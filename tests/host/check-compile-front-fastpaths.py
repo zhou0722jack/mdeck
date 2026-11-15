@@ -100,8 +100,10 @@ struct IROp_Header {
 using IROp_Push=IROp_Header;using IROp_Constant=IROp_Header;
 namespace IR {using IROp_Div=IROp_Header;using IROp_XGetBV=IROp_Header;using IROp_CPUID=IROp_Header;
  enum class FenceType{Inst};inline int GetRAArgs(OpCode){return 4;}}
-namespace CPUIDEmu {struct SupportsConstant {
- enum {CONSTANT,VARIABLE};enum class NeedsLeafConstant {NEEDSLEAFCONSTANT,NOLEAF};
+namespace CPUIDEmu {
+enum class NeedsLeafConstant {NEEDSLEAFCONSTANT,NOLEAF};
+struct SupportsConstant {
+ enum {CONSTANT,VARIABLE};
  int SupportsConstantFunction;NeedsLeafConstant NeedsLeaf;
 };}
 struct FakeCPU {
@@ -111,7 +113,7 @@ struct FakeCPU {
  Result RunXCRFunction(uint64_t){return {};}
  CPUIDEmu::SupportsConstant DoesFunctionReportConstantData(uint64_t)const{
   return {Constant?CPUIDEmu::SupportsConstant::CONSTANT:CPUIDEmu::SupportsConstant::VARIABLE,
-          Leaf?CPUIDEmu::SupportsConstant::NeedsLeafConstant::NEEDSLEAFCONSTANT:CPUIDEmu::SupportsConstant::NeedsLeafConstant::NOLEAF};}
+          Leaf?CPUIDEmu::NeedsLeafConstant::NEEDSLEAFCONSTANT:CPUIDEmu::NeedsLeafConstant::NOLEAF};}
  Result RunFunction(uint64_t,uint64_t){return {};}
 };
 enum {SR_SCAN_RA_MERGE_TRUE,SR_SCAN_RA_MERGE_REWRITE_FALSE,SR_SCAN_RA_MERGE_REG_MISMATCH,SR_SCAN_RA_MERGE_MOVE_INELIGIBLE};
