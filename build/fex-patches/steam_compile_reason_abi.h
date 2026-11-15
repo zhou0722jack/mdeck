@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
-#define SR_MAGIC UINT64_C(0x4d4452434d503036)
+#define SR_MAGIC UINT64_C(0x4d4452434d503037)
 /* Private banks: ordinary startup can never consume a CEF bank. */
 #define SR_ORDINARY_INSTANCES 16
 #define SR_CEF_INSTANCES 2
@@ -37,7 +37,7 @@ enum { SR_SCAN_DECODE_BLOCKS, SR_SCAN_DECODE_SET_NODES, SR_SCAN_IR_JUMP_TARGETS,
 static const char *const sr_scan_names[] = {"decode-blocks","decode-set-nodes","ir-jump-targets","dfe-gather","dfe-validate","dfe-digest","dfe-reverse","dfe-parity","dfe-edges","dfe-push","dfe-pop","dfe-queue-high","dfe-borrowed","dfe-fallback","ra-merge-true","ra-merge-rewrite-false","ra-merge-reg-mismatch","ra-merge-move-ineligible"};
 enum { SR_AUX_DECODE_RESET, SR_AUX_DECODE_POOL, SR_AUX_IR_POOL, SR_AUX_DFE_INIT, SR_AUX_DFE_SEEN, SR_AUX_DFE_CLEANUP, SR_AUX_RA_INIT, SR_AUX_RA_CLEANUP, SR_AUX_KINDS };
 static const char *const sr_aux_names[] = {"decode-reset","decode-pool","ir-reset","dfe-init","dfe-seen","dfe-cleanup","ra-init","ra-cleanup"};
-enum sr_buffer_reason { SR_BUFFER_INITIAL, SR_BUFFER_CAPACITY, SR_BUFFER_EXPLICIT };
+enum sr_buffer_reason { SR_BUFFER_INITIAL, SR_BUFFER_CAPACITY, SR_BUFFER_EXPLICIT, SR_BUFFER_SEGMENT_APPEND };
 struct sr_fingerprint {
     uint64_t shape, content_a, content_b, bytes, instructions;
     unsigned invalid;

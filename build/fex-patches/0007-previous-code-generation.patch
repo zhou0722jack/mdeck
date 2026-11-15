@@ -294,10 +294,10 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    }
    FEXCore::Core::ResetCallRetStack(Thread, "core");
  }
-@@ -1494,7 +1497,11 @@
+@@ -1501,7 +1504,11 @@
  }
  #endif
-
+ 
 -uintptr_t ContextImpl::CompileBlock(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
 +uintptr_t ContextImpl::CompileBlockFromDispatcher(FEXCore::Core::CpuStateFrame* Frame, uint64_t GuestRIP, uint64_t MaxInst) {
 +  return CompileBlock(Frame, GuestRIP, MaxInst, true);
@@ -307,10 +307,10 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
    MDECK_STEAM_SCOPE(SF_DISPATCH);
    if constexpr (BLOCK_DEBUGGING) {
      // Block debugging logic is hand-written and needs to be handled with care.
-@@ -2227,6 +2234,29 @@
+@@ -2234,6 +2241,29 @@
    }
  #endif
-
+ 
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +  if (FromDispatcher && FEXCore::MDeckPrevious::Enabled()) {
 +    auto& Reuse = Thread->CPUBackend->GetCodeBufferManager();
@@ -336,16 +336,21 @@ diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/C
 +
    // iOS-Madeira: cache miss reached — count as true compile.
    __sync_add_and_fetch(&g_cb_real_compiles, 1);
-
-@@ -2342,7 +2372,8 @@
+ 
+@@ -2348,8 +2378,13 @@
+ 
    // Insert to lookup cache
-
+ 
++  uint8_t MDeckCodeSegment = 0;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  MDeckCodeSegment = static_cast<uint8_t>(CompiledCode.MDeckCodeSegment);
++#endif
    for (auto [GuestAddr, HostAddr] : CompiledCode.EntryPoints) {
 -    Thread->LookupCache->AddBlockMapping(Thread, GuestAddr, CodePages, HostAddr);
 +    Thread->LookupCache->AddBlockMapping(Thread, GuestAddr, CodePages, HostAddr,
-+        MaxInst == 0 && NeedsAddGuestCodeRanges && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC]);
++        MaxInst == 0 && NeedsAddGuestCodeRanges && !Frame->State.flags[X86State::RFLAG_TF_RAW_LOC], MDeckCodeSegment);
    }
-
+ 
    if (CodeMapWriter) {
 diff --git a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp b/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
 --- a/FEXCore/Source/Interface/Core/Dispatcher/Dispatcher.cpp
@@ -367,7 +372,7 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
      }
      if (!HostCode) {
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
-+      if (FEXCore::MDeckPrevious::Enabled()) {
++      if (FEXCore::MDeckPrevious::Enabled() || MDeckSegments::Enabled()) {
 +        Frame->State.rip = GuestRip;
 +        return Frame->Pointers.DispatcherLoopTop;
 +      }
@@ -378,7 +383,7 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 @@ -622,6 +628,14 @@
      }
    }
-
+ 
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +  if (FEXCore::MDeckPrevious::Enabled() &&
 +      (!Thread->CPUBackend->IsInCurrentBuffer(reinterpret_cast<uintptr_t>(Record)) ||
@@ -390,35 +395,70 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
    // See ExitFunction in BranchOps.cpp for an assembly level view of the handled cases.
    uintptr_t JumpThunkStartAddress = reinterpret_cast<uintptr_t>(Record) - 0x10;
    uintptr_t CallerAddress = JumpThunkStartAddress + Record->CallerOffset;
+@@ -643,6 +657,21 @@
+   // Lock here is necessary to prevent simultaneous linking and delinking
+   auto lk = Thread->LookupCache->AcquireWriteLock();
+ 
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  if (MDeckSegments::Enabled()) {
++    const auto& Group = *static_cast<Arm64JITCore*>(Thread->CPUBackend.get())->CurrentCodeBuffer;
++    const auto SourceSegment = Group.SegmentForAddress(reinterpret_cast<uintptr_t>(Record));
++    // Resolve first, then validate again under the link/map write lock. SMC,
++    // unmap or replacement could have removed the entry between those locks.
++    // Returning the dispatcher prevents both immediate cross-segment entry
++    // from this thunk and creation of either kind of persistent link below.
++    if (SourceSegment == MDeckSegments::Segment::Outside || SourceSegment != Group.SegmentForAddress(HostCode) ||
++        !Thread->LookupCache->Shared->MatchesCodeSegment(GuestRip, HostCode, static_cast<uint8_t>(SourceSegment), lk)) {
++      Frame->State.rip = GuestRip;
++      return Frame->Pointers.DispatcherLoopTop;
++    }
++  }
++#endif
+   // For non-calls, this would extend into the block's code, however that's fine as an out-of-range adr would never
+   // be generated avoiding any false positives.
+   uintptr_t KnownCallMarkerAddr = CallerAddress - KnownCallMarkerDisp;
 diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interface/Core/LookupCache.h
 --- a/FEXCore/Source/Interface/Core/LookupCache.h
 +++ b/FEXCore/Source/Interface/Core/LookupCache.h
-@@ -110,6 +110,7 @@
+@@ -110,6 +110,8 @@
    struct BlockEntry {
      uint64_t HostCode;
      fextl::vector<uint64_t> CodePages;
 +    bool MDeckNormal {};
++    uint8_t MDeckCodeSegment {}; // zero = first; one = second in this same map
    };
-
+ 
    fextl::robin_map<uint64_t, BlockEntry> BlockList;
-@@ -119,13 +120,13 @@
+@@ -119,13 +121,13 @@
    GuestToHostMap();
-
+ 
    // Adds to Guest -> Host code mapping
 -  const BlockEntry& AddBlockMapping(uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, const LookupCacheWriteLockToken&) {
-+  const BlockEntry& AddBlockMapping(uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, const LookupCacheWriteLockToken&, bool MDeckNormal = false) {
++  const BlockEntry& AddBlockMapping(uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, const LookupCacheWriteLockToken&, bool MDeckNormal = false, uint8_t MDeckCodeSegment = 0) {
      // This may replace an existing mapping
      // NOTE: Generally no previous entry should exist, however there is one exception:
      //       If the backend updates the active thread's CodeBuffer, the new associated LookupCache
      //       may already contain the block address. Since is comparatively rare, we'll just leak
      //       one of the two blocks in this case.
 -    return BlockList.insert_or_assign(Address, BlockEntry {(uintptr_t)HostCode, CodePages}).first->second;
-+    return BlockList.insert_or_assign(Address, BlockEntry {(uintptr_t)HostCode, CodePages, MDeckNormal}).first->second;
++    return BlockList.insert_or_assign(Address, BlockEntry {(uintptr_t)HostCode, CodePages, MDeckNormal, MDeckCodeSegment}).first->second;
    }
-
+ 
    const BlockEntry* FindBlock(uint64_t Address, const LookupCacheReadLockToken&) {
-@@ -256,6 +257,16 @@
-
+@@ -134,6 +136,11 @@
+       return nullptr;
+     }
+     return &HostCode->second;
++  }
++
++  bool MatchesCodeSegment(uint64_t Address, uintptr_t Host, uint8_t Segment, const LookupCacheWriteLockToken&) const {
++    const auto I = BlockList.find(Address);
++    return I != BlockList.end() && I->second.HostCode == Host && I->second.MDeckCodeSegment == Segment;
+   }
+ 
+   bool Erase(uint64_t Address, const LookupCacheWriteLockToken&) {
+@@ -256,6 +263,16 @@
+ 
      return HostPtr;
    }
 +
@@ -431,23 +471,23 @@ diff --git a/FEXCore/Source/Interface/Core/LookupCache.h b/FEXCore/Source/Interf
 +    return Entry->HostCode;
 +  }
 +#endif
-
+ 
    void UpdateDynamicL1Stats(FEXCore::Core::InternalThreadState* Thread) {
      // If host pointer was found in L2 or L3, then add it to the counter.
-@@ -337,13 +348,13 @@
+@@ -337,13 +354,13 @@
    }
-
+ 
    // Adds to Guest -> Host code mapping
 -  void AddBlockMapping(FEXCore::Core::InternalThreadState* Thread, uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode) {
-+  void AddBlockMapping(FEXCore::Core::InternalThreadState* Thread, uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, bool MDeckNormal = false) {
++  void AddBlockMapping(FEXCore::Core::InternalThreadState* Thread, uint64_t Address, const fextl::vector<uint64_t>& CodePages, void* HostCode, bool MDeckNormal = false, uint8_t MDeckCodeSegment = 0) {
      std::optional<FEXCore::SHMStats::AccumulationBlock<uint64_t>> LockTime(
        Thread->ThreadStats ? &Thread->ThreadStats->AccumulatedCacheWriteLockTime : nullptr);
      auto lk = Shared->AcquireWriteLock();
      LockTime.reset();
-
+ 
 -    const auto& Entry = Shared->AddBlockMapping(Address, CodePages, HostCode, lk);
-+    const auto& Entry = Shared->AddBlockMapping(Address, CodePages, HostCode, lk, MDeckNormal);
-
++    const auto& Entry = Shared->AddBlockMapping(Address, CodePages, HostCode, lk, MDeckNormal, MDeckCodeSegment);
+ 
      // There is no need to update L1 or L2, they will get updated on first lookup
      // However, adding to L1 here increases performance
 diff --git a/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h b/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h

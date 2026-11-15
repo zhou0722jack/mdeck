@@ -250,7 +250,7 @@ static void cr_report(uint64_t epoch,uint64_t started,uint64_t begun_start,uint6
             (unsigned long long)g->output.rx,(unsigned long long)g->output.used,(unsigned long long)g->output.capacity);
         cr_classes(epoch,elapsed,scale,"generation",g->instance,g->owner,g->generation,g->kind);
     }
-    static const char *buffer_reasons[]={"initial","capacity","explicit-or-other"};
+    static const char *buffer_reasons[]={"initial","capacity","explicit-or-other","segment-append"};
     for(unsigned i=0;i<r->buffer_count;i++) {
         const struct sr_buffer_event *e=&r->buffers[i];
         double event_time=e->ticks>=r->started_ticks?(e->ticks-r->started_ticks)/(double)b->frequency:0;

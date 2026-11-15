@@ -31,6 +31,7 @@
     "check-dfe-scratch.py",
     "check-compile-front-fastpaths.py",
     "check-previous-code.py",
+    "check-dual-code-segments.py",
     "check-fex-l1-index.py",
     "check-steam-alloc-stats.py",
     "check-steam-surface-stats.py",

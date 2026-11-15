@@ -50,7 +50,7 @@ inline void Initialize(const char* text,unsigned path,bool cef=false) {
 }
 inline uint64_t Clock() { uint64_t ticks;__asm__ volatile("isb\nmrs %0, cntvct_el0":"=r"(ticks)::"memory");return ticks; }
 inline void BufferAllocated(uint64_t owner,uint64_t previous,uint64_t old_rx,uint64_t old_used,uint64_t old_capacity,
-                            uint64_t generation,uint64_t rx,uint64_t capacity,uint64_t requested) {
+                            uint64_t generation,uint64_t rx,uint64_t capacity,uint64_t requested,bool append=false) {
   auto* b=__atomic_load_n(&Bridge,__ATOMIC_ACQUIRE);if(!b)return;
   sr_buffer_event e {};e.epoch=__atomic_load_n(&b->active_epoch,__ATOMIC_ACQUIRE);if(!e.epoch)return;
   e.instance=Instance;e.owner=owner;e.ticks=Clock();e.path=Path;
@@ -61,7 +61,7 @@ inline void BufferAllocated(uint64_t owner,uint64_t previous,uint64_t old_rx,uin
   }
   e.previous=previous;e.generation=generation;e.old_rx=old_rx;e.old_used=old_used;e.old_capacity=old_capacity;
   e.rx=rx;e.capacity=capacity;e.requested=requested;
-  e.reason=!previous?SR_BUFFER_INITIAL:requested?SR_BUFFER_CAPACITY:SR_BUFFER_EXPLICIT;
+  e.reason=append?SR_BUFFER_SEGMENT_APPEND:!previous?SR_BUFFER_INITIAL:requested?SR_BUFFER_CAPACITY:SR_BUFFER_EXPLICIT;
   sr_buffer_record(b,e);
 }
 class Capture {

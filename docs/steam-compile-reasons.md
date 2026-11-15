@@ -59,7 +59,7 @@ Steam 根据保存的开关重新启用。本功能不暂停任何线程。
 留在其所在阶段。因此不能据 `backend_ms`、`decode_ir_ms` 或 `output_ms` 推导 CPU
 占用，也不能声称已经测到所有锁等待。与热点检测的包含式计时不可直接相加。
 
-## GenerateIR 内部分段（当前 ABI v6）
+## GenerateIR 内部分段（ABI v6 引入，v7 沿用）
 
 沿用同一个开关、45 秒窗口和完成事件预算。没有给每条 guest 指令增加时钟读取；
 使用调用栈上的 Capture 指针传递上下文，不使用 TLS 或全局“当前编译”指针。
@@ -110,7 +110,7 @@ GenerateIR 总时间。`pass_manager_ms - pass_sum_ms` 是管理/检查/计时�
 新增统计在现有完成事件的 try-lock 内汇总，不增加每个 pass 的共享锁。线程本地
 Capture 内只为已进入诊断的调用初始化新增统计；关闭时不读取新增时钟，不扫描 IR。
 新增每秒输出和快照复制仍有成本，快照放在报告线程堆上，避免扩大工作线程栈占用。
-宿主和 WoW64/ARM64EC 使用 ABI v6 配套 magic/大小，不支持混用旧版本。
+宿主和 WoW64/ARM64EC 使用 ABI v7 配套 magic/大小，不支持混用旧版本；v7 新增 `segment-append` 事件，不改变 v6 的计时与容量统计口径。
 
 ## RA 抽样分段（ABI v5）
 
@@ -204,12 +204,12 @@ ABI v2 不再共用一个 65,536 槽的历史表。PE 初始化时只读自身 P
 
 ## buffer 换代与分类对应
 
-`[steam-compile-buffer]` 在实际 AllocateNew 成功、替换 Latest 前记录：
+`[steam-compile-buffer]` 在实际 AllocateNew 成功、替换 Latest 前，或在同一逻辑 L3 成功追加第二物理段时记录：
 
 - `instance/owner/previous/generation`：同一 PE、manager 下的旧新 buffer 身份；
   不要把不同 owner 或实例拼成一个代序列。
 - `old_rx/old_used/old_capacity` 和 `rx/capacity`：真实地址、旧已用量与新旧可用容量，
-  单位字节；capacity 为 UsableSize，不含 guard page。old_used 为当时 LatestOffset，
+  单位字节；capacity 为物理段的可用容量，不含保留尾页。old_used 为旧输出段游标，
   不包含本次写入前可能产生的对齐填充。
 - `requested`：容量判断失败时本次临时代码的字节数；对齐也会消耗余量。
 - `reason=initial`：该 manager 尚无旧 buffer；`capacity`：本次代码放不下而进入

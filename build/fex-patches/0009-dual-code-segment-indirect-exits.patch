@@ -1,0 +1,36 @@
+diff --git a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+--- a/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
++++ b/FEXCore/Source/Interface/Core/JIT/BranchOps.cpp
+@@ -368,5 +368,31 @@
+     // Note: sub+cbnz used over cmp+br to preserve flags.
+     sub(TMP1, TMP1, RipReg.X());
+-    (void)cbz(ARMEmitter::Size::i64Bit, TMP1, &SkipFullLookup);
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++    if (MDeckSegments::Enabled()) {
++      ARMEmitter::ForwardLabel Miss, SecondSource, Here;
++      (void)cbnz(ARMEmitter::Size::i64Bit, TMP1, &Miss);
++      // Before the first append, there cannot be a cross-segment L1 hit.
++      LoadConstant(ARMEmitter::Size::i64Bit, TMP1, reinterpret_cast<uintptr_t>(&MDeckSegments::ActiveSecondRX));
++      ldar(TMP1, TMP1);
++      (void)cbz(ARMEmitter::Size::i64Bit, TMP1, &SkipFullLookup);
++      (void)adr(TMP3, &Here);
++      (void)Bind(&Here);
++      sub(TMP3, TMP3, TMP1);
++      sub(TMP1, TMP2, TMP1);
++      lsr(ARMEmitter::Size::i64Bit, TMP3, TMP3, MDeckSegments::SizeShift);
++      lsr(ARMEmitter::Size::i64Bit, TMP1, TMP1, MDeckSegments::SizeShift);
++      (void)cbz(ARMEmitter::Size::i64Bit, TMP3, &SecondSource);
++      (void)cbnz(ARMEmitter::Size::i64Bit, TMP1, &SkipFullLookup);
++      (void)b(&Miss);
++      (void)Bind(&SecondSource);
++      (void)cbz(ARMEmitter::Size::i64Bit, TMP1, &SkipFullLookup);
++      (void)Bind(&Miss);
++      // Exactly the ordinary miss path, retaining RipReg and NZCV. For CALL
++      // it still executes the existing continuation/BLR code below.
++    } else
++#endif
++    {
++      (void)cbz(ARMEmitter::Size::i64Bit, TMP1, &SkipFullLookup);
++    }
+     ldr(TMP2, STATE, offsetof(FEXCore::Core::CpuStateFrame, Pointers.DispatcherLoopTop));
+     str(RipReg.X(), STATE, offsetof(FEXCore::Core::CpuStateFrame, State.rip));

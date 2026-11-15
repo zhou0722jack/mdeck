@@ -66,7 +66,7 @@ namespace CPU { struct CodeBuffer {}; }
 struct LookupCacheBaseLockToken {};
 struct LookupCacheWriteLockToken : LookupCacheBaseLockToken {};
 struct GuestToHostMap {
-  struct BlockEntry { uintptr_t HostCode;std::vector<uint64_t> CodePages;bool MDeckNormal; };
+  struct BlockEntry { uintptr_t HostCode;std::vector<uint64_t> CodePages;bool MDeckNormal;uint8_t MDeckCodeSegment; };
   std::map<uint64_t,BlockEntry> blocks;
   unsigned reads{};
   auto AcquireReadLock() { return LookupCacheBaseLockToken{}; }
@@ -74,8 +74,9 @@ struct GuestToHostMap {
   BlockEntry* FindBlock(uint64_t a,const LookupCacheBaseLockToken&) {
     ++reads;auto it=blocks.find(a);return it==blocks.end()?nullptr:&it->second;
   }
-  const BlockEntry& AddBlockMapping(uint64_t a,const std::vector<uint64_t>& pages,void* code,const LookupCacheWriteLockToken&,bool normal=false) {
-    return blocks.insert_or_assign(a,BlockEntry{(uintptr_t)code,pages,normal}).first->second;
+  const BlockEntry& AddBlockMapping(uint64_t a,const std::vector<uint64_t>& pages,void* code,const LookupCacheWriteLockToken&,
+                                    bool normal=false,uint8_t segment=0) {
+    return blocks.insert_or_assign(a,BlockEntry{(uintptr_t)code,pages,normal,segment}).first->second;
   }
   void ClearCache(const LookupCacheWriteLockToken&) { blocks.clear(); }
 };

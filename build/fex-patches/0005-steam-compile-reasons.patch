@@ -31,84 +31,165 @@ diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interfa
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -587,6 +587,9 @@
+@@ -551,6 +551,40 @@
+     FEXCore::Allocator::VirtualFree(Ptr, AllocatedSize);
+   }
+ 
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  bool CodeBufferManager::TryAppendCodeSegment(CodeBuffer& Group, size_t Required) {
++    using namespace MDeckSegments;
++    constexpr size_t Guard = FEXCore::Utils::FEX_PAGE_SIZE;
++    const auto Result = Group.MDeckSecond.TryAttach(Required, Guard, [](size_t Size) -> void* {
++      // Exactly one optional attempt using the same EC_CODE carve and headroom
++      // policy as a regular buffer; no halve-and-retry or general RWX fallback.
++      auto* P = static_cast<uint8_t*>(FEXCore::Allocator::VirtualAlloc(Size, true));
++      if (!P) return nullptr;
++      if (!PoolContains(reinterpret_cast<uintptr_t>(P), Size)) {
++        FEXCore::Allocator::VirtualFree(P, Size);
++        return nullptr;
++      }
++      // The EC_CODE RX/RW carve may not have a Wine file_view. As for the
++      // primary buffer, protection is best-effort; the emitter never writes
++      // into the software-reserved tail, and it is not considered JIT code.
++      DWORD OldProtection {};
++      ::VirtualProtect(P + Size - Guard, Guard, PAGE_NOACCESS, &OldProtection);
++      return P;
++    }, FEXCore::Allocator::VirtualFree, FEXCore::CompileReason::NextId);
++    static unsigned ReportCount {};
++    if (Result == Append::Added) {
++      FEXCore::CompileReason::BufferAllocated(MDeckReasonOwner, Group.MDeckReasonGeneration,
++          reinterpret_cast<uintptr_t>(Group.Ptr), LatestOffset, Group.UsableSize(),
++          Group.ActiveCodeGeneration(), Group.ActiveCodeRX(), Group.ActiveCodeUsableSize(), Required, true);
++    }
++    if (__atomic_fetch_add(&ReportCount, 1u, __ATOMIC_RELAXED) < 32) {
++      LogMan::Msg::IFmt("[fex-segments] append={} primary=0x{:x} second=0x{:x} used={} requested={}",
++                       AppendName(Result), reinterpret_cast<uintptr_t>(Group.Ptr), Group.MDeckSecond.Address(), LatestOffset, Required);
++    }
++    return Result == Append::Added;
++  }
++#endif
++
+ #ifdef FEX_IOS_HOST
+   /* ml460 (#75): process-wide generation counter; read by the deferred-sweep
+    * trigger (Core.cpp) and the sweeper (Module.cpp) via IosCodeBufferGeneration. */
+@@ -587,6 +621,9 @@
  #endif
-
+ 
      auto Buffer = fextl::make_shared<CodeBuffer>(Size);
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    Buffer->MDeckReasonGeneration = FEXCore::CompileReason::NextId();
 +#endif
-
+ 
  #ifdef FEX_IOS_HOST
      /* ml460 (#75): generation bookkeeping. prev_use_count at swap time is the
-@@ -603,6 +606,12 @@
+@@ -603,6 +640,13 @@
            PrevUseCount = Latest.use_count();
            PrevSize = Latest->AllocatedSize;
          }
 +#if defined(_WIN32)
 +        FEXCore::CompileReason::BufferAllocated(MDeckReasonOwner,
-+            Latest ? Latest->MDeckReasonGeneration : 0, Latest ? reinterpret_cast<uint64_t>(Latest->Ptr) : 0,
-+            LatestOffset, Latest ? Latest->UsableSize() : 0, Buffer->MDeckReasonGeneration,
++            Latest ? Latest->ActiveCodeGeneration() : 0, Latest ? Latest->ActiveCodeRX() : 0,
++            Latest ? Latest->ActiveCodeOffset(LatestOffset) : 0,
++            Latest ? Latest->ActiveCodeUsableSize() : 0, Buffer->MDeckReasonGeneration,
 +            reinterpret_cast<uint64_t>(Buffer->Ptr), Buffer->UsableSize(), MDeckReasonRequestBytes);
 +#endif
          Latest = Buffer;
          LatestOffset = 0;
        }
+@@ -880,10 +924,14 @@
+     IosMigrateLockGuard g {IosMigrateLock};
+ #endif
+     auto CheckCodeBuffer = [](CodeBuffer& Buffer, uintptr_t Address) {
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++      return Buffer.SegmentForAddress(Address) != MDeckSegments::Segment::Outside;
++#else
+       // The last page of the code buffer is protected, so we need to exclude it from the valid range
+       // when checking if the address is in the code buffer.
+       uintptr_t LastPageAddr = AlignDown(reinterpret_cast<uintptr_t>(Buffer.Ptr) + Buffer.AllocatedSize - 1, FEXCore::Utils::FEX_PAGE_SIZE);
+       return (Address >= reinterpret_cast<uintptr_t>(Buffer.Ptr) && Address < LastPageAddr);
++#endif
+     };
+ 
+     if (CheckCodeBuffer(*CurrentCodeBuffer, Address)) {
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interface/Core/CPUBackend.h
 --- a/FEXCore/Source/Interface/Core/CPUBackend.h
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.h
-@@ -7,6 +7,7 @@
+@@ -7,6 +7,10 @@
  */
-
+ 
  #pragma once
 +#include <FEXCore/Utils/SteamCompileReason.h>
-
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++#include <FEXCore/Utils/DualCodeSegments.h>
++#endif
+ 
  #include <FEXCore/Utils/CompilerDefs.h>
  #include <FEXCore/Utils/SignalScopeGuards.h>
-@@ -54,6 +55,9 @@
+@@ -54,6 +58,27 @@
    struct CodeBuffer {
      uint8_t* Ptr;
      size_t AllocatedSize; // including guard page; see UsableSize()
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    uint64_t MDeckReasonGeneration = 0;
++    MDeckSegments::SecondSegment MDeckSecond;
++    uintptr_t ActiveCodeRX() const {
++      if (const auto RX = MDeckSecond.Address()) return RX;
++      return reinterpret_cast<uintptr_t>(Ptr);
++    }
++    size_t ActiveCodeUsableSize() const {
++      return MDeckSecond.Address() ? MDeckSegments::Bytes - FEXCore::Utils::FEX_PAGE_SIZE : UsableSize();
++    }
++    uint64_t ActiveCodeGeneration() const {
++      return MDeckSecond.Address() ? MDeckSecond.Generation : MDeckReasonGeneration;
++    }
++    size_t& ActiveCodeOffset(size_t& PrimaryOffset) {
++      return MDeckSecond.Address() ? MDeckSecond.Offset : PrimaryOffset;
++    }
++    MDeckSegments::Segment SegmentForAddress(uintptr_t PC) const {
++      return MDeckSegments::Classify(reinterpret_cast<uintptr_t>(Ptr), UsableSize(),
++                                     MDeckSecond.Address(), FEXCore::Utils::FEX_PAGE_SIZE, PC);
++    }
 +#endif
-
+ 
      fextl::unique_ptr<GuestToHostMap> LookupCache;
-
-@@ -82,6 +86,10 @@
+ 
+@@ -82,6 +107,12 @@
     */
    class CodeBufferManager {
    public:
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +    const uint64_t MDeckReasonOwner = FEXCore::CompileReason::NextId();
 +    uint64_t MDeckReasonRequestBytes = 0;
++    // Caller owns the ordinary (non-delivery) emission writer and references Group.
++    bool TryAppendCodeSegment(CodeBuffer& Group, size_t Required);
 +#endif
      // Get the CodeBuffer that was most recently allocated.
      // This is the only CodeBuffer that data may be written to.
      fextl::shared_ptr<CodeBuffer> GetLatest();
-@@ -126,6 +134,10 @@
+@@ -126,6 +157,11 @@
        fextl::map<uint64_t, uint8_t*> EntryPoints;
        // The total size of the codeblock from [BlockBegin, BlockBegin+Size).
        size_t Size;
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +      uint64_t MDeckReasonGeneration = 0;
 +      sr_output MDeckReasonOutput {};
++      MDeckSegments::Segment MDeckCodeSegment {};
 +#endif
      };
-
+ 
      // Header that can live at the start of a JIT block.
-@@ -183,11 +195,11 @@
+@@ -183,11 +219,11 @@
       */
      [[nodiscard]]
      virtual CompiledCode CompileCode(uint64_t Entry, uint64_t Size, bool SingleInst, const FEXCore::IR::IRListView* IR,
 -                                     FEXCore::Core::DebugData* DebugData, bool CheckTF) = 0;
 +                                     FEXCore::Core::DebugData* DebugData, bool CheckTF, FEXCore::CompileReason::Capture* Reason = nullptr) = 0;
-
+ 
      virtual fextl::vector<FEXCore::CPU::Relocation> TakeRelocations(uint64_t GuestBaseAddress) = 0;
-
+ 
 -    virtual void ClearCache() {}
 +    virtual void ClearCache(FEXCore::CompileReason::Capture* = nullptr) {}
-
+ 
      /**
       * @brief Clear any relocations after JIT compiling
 diff --git a/FEXCore/Source/Interface/Core/Core.cpp b/FEXCore/Source/Interface/Core/Core.cpp
@@ -457,7 +538,7 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 @@ -797,11 +797,13 @@
    Align();
  }
-
+ 
 -void Arm64JITCore::ClearCache() {
 +void Arm64JITCore::ClearCache(FEXCore::CompileReason::Capture* Reason) {
    MDECK_STEAM_SCOPE(SF_CLEAR);
@@ -466,19 +547,32 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 +  if (Reason) Reason->Stage(SR_LOOKUP_WAIT);
    auto lk = PrevCodeBuffer->LookupCache->AcquireWriteLock();
 +  if (Reason) Reason->Stage(SR_OUTPUT);
-
+ 
    auto CodeBuffer = GetEmptyCodeBuffer();
    SetBuffer(CodeBuffer->Ptr, CodeBuffer->AllocatedSize);
 @@ -968,7 +970,7 @@
  }
-
+ 
  CPUBackend::CompiledCode Arm64JITCore::CompileCode(uint64_t Entry, uint64_t Size, bool SingleInst, const FEXCore::IR::IRListView* IR,
 -                                                   FEXCore::Core::DebugData* DebugData, bool CheckTF) {
 +                                                   FEXCore::Core::DebugData* DebugData, bool CheckTF, FEXCore::CompileReason::Capture* Reason) {
    FEXCORE_PROFILE_SCOPED("Arm64::CompileCode");
    /* perf-silenced */ // LogMan::Msg::IFmt("[iOS] Arm64JIT::CompileCode: Entry={:#x} Size={} SingleInst={}", Entry, Size, SingleInst);
-
-@@ -1280,6 +1282,7 @@
+ 
+@@ -1263,6 +1265,12 @@
+     uint64_t IosStampTeb = 0;
+     bool IosNestedS = false;
+     __asm volatile("mov %0, x18" : "=r"(IosStampTeb));
++#if defined(_WIN32)
++    // WoW64 can have x18 == 0; use the canonical TEB for the dual writer stamp.
++    if (MDeckSegments::Enabled()) IosStampTeb = FEXCore::CompileReason::mdeck_steam_probe_teb();
++    const bool SegmentDelivery = MDeckSegments::Enabled() && ThreadState->CurrentFrame->SignalHandlerRefCounter != 0;
++#endif
++
+     if (IosStampTeb && *reinterpret_cast<uint64_t*>(IosStampTeb + 0x16e8) ==
+                          reinterpret_cast<uint64_t>(&CodeBuffers.CodeBufferWriteMutex)) {
+       IosNestedS = true;
+@@ -1280,6 +1288,7 @@
      const bool IosUnpubMode = IosStampTeb && *reinterpret_cast<uint64_t*>(IosStampTeb + 0x16d0) != 0;
      std::unique_lock<std::remove_reference_t<decltype(CodeBuffers.CodeBufferWriteMutex)>> CodeBufferLock;
      if (!IosNestedS) {
@@ -486,7 +580,7 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
        if (IosUnpubMode) {
          /* Bounded acquire: tens of ms of yield-spins, then fail this ONE
           * compile (dispatcher faults one thread) instead of parking forever. */
-@@ -1300,13 +1303,16 @@
+@@ -1300,16 +1303,20 @@
        } else {
          CodeBufferLock = std::unique_lock {CodeBuffers.CodeBufferWriteMutex};
        }
@@ -500,10 +594,14 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
      auto CodeBufferLock = std::unique_lock {CodeBuffers.CodeBufferWriteMutex};
  #endif
 +    if (Reason) Reason->Stage(SR_OUTPUT);
-
+ 
      // Query size of generated code
      const auto TempSize = GetCursorOffset();
-@@ -1334,7 +1340,9 @@
++    size_t* OutputOffset = &CodeBuffers.LatestOffset;
+ 
+     // Bring CodeBuffer up to date
+     {
+@@ -1334,20 +1341,36 @@
  #endif
        if (auto Prev = CheckCodeBufferUpdate()) {
          FEXCore::Core::ResetCallRetStack(ThreadState, "jit-rollover");
@@ -512,32 +610,108 @@ diff --git a/FEXCore/Source/Interface/Core/JIT/JIT.cpp b/FEXCore/Source/Interfac
 +        if (Reason) Reason->Stage(SR_OUTPUT);
          ThreadState->LookupCache->ChangeGuestToHostMapping(*Prev, *CurrentCodeBuffer->LookupCache, lk);
        }
-
-@@ -1361,10 +1369,14 @@
+ 
+       // NOTE: 16-byte alignment of the new cursor offset must be preserved for block linking records
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++      const auto SelectOutputSegment = [&] {
++        OutputOffset = &CurrentCodeBuffer->ActiveCodeOffset(CodeBuffers.LatestOffset);
++        SetBuffer(reinterpret_cast<uint8_t*>(CurrentCodeBuffer->ActiveCodeRX()),
++                  CurrentCodeBuffer->ActiveCodeUsableSize() + FEXCore::Utils::FEX_PAGE_SIZE);
++      };
++      SelectOutputSegment();
++#else
+       SetBuffer(CurrentCodeBuffer->Ptr, CurrentCodeBuffer->AllocatedSize);
++#endif
+ #if defined(__APPLE__) || defined(FEX_IOS_HOST)
+       // Restore WriteOffset for dual-mapped JIT pool (CodeBuffer is RX, writes go to RW mirror).
+       // (FEX_IOS_HOST: same logic for ARM64EC PE build — CodeBuffer is iOS-allocated dual-mapped.)
+       SetWriteOffset(FEXCore::DualMap::WriteOffset);
+ #endif
+-      SetCursorOffset(CodeBuffers.LatestOffset);
++      SetCursorOffset(*OutputOffset);
+       Align16B();
+-      if ((GetCursorOffset() + TempSize) > CurrentCodeBuffer->UsableSize()) {
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++      const auto OutputCapacity = CurrentCodeBuffer->ActiveCodeUsableSize();
++#else
++      const auto OutputCapacity = CurrentCodeBuffer->UsableSize();
++#endif
++      if (GetCursorOffset() > OutputCapacity || TempSize > OutputCapacity - GetCursorOffset()) {
+ #ifdef FEX_IOS_HOST
+         /* ml455: NEVER swap buffers under a delivery compile — ClearCodeCache
+          * from beneath a live outer emission is the ml452 TAIL-REFUSED storm,
+@@ -1361,10 +1384,45 @@
            return {};
          }
  #endif
 -        CTX->ClearCodeCache(ThreadState);
-+        MDECK_REASON_CAPACITY(ReasonCapacity, CodeBuffers, TempSize);
-+        CTX->ClearCodeCache(ThreadState, true, Reason);
-       }
-
-       CodeBuffers.LatestOffset = GetCursorOffset();
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
-+      CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;
++        // Exception delivery must never grow/rotate the shared logical group,
++        // even if the legacy unpublished marker could not be set for this path.
++        if (MDeckSegments::Enabled() && (SegmentDelivery || IosNestedS)) {
++          if (IosStampTeb && !IosNestedS) {
++            *reinterpret_cast<uint64_t*>(IosStampTeb + 0x16e8) = 0;
++          }
++          return {};
++        }
++
++        // Only the ordinary emission writer may allocate or publish a second RX
++        // range. No changes to LookupCache::Shared, local caches or sweep state.
++        if (MDeckSegments::Enabled() && IosStampTeb && !IosNestedS &&
++            CodeBuffers.TryAppendCodeSegment(*CurrentCodeBuffer, TempSize)) {
++          SelectOutputSegment();
++          SetCursorOffset(*OutputOffset);
++        } else
++#endif
++        {
++          MDECK_REASON_CAPACITY(ReasonCapacity, CodeBuffers, TempSize);
++          CTX->ClearCodeCache(ThreadState, true, Reason);
++          OutputOffset = &CodeBuffers.LatestOffset;
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++          // The legacy allocator may return a smaller fresh first segment
++          // under pool pressure. Don't copy a block beyond its usable space.
++          if (MDeckSegments::Enabled() &&
++              !MDeckSegments::Fits(CurrentCodeBuffer->UsableSize(), GetCursorOffset(), TempSize)) {
++            if (IosStampTeb && !IosNestedS) *reinterpret_cast<uint64_t*>(IosStampTeb + 0x16e8) = 0;
++            return {};
++          }
++#endif
++        }
+       }
+ 
+-      CodeBuffers.LatestOffset = GetCursorOffset();
++      *OutputOffset = GetCursorOffset();
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++      CodeData.MDeckReasonGeneration = CurrentCodeBuffer->ActiveCodeGeneration();
++      CodeData.MDeckCodeSegment = CurrentCodeBuffer->MDeckSecond.Address() ? MDeckSegments::Segment::Second : MDeckSegments::Segment::First;
 +#endif
      }
-
+ 
      // Adjust host addresses
-@@ -1406,6 +1418,10 @@
-     SetCursorOffset(CodeBuffers.LatestOffset + TempSize);
-
-     CodeBuffers.LatestOffset = GetCursorOffset();
+@@ -1376,7 +1425,7 @@
+     CodeBegin += Delta;
+ 
+     for (std::size_t Idx = PrevNumAllocations; Idx != Relocations.size(); ++Idx) {
+-      Relocations[Idx].Header.Offset += CodeBuffers.LatestOffset;
++      Relocations[Idx].Header.Offset += *OutputOffset;
+     }
+ 
+     // Copy over CodeBuffer contents (write to RW mirror on iOS)
+@@ -1403,9 +1452,13 @@
+     }
+ #endif
+     memcpy(WritePtr(GetCursorAddress<uint8_t*>()), TempCodeBuffer, TempSize);
+-    SetCursorOffset(CodeBuffers.LatestOffset + TempSize);
+-
+-    CodeBuffers.LatestOffset = GetCursorOffset();
++    SetCursorOffset(*OutputOffset + TempSize);
++
++    *OutputOffset = GetCursorOffset();
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
-+    CodeData.MDeckReasonOutput = {reinterpret_cast<uint64_t>(CurrentCodeBuffer->Ptr),
-+                                CodeBuffers.LatestOffset, CurrentCodeBuffer->UsableSize()};
++    CodeData.MDeckReasonOutput = {CurrentCodeBuffer->ActiveCodeRX(),
++                                *OutputOffset, CurrentCodeBuffer->ActiveCodeUsableSize()};
 +#endif
-
+ 
  #ifdef FEX_IOS_HOST
      /* ml446: clear the ownership stamp before the lock releases at scope end
 diff --git a/FEXCore/Source/Interface/Core/JIT/JITClass.h b/FEXCore/Source/Interface/Core/JIT/JITClass.h
@@ -776,17 +950,18 @@ diff --git a/FEXCore/include/FEXCore/Core/Context.h b/FEXCore/include/FEXCore/Co
 diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.cpp
 --- a/Source/Windows/ARM64EC/Module.cpp
 +++ b/Source/Windows/ARM64EC/Module.cpp
-@@ -51,6 +51,9 @@
+@@ -51,6 +51,10 @@
  #include "Windows/Common/SHMStats.h"
-
+ 
  #include <cstdint>
 +#include <FEXCore/Utils/SteamCompileReason.h>
 +#include <FEXCore/Utils/DFEScratch.h>
 +#include <FEXCore/Utils/PreviousCode.h>
++#include <FEXCore/Utils/DualCodeSegments.h>
  #include <cstdio>
  #include <type_traits>
  #include <FEXCore/Utils/L1CacheIndex.h>
-@@ -1206,6 +1209,22 @@
+@@ -1206,6 +1210,29 @@
      const char* CallRetOpt = getenv("MADEIRA_FEX_CALLRET_ELIDE");
      IosCallRetStackElided = !(CallRetOpt && strcmp(CallRetOpt, "0") == 0);
      LogMan::Msg::IFmt("FEX: callret-elide-v1 madeira-bcd enabled={}", IosCallRetStackElided != 0);
@@ -797,8 +972,15 @@ diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.c
 +    const auto* Params = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
 +    const bool CEF = Params && FEXCore::CompileReason::IsCEFImage(
 +        reinterpret_cast<const uint16_t*>(Params->ImagePathName.Buffer), Params->ImagePathName.Length);
++    using namespace FEXCore::Config;
++    const bool Compatible = !Get_GLOBALJITNAMING() && !Get_ENABLECODECACHINGWIP() &&
++                            !Get_ENABLELAZYCODECACHINGWIP() && !Get_ENABLECODECACHEVALIDATION();
++    const bool Segments = FEXCore::MDeckSegments::Configure(getenv("MADEIRA_FEX_DUAL_CODE_SEGMENTS"), CEF && Compatible,
++        getenv("WINE_IOS_JIT_RX"), getenv("WINE_IOS_JIT_SIZE"), getenv("WINE_IOS_JIT_RW"), getenv("WINE_IOS_JIT_TAIL_REGION"));
++    LogMan::Msg::IFmt("[fex-segments] path=arm64ec mode={} target={} compatible={} extra-budget-mib=128",
++        Segments ? "dual" : "off", CEF ? "cef" : "other", Compatible);
 +    LogMan::Msg::IFmt("[fex-prev] path=arm64ec mode={} target={} previous-budget-mib=128",
-+        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF) ? "on" : "off", CEF ? "cef" : "other");
++        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF && !Segments) ? "on" : "off", CEF ? "cef" : "other");
 +  }
 +  LogMan::Msg::IFmt("[fex-dfe] path=arm64ec mode={}",
 +      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");
@@ -812,27 +994,35 @@ diff --git a/Source/Windows/ARM64EC/Module.cpp b/Source/Windows/ARM64EC/Module.c
 diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
 --- a/Source/Windows/WOW64/Module.cpp
 +++ b/Source/Windows/WOW64/Module.cpp
-@@ -40,6 +40,9 @@
+@@ -40,6 +40,10 @@
  #include "Common/Exception.h"
  #include "Common/TSOHandlerConfig.h"
  #include "Common/ImageTracker.h"
 +#include <FEXCore/Utils/SteamCompileReason.h>
 +#include <FEXCore/Utils/DFEScratch.h>
 +#include <FEXCore/Utils/PreviousCode.h>
++#include <FEXCore/Utils/DualCodeSegments.h>
  #include "Common/InvalidationTracker.h"
  #include "Common/OvercommitTracker.h"
  #include "Common/CPUFeatures.h"
-@@ -1311,6 +1314,22 @@
+@@ -1311,6 +1315,29 @@
    }
  #endif
-
+ 
 +#ifdef FEX_IOS_HOST
 +  {
 +    const auto* Params = reinterpret_cast<const RTL_USER_PROCESS_PARAMETERS64*>(NtCurrentTeb()->ProcessEnvironmentBlock->ProcessParameters);
 +    const bool CEF = Params && FEXCore::CompileReason::IsCEFImage(
 +        reinterpret_cast<const uint16_t*>(Params->ImagePathName.Buffer), Params->ImagePathName.Length);
++    using namespace FEXCore::Config;
++    const bool Compatible = !Get_GLOBALJITNAMING() && !Get_ENABLECODECACHINGWIP() &&
++                            !Get_ENABLELAZYCODECACHINGWIP() && !Get_ENABLECODECACHEVALIDATION();
++    const bool Segments = FEXCore::MDeckSegments::Configure(getenv("MADEIRA_FEX_DUAL_CODE_SEGMENTS"), CEF && Compatible,
++        getenv("WINE_IOS_JIT_RX"), getenv("WINE_IOS_JIT_SIZE"), getenv("WINE_IOS_JIT_RW"), getenv("WINE_IOS_JIT_TAIL_REGION"));
++    LogMan::Msg::IFmt("[fex-segments] path=wow64 mode={} target={} compatible={} extra-budget-mib=128",
++        Segments ? "dual" : "off", CEF ? "cef" : "other", Compatible);
 +    LogMan::Msg::IFmt("[fex-prev] path=wow64 mode={} target={} previous-budget-mib=128",
-+        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF) ? "on" : "off", CEF ? "cef" : "other");
++        FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF && !Segments) ? "on" : "off", CEF ? "cef" : "other");
 +  }
 +  LogMan::Msg::IFmt("[fex-dfe] path=wow64 mode={}",
 +      FEXCore::MDeckDFE::Configure(getenv("MADEIRA_FEX_DFE_REUSE")) ? "reuse" : "legacy");

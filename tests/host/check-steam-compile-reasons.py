@@ -471,8 +471,8 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     pos=backend.index('auto Buffer = fextl::make_shared<CodeBuffer>(Size);')
     assert backend.index('Buffer->MDeckReasonGeneration =',pos)<backend.index('Latest = Buffer;',pos)
     jit=(source/'FEXCore/Source/Interface/Core/JIT/JIT.cpp').read_text()
-    pos=jit.index('if ((GetCursorOffset() + TempSize) > CurrentCodeBuffer->UsableSize())')
-    assert jit.index('CodeData.MDeckReasonGeneration = CurrentCodeBuffer->MDeckReasonGeneration;',pos)>jit.index('CTX->ClearCodeCache(ThreadState, true, Reason);',pos)
+    pos=jit.index('if (GetCursorOffset() > OutputCapacity || TempSize > OutputCapacity - GetCursorOffset())')
+    assert jit.index('CodeData.MDeckReasonGeneration = CurrentCodeBuffer->ActiveCodeGeneration();',pos)>jit.index('CTX->ClearCodeCache(ThreadState, true, Reason);',pos)
     assert 'Reason->Stage(SR_BUFFER_WAIT)' in jit and 'Reason->Stage(SR_LOOKUP_WAIT)' in jit
     assert 'Reason->Stage(SR_OUTPUT)' in jit and 'Reason.Stage(SR_DECODE_IR)' in core_text
     assert 'MDECK_REASON_CAPACITY(ReasonCapacity, CodeBuffers, TempSize)' in jit

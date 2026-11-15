@@ -264,7 +264,7 @@ int main(int argc,char** argv){
     for path in ['WOW64','ARM64EC']:
         text=(source/f'Source/Windows/{path}/Module.cpp').read_text()
         assert text.index('MDeckPrevious::Configure(')<text.index('if (const char* ReasonBridge')<text.index('CTX->InitCore();')
-        assert '"MADEIRA_FEX_PREVIOUS_CODE"), CEF)' in text
+        assert '"MADEIRA_FEX_PREVIOUS_CODE"), CEF && !Segments)' in text
 bridge=(root/'app/Madeira/WineProcessBridge.m').read_text()
 assert bridge.index('unsetenv("MADEIRA_FEX_PREVIOUS_CODE")')<bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
 print('PASS previous-slot lifetime, bounded backtracking/rotation/failed-refill, actual migration/refill adapters, mode guards and patch-chain contracts')
