@@ -10,6 +10,10 @@ import tarfile
 assert os.environ.get('GITHUB_ACTIONS') == 'true', 'Run this check in GitHub Actions'
 root = Path(__file__).resolve().parents[2]
 patches = root / 'build/fex-patches'
+# The runtime check checkout initializes FEX, but not its nested dependencies.
+# Fetch exactly the pinned header implementation used by the production set.
+subprocess.run(['git','-C',str(root/'FEX'),'submodule','update','--init','--depth','1',
+                'External/unordered_dense'],check=True)
 ra_path = 'FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp'
 front_path = 'FEXCore/Source/Interface/Core/Frontend.h'
 op_path = 'FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp'

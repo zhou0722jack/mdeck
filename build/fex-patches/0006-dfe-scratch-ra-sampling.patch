@@ -317,7 +317,10 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      }
 
      // Assign a free register in the appropriate class.
-@@ -476,1 +497,1 @@
+@@ -473,4 +494,4 @@
+   return IROp->Op == OP_CONSTANT && IROp->C<IROp_Constant>()->Constant == 0;
+ }
+
 -bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp) {
 +bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
 @@ -488,6 +509,7 @@
