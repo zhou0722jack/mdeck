@@ -1,0 +1,68 @@
+diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
+--- a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
++++ b/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp
+@@ -495,6 +495,18 @@
+ }
+
+ bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
++  // Special rewrites may succeed even when the two destination registers differ
++  // (and CPUID/XGETBV may rewrite while returning false). Preserve their path.
++  switch (IROp->Op) {
++  case OP_PUSH: case OP_POP: case OP_DIV: case OP_UDIV: case OP_XGETBV: case OP_CPUID:
++    break;
++  default:
++    if (PhysicalRegister(LastNode) != PhysicalRegister(CodeNode)) {
++      Timing.Work(SR_SCAN_RA_MERGE_REG_MISMATCH);
++      return false;
++    }
++    break;
++  }
+   auto LastOp = IR->GetOp<IROp_Header>(LastNode);
+
+   if (IROp->Op == OP_PUSH && LastOp->Op == OP_PUSH) {
+diff --git a/FEXCore/Source/Interface/Core/Frontend.h b/FEXCore/Source/Interface/Core/Frontend.h
+--- a/FEXCore/Source/Interface/Core/Frontend.h
++++ b/FEXCore/Source/Interface/Core/Frontend.h
+@@ -11,6 +11,7 @@
+ #include <FEXCore/fextl/set.h>
+ #include <FEXCore/fextl/vector.h>
+ #include <FEXCore/fextl/robin_map.h>
++#include <FEXCore/fextl/robin_set.h>
+
+ #include <array>
+ #include <cstddef>
+@@ -172,7 +173,21 @@
+   DecodedBlockInformation BlockInfo;
+   fextl::set<uint64_t> CurrentBlockTargets;
+   fextl::set<uint64_t> BlocksToDecode;
+-  fextl::set<uint64_t> VisitedBlocks;
++  // Only membership is queried: decoding order remains in the ordered
++  // BlocksToDecode/CurrentBlockTargets sets. clear() reuses flat storage and
++  // drops oversized one-off storage at the next decode (or decoder destruction).
++  class VisitedSet : public fextl::robin_set<uint64_t> {
++  public:
++    static constexpr size_t MaxRetainedBuckets = 8192;
++    void clear() {
++      if (bucket_count() > MaxRetainedBuckets) {
++        VisitedSet {}.swap(*this);
++      } else {
++        fextl::robin_set<uint64_t>::clear();
++      }
++    }
++  };
++  VisitedSet VisitedBlocks;
+   fextl::set<uint64_t>* ExternalBranches {nullptr};
+
+   const fextl::robin_map<uint32_t, GuestRelocationType>* Relocations {nullptr};
+diff --git a/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp b/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
+--- a/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
++++ b/FEXCore/Source/Interface/Core/OpcodeDispatcher.cpp
+@@ -897,7 +897,7 @@
+   if (Multiblock) {
+     auto JumpBlock = JumpTargets.find(TargetRIP);
+     if (JumpBlock != JumpTargets.end()) {
+-      Jump(GetNewJumpBlock(TargetRIP));
++      Jump(JumpBlock->second.BlockEntry);
+     } else {
+       // If the block isn't a jump target then we need to create an exit block
+       auto Jump_ = Jump();

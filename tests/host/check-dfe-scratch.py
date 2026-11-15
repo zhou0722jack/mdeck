@@ -16,6 +16,7 @@ fixture = r'''
 #include <cassert>
 #include <cstdint>
 #include <deque>
+#include <span>
 #include <vector>
 #include <stdexcept>
 #include <cstdio>
@@ -57,15 +58,19 @@ namespace optimized {
 using Blocks=std::vector<optimized::BlockInfo,CountingAllocator<optimized::BlockInfo,1>>;
 using Seen=std::vector<uint8_t,CountingAllocator<uint8_t,2>>;
 using Scratch=FEXCore::IR::DFEScratch<Blocks,Seen,std::deque<uint32_t,CountingAllocator<uint32_t,3>>>;
-// Production CFG uses fextl::vector<BlockInfo>&, so keep that exact type here.
+// Production CFG stores the vector separately from its bounded active span.
 using CFGScratch=FEXCore::IR::DFEScratch<fextl::vector<optimized::BlockInfo>,Seen,std::deque<uint32_t>>;
 
 static void compare_cfg(CFGScratch& owner,unsigned count,bool reuse) {
   CFGScratch::Lease lease(owner,reuse);auto& data=lease.Get();
   IRListView ir;for(unsigned i=0;i<count;i++)ir.Nodes.push_back({i});
   legacy::ControlFlowGraph old{.IR=ir};std::deque<uint32_t> old_queue;
-  optimized::ControlFlowGraph now{.BlockMap=data.BlockMap,.IR=ir,.Reuse=reuse};
+  optimized::ControlFlowGraph now{.BlockStorage=data.BlockMap,.IR=ir,.Reuse=reuse};
   old.Init(old_queue,count);now.Init(data.Worklist,count);
+  assert(now.BlockMap.size()==count);
+  assert(now.BlockStorage.size()>=count);
+  // Even physically retained tail IDs are invalid for this invocation.
+  for(size_t id=count;id<now.BlockStorage.size();++id)assert(!now.IDValid(id));
   if(!reuse)for(unsigned i=0;i<count;i++)
     assert(now.Get(i)->Predecessors.capacity()==old.Get(i)->Predecessors.capacity());
   // Diamond joins, duplicate edges and a cycle. Insertion order must survive reuse.
@@ -80,6 +85,9 @@ static void compare_cfg(CFGScratch& owner,unsigned count,bool reuse) {
   assert(now.Get(count)==&now.Sentinel&&old.Get(count)==&old.Sentinel);
   assert(now.Sentinel.Flags==FLAG_ALL&&now.Sentinel.InWorklist);
   now.AddWorklist(data.Worklist,count);old.AddWorklist(old_queue,count);
+  ir.Nodes.push_back({count}); // A valid node wrapper with an invalid CFG ID.
+  now.RecordEdge(0,{count});old.RecordEdge(0,{count});
+  assert(now.PredecessorDigest()==old.PredecessorDigest());
   // Exercise actual push_front/pop_back paths and repeated predecessor scheduling.
   unsigned steps=0;
   while(!old_queue.empty()) {
@@ -91,6 +99,31 @@ static void compare_cfg(CFGScratch& owner,unsigned count,bool reuse) {
     old_queue.pop_back();data.Worklist.pop_back();
   }
   assert(data.Worklist.empty()&&old.BadIDs==now.BadIDs);
+}
+// Run the extracted production Init/RecordEdge on alternating sizes. Unlike
+// compare_cfg this contains no legacy allocations, so counts isolate reuse.
+static void warm_cfg(CFGScratch& owner,unsigned count,bool unwind=false) {
+  CFGScratch::Lease lease(owner);auto& data=lease.Get();
+  for(const auto& b:data.BlockMap)
+    assert(b.Predecessors.empty()&&!b.Node&&!b.Flags&&!b.InWorklist);
+  IRListView ir;for(unsigned i=0;i<count;i++)ir.Nodes.push_back({i});
+  optimized::ControlFlowGraph cfg{.BlockStorage=data.BlockMap,.IR=ir};
+  cfg.Init(data.Worklist,count);data.SeenIDs.assign(cfg.BlockMap.size(),0);
+  for(unsigned i=0;i<count;i++) {
+    cfg.Get(i)->Node=reinterpret_cast<void*>(uintptr_t(i+1));
+    for(unsigned j=0;j<3;j++)cfg.RecordEdge(i,{(i+j+1)%count});
+  }
+  assert(cfg.BlockMap.size()==count&&data.Worklist.size()==count);
+  assert(!cfg.IDValid(count)&&cfg.Get(count)==&cfg.Sentinel);
+  // A poisoned unused tail must not affect the digest or participate in CFG.
+  const auto digest=cfg.PredecessorDigest();
+  if(data.BlockMap.size()>count) {
+    auto& tail=data.BlockMap.back();tail.Predecessors.push_back(0xffffffffu);
+    tail.Node=reinterpret_cast<void*>(uintptr_t(1));tail.Flags=FLAG_ALL;tail.InWorklist=true;
+    assert(cfg.PredecessorDigest()==digest);
+  }
+  if(unwind)throw std::runtime_error("partial CFG");
+  // Return without draining the worklist models an early validation exit.
 }
 static void fill(Scratch::Storage& data,unsigned count) {
   assert(data.Worklist.empty()&&data.SeenIDs.empty());
@@ -126,11 +159,34 @@ int main(int argc,char** argv) {
 
   CFGScratch cfg;
   {CFGScratch::Lease lease(cfg);IRListView ir;
-   optimized::ControlFlowGraph empty{.BlockMap=lease.Get().BlockMap,.IR=ir};
+   optimized::ControlFlowGraph empty{.BlockStorage=lease.Get().BlockMap,.IR=ir};
    empty.Init(lease.Get().Worklist,8);
    for(const auto& block:empty.BlockMap)assert(block.Predecessors.capacity()==0);
   }
-  for(bool reuse:{false,true})for(unsigned count:{32u,4u,64u,1u,32u})compare_cfg(cfg,count,reuse);
+  for(bool reuse:{false,true})for(unsigned count:{32u,4u,0u,64u,1u,32u,0u})compare_cfg(cfg,count,reuse);
+  CFGScratch alternating;
+  warm_cfg(alternating,64);
+  const auto warm_pred=allocations[0],warm_seen=allocations[2];
+  for(unsigned i=0;i<1000;i++) {
+    for(unsigned n:{4u,0u,64u,1u,32u})warm_cfg(alternating,n);
+  }
+  assert(allocations[0]==warm_pred&&allocations[2]==warm_seen);
+  try {warm_cfg(alternating,4,true);}catch(const std::runtime_error&){}
+  warm_cfg(alternating,64);
+  assert(allocations[0]==warm_pred&&allocations[2]==warm_seen);
+  // Fresh nested/independent storage cannot overwrite the outer retained tail.
+  {CFGScratch::Lease outer(alternating);
+   auto* retained=outer.Get().BlockMap.data();
+   warm_cfg(alternating,4);CFGScratch independent;warm_cfg(independent,8);
+   assert(outer.Get().BlockMap.data()==retained&&outer.Get().BlockMap.size()==64);}
+  // Enforce the predecessor budget over *all* retained slots, including inactive ones.
+  {CFGScratch::Lease lease(alternating);IRListView ir;
+   optimized::ControlFlowGraph small{.BlockStorage=lease.Get().BlockMap,.IR=ir};
+   small.Init(lease.Get().Worklist,1);
+   lease.Get().BlockMap.back().Predecessors.reserve(CFGScratch::MaxRetainedPredecessors+1);}
+  {CFGScratch::Lease lease(alternating);assert(lease.Get().BlockMap.capacity()==0);}
+  warm_cfg(alternating,CFGScratch::MaxRetainedBlocks+1);
+  {CFGScratch::Lease lease(alternating);assert(lease.Get().BlockMap.capacity()==0);}
   Scratch owner;
   {Scratch::Lease lease(owner);fill(lease.Get(),32);}
   const size_t pred=allocations[0],blocks=allocations[1],seen=allocations[2];
@@ -152,7 +208,7 @@ int main(int argc,char** argv) {
   {Scratch::Lease lease(owner);assert(lease.Get().BlockMap.capacity()==0);fill(lease.Get(),1);}
   {Scratch::Lease lease(owner);fill(lease.Get(),2);lease.Release();lease.Release();}
  {Scratch::Lease lease(owner);assert(lease.Get().Worklist.empty());}
- puts("PASS actual DFE CFG order/digest/sentinel equivalence; scratch allocation reuse, nesting, unwind and retention bounds");
+ puts("PASS actual DFE CFG order/digest/sentinel equivalence; alternating-size active spans, allocation reuse, nesting, unwind and full-storage bounds");
 }
 '''
 
@@ -169,6 +225,13 @@ with tempfile.TemporaryDirectory(prefix='mdeck-dfe-') as tmp:
     assert 'const bool ReuseScratch = FEXCore::MDeckDFE::Enabled();' in updated
     assert 'Scratch::Lease Lease {ScratchData, ReuseScratch};' in updated
     assert '.Reuse = ReuseScratch' in updated
+    assert 'std::span<BlockInfo> BlockMap {};' in updated
+    assert '.BlockStorage = Storage.BlockMap' in updated
+    assert 'if (!Reuse || BlockStorage.size() < BlockCount) BlockStorage.resize(BlockCount);' in updated
+    assert 'BlockStorage.capacity(), sizeof(BlockInfo), BlockCount);' in updated
+    # Storage length is never used for CFG traversal/bounds; all existing users
+    # still consume BlockMap, now an exact active prefix.
+    assert updated.count('BlockStorage.size()')==1
 
     # The full analysis/rewriting functions and all propagation/recovery guards
     # remain byte-for-byte unchanged after stripping ONLY the explicit observation

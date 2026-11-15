@@ -30,10 +30,12 @@ RA 分段与细项仍由“编译原因日志”控制；缓存查找优化仍�
 原来每次 Run 都新建 CFG/工作队列，每个基本块先 `reserve(2)` 前驱槽，再新建
 Seen 校验数组。开启后，每个 pass 实例按需创建自己的 `DFEScratch` 存储：
 
-- CFG 的 BlockMap 仍按本次 BlockCount 精确 resize；不能把上次较大的范围当作
-  有效 ID。缩小时会销毁尾部基本块及它们的前驱存储，避免保留无效块。
-- 保留仍存在的前驱 vector 容量；只有该块真正收到第一条边、且容量不足 2 时才
-  reserve(2)。无前驱块不再为两个空槽单独分配。
+- CFG 的 `BlockMap` 是恰好覆盖本次 `BlockCount` 的 `std::span<BlockInfo>`；
+  后端 `BlockStorage` vector 在复用模式下只增长、不随小编译缩短。闲置尾部前驱
+  vector 因而保留容量，但不会进入 ID 检查、digest、Seen 校验或传播循环。
+  关闭复用时仍按本次块数精确 resize，并使用原来的逐块分配策略。
+- 保留所有存活槽位的前驱 vector 容量，包括本次未使用的尾部；只有该块真正收到
+  第一条边、且容量不足 2 时才 reserve(2)。无前驱块不为两个空槽单独分配。
 - 重用 Seen 数组容量，每次仍完整 assign 为 0。CFG 的 sentinel、错误计数和
   每次预算保持局部变量；flags 与 InWorklist 仍按原逻辑初始化。
 - 工作队列继续使用原 deque，初始 push_back、重排 push_front、取 pop_back 的
@@ -41,9 +43,11 @@ Seen 校验数组。开启后，每个 pass 实例按需创建自己的 `DFEScra
 - 复用 Lease 析构在正常返回、提前返回及 C++ 异常展开时清除所有旧 Node 指针、前驱
   内容、flags、工作队列和 Seen 内容，只留下可用容量。嵌套调用借用独立 fallback，
   退出直接销毁，不覆盖外层正在使用的 IR。pass 本来按编译线程持有，未增加跨线程共享或新锁。
-- 保留上限按容量而非 size 计算：BlockMap/Seen 各 4096 个元素，所有当前块前驱
-  capacity 合计 16384 个 uint32。超过时在退出释放对应 vector 存储；不是限制
-  可编译块数。deque 的内部 map/分段缓存仍由标准库管理，以上不是总 RSS 上限。
+- 保留上限按容量而非 size 计算：BlockStorage/Seen 各 4096 个元素，全部保留槽位
+  （含本次闲置尾部）的前驱 capacity 合计 16384 个 uint32。超过时在退出释放
+  对应 vector 存储；不是限制可编译块数。清理仍遍历全部保留槽位，所以小编译
+  跟随大编译时可能增加清理工作，必须用实机 wall/CPU 验证净收益。
+  deque 的内部 map/分段缓存仍由标准库管理，以上不是总 RSS 上限。
 
 收集边、前驱校验与 digest、坏 ID sentinel、每次 pop 校验、传播预算、反向链
 保护、flag 传播、分支折叠和 parity 优化均保留。新的清理不能回滚一次异常传播
@@ -125,7 +129,7 @@ TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和
 
 这部分是源码检查结果，不是新的设备计时结论：
 
-- DFE 的 `ControlFlowGraph::Init` 仍按本次 `BlockCount` resize `BlockMap`；收集阶段为每个实际边维护前驱 vector，传播阶段继续使用 deque worklist。复用开关只保留容量并清空内容，超过上限会释放；因此下一步应在同场景开关 A/B 中观察 `decode/build/pass_manager` wall 和分配器行为，不能仅凭容量复用假定收益。
+- 设备日志 33 的渲染线程样本中，DFE 前驱 vector 有 22,463 次容量增长；这不是 malloc 计时，也不能证明全部增长都来自大小交替。此次将 `ControlFlowGraph::Init` 改为增长保留存储、建立本次有效视图，消除缩短外层 vector 时销毁尾部前驱存储的机制；收集边、校验及 worklist 传播保持原逻辑。净收益仍需同场景开关 A/B 确认。
 - DFE 的 CFG gather 后还有一次 `Seen`/前驱/工作队列一致性检查，随后是 dataflow worklist 传播。它们是正确性边界，不应为了减少计时或分配而删除；若要优化，应先统计 BlockMap、前驱槽和 worklist 的实际峰值。
 - RA 的 `Run` 每次按 `GetSSACount()` 调整 `PreferredReg`、`SSAToReg`、`Seen`，然后对每个 block 做 reverse kill/SRA 扫描和 forward 分配/ spill/fill/merge 扫描，最后 clear 但保留容量。现有 RA 日志可定位阶段和工作量，但 stride=64 采样不能乘 64 作为全量时间。
 - 因此当前优先级是先用现有阶段/工作量日志确认容器扩容和两遍扫描的相关性，再考虑复用更多 RA scratch；不要先合并 reverse/forward，也不要移除 CFG/拓扑校验。
@@ -136,8 +140,12 @@ TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和
 
 - `check-dfe-scratch.py` 在临时副本应用补丁，提取真实前后 CFG 编译为 ASAN/UBSAN
   fixture，比较边顺序、digest、sentinel 和工作队列轨迹；计数分配器检查同尺寸
-  热存储不重复分配 BlockMap/前驱/Seen，覆盖变大变小、嵌套、异常退出、容量释放。
+  热存储不重复分配 BlockMap/前驱/Seen；新增真实 CFG Init/RecordEdge 的
+  64→4→0→64→1→32 交替场景重复 1000 轮，要求热身后存储/前驱/Seen 不再分配。
+  覆盖闲置尾部 ID 拒绝、尾部污染不影响 digest、零块、提前退出、C++ 展开、
+  嵌套/独立实例、闲置尾部计入前驱容量上限及超大存储释放。
   同时要求仅剥除明确新增的观测语句后，原分析/IR 重写函数和传播/恢复代码保持逐字一致。这不是 guest IR 执行测试。
+  本次新增用例只完成静态核查，尚未执行 Actions 或实机验证。
 - `check-steam-compile-reasons.py` 增加 RA stride、正常/未完成样本、阶段对账、默认
   关闭、跨实例汇总、旧 epoch 丢弃及宿主格式用例；原完整补丁链检查继续覆盖所有补丁。
   新细项用例检查请求数与实际发出次数分开、正常和异常扫描、扫描计时嵌套、合并计数、
@@ -162,6 +170,8 @@ TLS、IR 遍历或逐节点时钟。扫描时间为 wall，包含调度等待和
 DFE 在第 1、65、129……个有效调用观测 BlockMap、单个 predecessor vector、Seen
 的容量变化及 payload 增长，统计 CFG gather/validation/digest、实际 reverse/parity
 节点访问、边、队列 push/pop 与逻辑长度高水位，以及借用缓存/独立 fallback。
+`dfe-blockmap` 的 capacity 仍取保留 vector 的真实容量，used 取本次有效块数；
+日志字段和采样频率不变，不能把保留长度当作当前 CFG 的工作量。
 保留现有容量上限与 oversize 释放策略；本轮没有扩大缓存或删除 gather/校验/传播。
 清理通过幂等 Lease.Release 执行，正常返回、提前返回及 C++ 展开都记录嵌套 cleanup。
 

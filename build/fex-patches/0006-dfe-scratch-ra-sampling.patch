@@ -1,20 +1,23 @@
 diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
 --- a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
 +++ b/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp
-@@ -16,6 +16,7 @@
+@@ -16,6 +16,8 @@
  #include <FEXCore/Utils/CompilerDefs.h>
  #include <FEXCore/Utils/MathUtils.h>
  #include <FEXCore/Utils/Profiler.h>
 +#include <FEXCore/Utils/DFEScratch.h>
++#include <span>
  #include <FEXCore/fextl/deque.h>
  #include <FEXCore/fextl/vector.h>
 
-@@ -105,24 +106,36 @@
+@@ -105,24 +107,43 @@
  };
 
  struct ControlFlowGraph {
 -  fextl::vector<BlockInfo> BlockMap;
-+  fextl::vector<BlockInfo>& BlockMap;
++  fextl::vector<BlockInfo>& BlockStorage;
++  // Only this invocation's active prefix is visible to CFG consumers.
++  std::span<BlockInfo> BlockMap {};
    IRListView& IR;
 +  bool Reuse {true};
 +  FEXCore::CompileReason::Capture* Reason {};
@@ -22,8 +25,13 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
    void Init(fextl::deque<uint32_t>& Worklist, uint32_t BlockCount) {
 -    BlockMap.resize(BlockCount);
 +    FEXCore::CompileReason::AuxScope InitTiming(Reason, SR_AUX_DFE_INIT);
-+    { FEXCore::CompileReason::VectorScope Capacity(Reason, SR_CAP_DFE_BLOCKMAP, BlockMap);
-+      BlockMap.resize(BlockCount); }
++    const auto PreviousCapacity = Reason ? BlockStorage.capacity() : 0;
++    // Shrinking a vector destroys its tail's predecessor vectors. Keep those
++    // objects alive in reuse mode; the span, not storage.size(), defines IDs.
++    if (!Reuse || BlockStorage.size() < BlockCount) BlockStorage.resize(BlockCount);
++    BlockMap = std::span<BlockInfo> {BlockStorage.data(), BlockCount};
++    if (Reason) Reason->Storage(SR_CAP_DFE_BLOCKMAP, PreviousCapacity,
++                                BlockStorage.capacity(), sizeof(BlockInfo), BlockCount);
 
      for (unsigned ID = 0; ID < BlockCount; ++ID) {
        // Add the block with conservative flags and already in the worklist.
@@ -54,7 +62,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
      }
    }
 
-@@ -204,7 +217,13 @@
+@@ -204,7 +225,13 @@
      }
 
      const size_t Idx = Info->Predecessors.size();
@@ -69,7 +77,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 
      if (FromValid && Info->Predecessors[Idx] != From && EdgeReports < 4) {
        ++EdgeReports;
-@@ -228,6 +247,7 @@
+@@ -228,6 +255,7 @@
      if (!Info->InWorklist) {
        Info->InWorklist = true;
        Worklist.push_front(Block);
@@ -77,7 +85,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
      }
    }
 
-@@ -240,6 +260,7 @@
+@@ -240,6 +268,7 @@
      for (size_t b = 0; b < BlockMap.size(); ++b) {
        h = (h ^ (b + 0x9e3779b9ull)) * 1099511628211ull;
        for (uint32_t p : BlockMap[b].Predecessors) {
@@ -85,7 +93,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
          h = (h ^ p) * 1099511628211ull;
        }
      }
-@@ -250,8 +271,13 @@
+@@ -250,8 +279,13 @@
  class DeadFlagCalculationEliminination final : public FEXCore::IR::Pass {
  public:
    void Run(IREmitter* IREmit) override;
@@ -99,7 +107,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
    FlagInfo Classify(IROp_Header* Node);
    unsigned FlagsForCondClassType(CondClass Cond);
    bool EliminateDeadCode(IREmitter* IREmit, Ref CodeNode, IROp_Header* IROp);
-@@ -692,6 +718,7 @@
+@@ -692,6 +726,7 @@
        return false;
      }
      auto [CodeNode, IROp] = CodeLast();
@@ -107,7 +115,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 
      // Optimizing flags can cause earlier flag reads to become dead but dead
      // flag reads should not impede optimiation of earlier dead flag writes.
-@@ -789,6 +816,7 @@
+@@ -789,6 +824,7 @@
      }
 
      for (auto [CodeNode, IROp] : CurrentIR.GetCode(Block)) {
@@ -115,7 +123,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
        if (IROp->Op == OP_STOREPF) {
          auto Op = IROp->CW<IR::IROp_StorePF>();
          auto Generator = CurrentIR.GetOp<IR::IROp_Header>(Op->Value);
-@@ -826,18 +854,25 @@
+@@ -826,18 +862,25 @@
    }
  }
 
@@ -137,7 +145,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
 +  auto& Worklist = Storage.Worklist;
 +
 +  // Invocation-local CFG counters and sentinel; only empty storage is reused.
-+  ControlFlowGraph CFG {.BlockMap = Storage.BlockMap, .IR = CurrentIR, .Reuse = ReuseScratch, .Reason = Reason};
++  ControlFlowGraph CFG {.BlockStorage = Storage.BlockMap, .IR = CurrentIR, .Reuse = ReuseScratch, .Reason = Reason};
    CFG.Init(Worklist, CurrentIR.GetHeader()->BlockCount);
 
    // Gather CFG
@@ -146,7 +154,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
      auto Block = BlockHeader->C<IROp_CodeBlock>();
      auto CodeLast = CurrentIR.at(Block->Last);
      --CodeLast;
-@@ -867,6 +902,7 @@
+@@ -867,6 +910,7 @@
      for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
        auto Block = BlockHeader->C<IROp_CodeBlock>();
        ++Enumerated;
@@ -154,7 +162,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
        if (Block->ID > MaxSeenID) {
          MaxSeenID = Block->ID;
        }
-@@ -896,7 +932,13 @@
+@@ -896,7 +940,13 @@
      // pointer that ProcessBlock will actually dereference.
      uint32_t DupIDs = 0, MissingIDs = 0, NullNodes = 0, BadWorklistIDs = 0;
      {
@@ -169,7 +177,7 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RedundantFlagCalculationEliminat
        for (auto [BlockNode, BlockHeader] : CurrentIR.GetBlocks()) {
          auto Block = BlockHeader->C<IROp_CodeBlock>();
          if (CFG.IDValid(Block->ID)) {
-@@ -960,6 +1002,7 @@
+@@ -960,6 +1010,7 @@
 
    for (; !Worklist.empty(); Worklist.pop_back()) {
      auto Block = Worklist.back();
@@ -309,15 +317,9 @@ diff --git a/FEXCore/Source/Interface/IR/Passes/RegisterAllocationPass.cpp b/FEX
      }
 
      // Assign a free register in the appropriate class.
-@@ -473,7 +494,7 @@
-   return IROp->Op == OP_CONSTANT && IROp->C<IROp_Constant>()->Constant == 0;
- }
-
+@@ -476,1 +497,1 @@
 -bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp) {
 +bool ConstrainedRAPass::TryPostRAMerge(Ref LastNode, Ref CodeNode, IROp_Header* IROp, FEXCore::CompileReason::RAScope& Timing) {
-   auto LastOp = IR->GetOp<IROp_Header>(LastNode);
-
-   if (IROp->Op == OP_PUSH && LastOp->Op == OP_PUSH) {
 @@ -488,6 +509,7 @@
        IREmit->SetWriteCursorBefore(LastNode);
        IREmit->_PushTwo(IROp->Size, Push->ValueSize, IROp->Args[0], LastOp->Args[0], IROp->Args[1]);
