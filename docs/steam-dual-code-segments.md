@@ -18,5 +18,6 @@
 - `[fex-segments] mode=dual` 表示本模块启用，并不表示已分配；`append=added` 才表示第二段已接入。`extra-budget`、`alloc-failed`、`too-large`、`second-full` 分别表明相应回退。追加尝试日志有条数上限。
 - `[fex-segments] append=extra-budget` 的 `request_*` 是尝试追加的新组，`budget_*` 指当时可读到的额度持有者。用 PID、manager owner、第二段 generation 关联 `[fex-segment-budget] event=reference-snapshot` 和 `event=released`。若分配或释放时序使额度持有者不可读，`budget_generation=0`。
 - `reference-snapshot` 在现有换代扫描中记录匹配该组的线程当前引用 `current_refs`、异常保留引用 `signal_refs` 和持有异常引用的线程数 `signal_threads`。`busy` 是未取得线程迁移锁的数量，另列扫描的 `in_sim`、`sig_pin` 等全组迁移结果。各线程逐个采集，范围限已登记线程和调用者，临时编译引用及管理器引用不在两项计数中。`released` 在映射释放调用返回、额度归还后输出。双段模式启用时自动记录。
+- `event=reference-holder` 只列出扫描后确认仍引用退役组的线程，记录 Windows `tid`、该线程在本轮的 `in_sim` 和 `scan_result`。例如 `in-sim` 是扫描时仍在执行翻译代码，`signal-pinned` 是迁移检查发现异常上下文仍在使用，`raced` 是迁移检查期间状态已变动。`caller` 表示当前扫描发起者，原扫描跳过自身，因此 `in_sim=-1`。按 `pid`、`owner`、`generation`、`sweep_gen` 和 `retry_left` 与汇总关联。每次快照最多输出 8 个持有者，`holders_omitted` 列出仍有多少已确认持有者未单独打印。无法取得迁移锁的线程仍计入 `busy`。
 - 编译原因日志 ABI v7 中 `reason=segment-append` 表示物理输出段切换，**不是**清表或旧代线程迁移；`reason=capacity` 仍表示传统换代。`generation` 字段标记本次实际输出的物理段，不是逻辑 L3 的数量，也不证明旧条目都可安全复用。
 - Actions runtime 夹具覆盖真实辅助头的延迟分配、边界、失败、预算、持有引用与同 VA 再分配。它执行实际 L3 方法体，检查两段能在同表命中、一个 guest 页能同时使两段条目及入链失效、重编译后不再认旧地址，并核对生产补丁的发射、链接和异常接线。夹具不替代 iPad 上的 SMC、卸载、权限切换、异常返回与换代压力验证。真机收益应比较同负载的 CEF 渲染线程编译峰值、首帧/交互时间及 JIT 池占用，不能只比较追加次数。

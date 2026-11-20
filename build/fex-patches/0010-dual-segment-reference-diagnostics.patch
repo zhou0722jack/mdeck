@@ -1,35 +1,118 @@
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -1089,8 +1089,44 @@
+@@ -936,6 +936,9 @@
+       // being dropped, and must know to resume at the dispatcher instead.
+       volatile uint8_t* Migrated;
+ #endif
++#if defined(_WIN32)
++      uint32_t TID {};
++#endif
+     };
+     constexpr size_t IosSweepSlotMax = 512;
+     IosSweepSlot IosSweepSlots[IosSweepSlotMax];
+@@ -957,6 +960,9 @@
+     for (size_t i = 0; i < IosSweepSlotMax; i++) {
+       if (!IosSweepSlots[i].Thread) {
+         IosSweepSlots[i] = {Thread, InSimPtr, MigratedPtr};
++#if defined(_WIN32)
++        IosSweepSlots[i].TID = ::GetCurrentThreadId();
++#endif
+         if (i + 1 > IosSweepSlotHighWater) {
+           IosSweepSlotHighWater = i + 1;
+         }
+@@ -976,6 +982,9 @@
+     for (size_t i = 0; i < IosSweepSlotMax; i++) {
+       if (!IosSweepSlots[i].Thread) {
+         IosSweepSlots[i] = {Thread, InSimPtr};
++#if defined(_WIN32)
++        IosSweepSlots[i].TID = ::GetCurrentThreadId();
++#endif
+         if (i + 1 > IosSweepSlotHighWater) {
+           IosSweepSlotHighWater = i + 1;
+         }
+@@ -1044,6 +1053,28 @@
+       IosSweepRetryLeft.fetch_sub(1, std::memory_order_relaxed);
+     }
+     auto Latest = CallerThread->CPUBackend->GetCodeBufferManager().GetLatest();
++#if defined(_WIN32)
++    const auto RetryLeft = IosSweepRetryLeft.load(std::memory_order_relaxed);
++    MDeckSegments::BudgetOwner Budget;
++    if (!Retry || RetryLeft == 255 || (RetryLeft & 31) == 0) {
++      Budget = MDeckSegments::ReadBudgetOwner();
++    }
++    const bool TraceHolders = Budget.Generation && Latest &&
++        Budget.Manager == CallerThread->CPUBackend->GetCodeBufferManager().MDeckReasonOwner &&
++        Budget.PrimaryGeneration != Latest->MDeckReasonGeneration;
++    // Preserve the sweep's decision even if a thread reenters simulation before sampling.
++    enum class SweepResult : int8_t { Caller = -4, InSimulation = -3, Raced = -2, SignalPinned = -1, NoMigration = 0, Migrated = 1 };
++    SweepResult Results[IosSweepSlotMax];
++    struct Holder {
++      uint32_t TID;
++      SweepResult Result;
++      int Current;
++      unsigned Signals;
++    };
++    constexpr size_t MaxHolders = 8;
++    Holder Holders[MaxHolders];
++    size_t HolderCount = 0, Omitted = 0;
++#endif
+-
++
+     IosSweepSlot Snap[IosSweepSlotMax];
+     size_t SnapCount = 0;
+@@ -1065,9 +1096,16 @@
+     int Migrated = 0, InSimSkip = 0, SigPinSkip = 0, Raced = 0;
+     for (size_t i = 0; i < SnapCount; i++) {
+       if (*Snap[i].InSim != 0) {
++#if defined(_WIN32)
++        if (TraceHolders) Results[i] = SweepResult::InSimulation;
++#endif
+         InSimSkip++;
+         continue;
+       }
+-      switch (Snap[i].Thread->CPUBackend->IosRemoteMigrateStale(Latest)) {
++      const int Result = Snap[i].Thread->CPUBackend->IosRemoteMigrateStale(Latest);
++#if defined(_WIN32)
++      if (TraceHolders) Results[i] = static_cast<SweepResult>(Result);
++#endif
++      switch (Result) {
+ #if !defined(ARCHITECTURE_arm64ec)
+       case 1:
+@@ -1089,8 +1127,65 @@
      std::atomic_thread_fence(std::memory_order_seq_cst);
      __atomic_store_n(&IosCodeBufferSweepGate, 0, __ATOMIC_SEQ_CST);
      IosSweepLastGen.store(Gen, std::memory_order_relaxed);
      IosSweepLastSkipped.store(InSimSkip + SigPinSkip + Raced, std::memory_order_relaxed);   /* ml1106 */
 +#if defined(_WIN32)
-+    MDeckSegments::BudgetOwner Budget;
 +    unsigned CurrentRefs = 0, SignalRefs = 0, SignalThreads = 0, BusyThreads = 0;
-+    const auto RetryLeft = IosSweepRetryLeft.load(std::memory_order_relaxed);
-+    if (!Retry || RetryLeft == 255 || (RetryLeft & 31) == 0) {
-+      Budget = MDeckSegments::ReadBudgetOwner();
-+      if (Budget.Generation) {
-+        const auto Sample = [&](CPUBackend& Backend) {
-+          unsigned Signals = 0;
-+          const int Current = Backend.IosTryCountSegmentReferences(Budget.Generation, Signals);
-+          if (Current < 0) {
-+            ++BusyThreads;
++    if (Budget.Generation && MDeckSegments::ReadBudgetOwner().Generation == Budget.Generation) {
++      const auto Sample = [&](CPUBackend& Backend, uint32_t TID, SweepResult Result) {
++        unsigned Signals = 0;
++        const int Current = Backend.IosTryCountSegmentReferences(Budget.Generation, Signals);
++        if (Current < 0) {
++          ++BusyThreads;
++          return;
++        }
++        CurrentRefs += Current;
++        SignalRefs += Signals;
++        SignalThreads += Signals != 0;
++        if (TraceHolders && (Current || Signals)) {
++          if (HolderCount < MaxHolders) {
++            Holders[HolderCount++] = {TID, Result, Current, Signals};
 +          } else {
-+            CurrentRefs += Current;
-+            SignalRefs += Signals;
-+            SignalThreads += Signals != 0;
++            ++Omitted;
 +          }
-+        };
-+        // The registry keeps this sweep's snapshot alive until IosSweepBusy
-+        // clears. Do not wait for threads that reentered simulation.
-+        for (size_t i = 0; i < SnapCount; ++i) Sample(*Snap[i].Thread->CPUBackend);
-+        Sample(*CallerThread->CPUBackend);
-+        if (MDeckSegments::ReadBudgetOwner().Generation != Budget.Generation) Budget = {};
++        }
++      };
++      // The registry keeps the sampled thread states alive until IosSweepBusy clears.
++      for (size_t i = 0; i < SnapCount; ++i) {
++        Sample(*Snap[i].Thread->CPUBackend, Snap[i].TID, TraceHolders ? Results[i] : SweepResult::NoMigration);
 +      }
++      Sample(*CallerThread->CPUBackend, TraceHolders ? ::GetCurrentThreadId() : 0, SweepResult::Caller);
++      if (MDeckSegments::ReadBudgetOwner().Generation != Budget.Generation) Budget = {};
++    } else {
++      Budget = {};
 +    }
 +#endif
      IosSweepBusy.store(0, std::memory_order_release);
@@ -37,17 +120,33 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +    if (Budget.Generation) {
 +      LogMan::Msg::IFmt("[fex-segment-budget] event=reference-snapshot pid={:04x} owner={} primary_generation={} generation={} "
 +                       "primary=0x{:x} second=0x{:x} sweep_gen={} scanned={} busy={} current_refs={} signal_refs={} signal_threads={} "
-+                       "migrated={} in_sim={} sig_pin={} raced={} retry={}",
++                       "migrated={} in_sim={} sig_pin={} raced={} retry={} retry_left={} holders_logged={} holders_omitted={}",
 +                       Budget.PID, Budget.Manager, Budget.PrimaryGeneration, Budget.Generation, Budget.PrimaryRX, Budget.SecondRX,
 +                       Gen, SnapCount + 1 - BusyThreads, BusyThreads, CurrentRefs, SignalRefs, SignalThreads,
-+                       Migrated, InSimSkip, SigPinSkip, Raced, Retry);
++                       Migrated, InSimSkip, SigPinSkip, Raced, Retry, RetryLeft, HolderCount, Omitted);
++      for (size_t i = 0; i < HolderCount; ++i) {
++        const auto& Row = Holders[i];
++        const char* Reason = "no-migration";
++        switch (Row.Result) {
++        case SweepResult::Caller: Reason = "caller"; break;
++        case SweepResult::InSimulation: Reason = "in-sim"; break;
++        case SweepResult::SignalPinned: Reason = "signal-pinned"; break;
++        case SweepResult::Raced: Reason = "raced"; break;
++        case SweepResult::Migrated: Reason = "migrated"; break;
++        case SweepResult::NoMigration: break;
++        }
++        const int InSim = Row.Result == SweepResult::Caller ? -1 : Row.Result == SweepResult::InSimulation;
++        LogMan::Msg::IFmt("[fex-segment-budget] event=reference-holder pid={:04x} tid={:04x} owner={} generation={} "
++                         "sweep_gen={} retry_left={} in_sim={} scan_result={} current_refs={} signal_refs={}",
++                         Budget.PID, Row.TID, Budget.Manager, Budget.Generation, Gen, RetryLeft, InSim, Reason, Row.Current, Row.Signals);
++      }
 +    }
 +#endif
 -
 +
      static std::atomic<int> SweepLogCount {0};
      if ((Migrated || SigPinSkip || Raced) && SweepLogCount.fetch_add(1, std::memory_order_relaxed) < 128) {
-@@ -1100,6 +1136,23 @@
+@@ -1100,6 +1195,23 @@
    }
  #endif
 -

@@ -207,9 +207,15 @@ int main(int argc, char** argv) {
     assert 'compare_exchange_strong' in count_refs and 'return -1;' in count_refs
     assert 'Matches(CurrentCodeBuffer)' in count_refs and 'Buffer : SignalHandlerCodeBuffers' in count_refs
     sweep = method(backend, '  extern "C" void IosMaybeSweepCodeBuffers(')
-    assert sweep.index('IosCodeBufferSweepGate, 0') < sweep.index('Sample(*Snap[i].Thread->CPUBackend)')
-    assert sweep.index('Sample(*Snap[i].Thread->CPUBackend)') < sweep.index('IosSweepBusy.store(0')
+    assert sweep.index('if (*Snap[i].InSim != 0)') < sweep.index('Results[i] = SweepResult::InSimulation')
+    assert sweep.index('IosRemoteMigrateStale(Latest)') < sweep.index('Results[i] = static_cast<SweepResult>(Result)')
+    assert sweep.index('IosCodeBufferSweepGate, 0') < sweep.index('Sample(*Snap[i].Thread->CPUBackend, Snap[i].TID')
+    assert sweep.index('Sample(*Snap[i].Thread->CPUBackend, Snap[i].TID') < sweep.index('IosSweepBusy.store(0')
     assert sweep.index('IosSweepBusy.store(0') < sweep.index('event=reference-snapshot')
+    assert sweep.index('IosSweepBusy.store(0') < sweep.index('event=reference-holder')
+    assert 'TraceHolders && (Current || Signals)' in sweep and 'HolderCount < MaxHolders' in sweep
+    assert 'holders_omitted={}' in sweep and 'retry_left={}' in sweep
+    assert backend.count('IosSweepSlots[i].TID = ::GetCurrentThreadId();') == 2
     output = jit.split('const auto TempSize = GetCursorOffset();', 1)[1]
     assert output.index('if (IosUnpubMode)') < output.index('TryAppendCodeSegment(') < output.index('CTX->ClearCodeCache(')
     assert 'IosStampTeb && !IosNestedS' in output
