@@ -3,6 +3,10 @@ set -euo pipefail
 xcode=$(xcodebuild -version)
 sdk=$(xcrun --sdk iphoneos --show-sdk-version)
 compiler=$(xcrun clang --version)
+# The default Darwin target embeds the runner's kernel version, not an SDK input.
+# Keep the full banner for errors and preserve the target architecture in the key.
+compiler_key=$(printf '%s\n' "$compiler" | awk '/^Target: .*[-]apple[-]darwin[0-9.]+$/ { sub(/darwin[0-9.]+$/, "darwin") } { print }')
+
 sdk_build=$(xcrun --sdk iphoneos --show-sdk-build-version)
 macos_sdk=$(xcrun --sdk macosx --show-sdk-version)
 macos_sdk_build=$(xcrun --sdk macosx --show-sdk-build-version)
@@ -10,7 +14,7 @@ repo_root=$(git rev-parse --show-toplevel)
 rustc=$(cd "$repo_root/build/rppairing-ios" && rustc -vV)
 fingerprint() { shasum -a 256 | cut -c1-20; }
 flags() { env | LC_ALL=C sort | awk -F= -v pattern="$1" '$1 ~ pattern'; }
-key=$( { printf '%s\n' "$xcode" "$sdk" "$sdk_build" "$macos_sdk" "$macos_sdk_build" "$compiler"; uname -sm; flags '^(CC|CXX|AR|RANLIB|CFLAGS|CXXFLAGS|CPPFLAGS|LDFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET|IPHONEOS_DEPLOYMENT_TARGET|ImageOS)$'; } | fingerprint)
+key=$( { printf '%s\n' "$xcode" "$sdk" "$sdk_build" "$macos_sdk" "$macos_sdk_build" "$compiler_key"; uname -sm; flags '^(CC|CXX|AR|RANLIB|CFLAGS|CXXFLAGS|CPPFLAGS|LDFLAGS|SDKROOT|MACOSX_DEPLOYMENT_TARGET|IPHONEOS_DEPLOYMENT_TARGET|ImageOS)$'; } | fingerprint)
 rust=$( { printf '%s\n' "$key" "$rustc"; flags '^(RUSTFLAGS|CARGO_ENCODED_RUSTFLAGS|RUSTUP_TOOLCHAIN)$'; } | fingerprint)
 graphics=$( { printf '%s\n' "$key"; flags '^(DXMT_METAL_STD|MADEIRA_ONLY|MADEIRA_MSC_ROOT)$'; } | fingerprint)
 ipa=$( { printf '%s\n' "$key" "$rust" "$graphics"; flags '^(CONFIGURATION|MADEIRA_MOLTENVK)$'; } | fingerprint)
