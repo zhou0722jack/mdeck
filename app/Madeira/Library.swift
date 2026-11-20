@@ -5037,6 +5037,19 @@ struct LibraryDetail: View {
                 .accessibilityIdentifier("steam-previous-code-reuse")
                 Text("Keep the previous translated-code generation for the Steam interface. Off by default; may use additional memory. Independent of diagnostics. Takes effect on the next Steam launch.")
                     .font(.footnote).foregroundStyle(.secondary)
+                Toggle("CEF dual code segments (experimental)", isOn: Binding(get: {
+                    SteamDualCodeSegmentsSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamDualCodeSegmentsSettings.text(file.text, enabled: enabled)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The dual code segments setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen)
+                .accessibilityIdentifier("steam-dual-code-segments")
             }
             Section("Diagnostics") {
                 Toggle("Compilation reason logging", isOn: Binding(get: {

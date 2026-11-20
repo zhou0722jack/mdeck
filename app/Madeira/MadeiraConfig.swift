@@ -64,6 +64,26 @@ enum SteamPreviousCodeSettings {
     }
 }
 
+enum SteamDualCodeSegmentsSettings {
+    static let key = "env.MADEIRA_FEX_DUAL_CODE_SEGMENTS"
+
+    static func enabled(global: [String: String], profile: String) -> Bool {
+        global.merging(MadeiraConfig.parse(profile)) { _, own in own }[key] == "1"
+    }
+
+    static func text(_ previous: String, enabled: Bool) -> String {
+        var lines = previous.components(separatedBy: .newlines).filter { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }
+            return trimmed[..<equals].trimmingCharacters(in: .whitespaces) != key
+        }
+        while lines.last == "" { lines.removeLast() }
+        if !lines.isEmpty { lines.append("") }
+        lines.append("\(key) = \(enabled ? "1" : "0")")
+        return lines.joined(separator: "\n") + "\n"
+    }
+}
+
 /// DFE scratch reuse defaults on and is independent of diagnostic capture.
 enum SteamDFEScratchSettings {
     static let key = "env.MADEIRA_FEX_DFE_REUSE"

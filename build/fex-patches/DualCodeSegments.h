@@ -43,6 +43,29 @@ inline bool Enabled() {
 // running threads or exception frames. The executable allocator separately
 // enforces its shared pool/code budget; this never bypasses that allocator.
 inline unsigned Reserved {};
+struct BudgetOwner {
+  unsigned PID {};
+  uint64_t Manager {};
+  uint64_t PrimaryGeneration {};
+  uint64_t Generation {};
+  uintptr_t PrimaryRX {};
+  uintptr_t SecondRX {};
+};
+inline BudgetOwner PublishedOwner {};
+
+inline BudgetOwner ReadBudgetOwner() {
+  const auto Generation = __atomic_load_n(&PublishedOwner.Generation, __ATOMIC_SEQ_CST);
+  if (!Generation) return {};
+  BudgetOwner Owner {
+    __atomic_load_n(&PublishedOwner.PID, __ATOMIC_SEQ_CST),
+    __atomic_load_n(&PublishedOwner.Manager, __ATOMIC_SEQ_CST),
+    __atomic_load_n(&PublishedOwner.PrimaryGeneration, __ATOMIC_SEQ_CST), Generation,
+    __atomic_load_n(&PublishedOwner.PrimaryRX, __ATOMIC_SEQ_CST),
+    __atomic_load_n(&PublishedOwner.SecondRX, __ATOMIC_SEQ_CST),
+  };
+  // The unique serial brackets publication. Ignore a release/reattach race.
+  return Generation == __atomic_load_n(&PublishedOwner.Generation, __ATOMIC_SEQ_CST) ? Owner : BudgetOwner {};
+}
 // Also read with LDAR in emitted indirect-exit code. Use a naturally aligned
 // integer (not the representation of std::atomic) and pair with release stores.
 alignas(sizeof(uintptr_t)) inline uintptr_t ActiveSecondRX {};
@@ -74,8 +97,11 @@ constexpr const char* AppendName(Append Result) {
 
 class SecondSegment {
   using Free = void (*)(void*, std::size_t);
+  using ReleaseReport = void (*)(const BudgetOwner&);
   uintptr_t RX {};
   Free Release {};
+  ReleaseReport ReportRelease {};
+  BudgetOwner Owner {};
 
 public:
   // Only the normal emission writer accesses offset/id. Initialization of both
@@ -93,21 +119,35 @@ public:
       // be reused, but don't release the budget until VirtualFree returns.
       __atomic_store_n(&ActiveSecondRX, uintptr_t {}, __ATOMIC_RELEASE);
       Release(reinterpret_cast<void*>(Base), Bytes);
+      __atomic_store_n(&PublishedOwner.Generation, uint64_t {}, __ATOMIC_SEQ_CST);
       __atomic_store_n(&Reserved, 0u, __ATOMIC_RELEASE);
+      if (ReportRelease) ReportRelease(Owner);
     }
   }
 
   uintptr_t Address() const { return __atomic_load_n(&RX, __ATOMIC_ACQUIRE); }
+  const BudgetOwner& AttachedOwner() const { return Owner; }
 
   template<typename Alloc, typename NewId>
-  Append TryAttach(std::size_t Required, std::size_t Guard, Alloc Allocate, Free FreeRegion, NewId GetId) {
+  Append TryAttach(std::size_t Required, std::size_t Guard, Alloc Allocate, Free FreeRegion, NewId GetId,
+                   BudgetOwner Identity = {}, ReleaseReport OnRelease = nullptr) {
     if (Address()) return Append::AlreadyFull;
     if (Guard >= Bytes || !Fits(Bytes - Guard, 0, Required)) return Append::TooLarge;
     unsigned Expected = 0;
     if (!__atomic_compare_exchange_n(&Reserved, &Expected, 1u, false, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) return Append::Budget;
     if (const auto Base = reinterpret_cast<uintptr_t>(Allocate(Bytes))) {
       Release = FreeRegion;
+      ReportRelease = OnRelease;
       Generation = GetId();
+      Identity.Generation = Generation;
+      Identity.SecondRX = Base;
+      Owner = Identity;
+      __atomic_store_n(&PublishedOwner.PID, Owner.PID, __ATOMIC_SEQ_CST);
+      __atomic_store_n(&PublishedOwner.Manager, Owner.Manager, __ATOMIC_SEQ_CST);
+      __atomic_store_n(&PublishedOwner.PrimaryGeneration, Owner.PrimaryGeneration, __ATOMIC_SEQ_CST);
+      __atomic_store_n(&PublishedOwner.PrimaryRX, Owner.PrimaryRX, __ATOMIC_SEQ_CST);
+      __atomic_store_n(&PublishedOwner.SecondRX, Owner.SecondRX, __ATOMIC_SEQ_CST);
+      __atomic_store_n(&PublishedOwner.Generation, Owner.Generation, __ATOMIC_SEQ_CST);
       // The emitted guard must see the physical range before any thread can
       // publish a guest entry pointing into it.
       __atomic_store_n(&ActiveSecondRX, Base, __ATOMIC_RELEASE);

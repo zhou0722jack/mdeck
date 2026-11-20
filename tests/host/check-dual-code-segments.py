@@ -92,6 +92,11 @@ void Free(void* ptr, std::size_t size) {
   ++frees;
 }
 uint64_t Id() { return ++ids; }
+BudgetOwner released;
+void ReportRelease(const BudgetOwner& owner) {
+  assert(!Reserved && !ReadBudgetOwner().Generation);
+  released = owner;
+}
 int main(int argc, char** argv) {
   assert(argc == 2);
   const std::string_view mode = argv[1];
@@ -117,9 +122,13 @@ int main(int argc, char** argv) {
   fail = true;
   assert(current->TryAttach(16, Guard, Allocate, Free, Id) == Append::AllocationFailed);
   assert(!current->Address() && !ActiveSecondRX && !Reserved && !ids && !frees);
+  assert(!ReadBudgetOwner().Generation);
   fail = false;
-  assert(current->TryAttach(16, Guard, Allocate, Free, Id) == Append::Added);
+  assert(current->TryAttach(16, Guard, Allocate, Free, Id, {0xe8, 3, 10, 0, First, 0}, ReportRelease) == Append::Added);
   assert(current->Address() == Tail && ActiveSecondRX == Tail && current->Generation == 1 && !current->Offset);
+  const auto firstOwner = ReadBudgetOwner();
+  assert(firstOwner.PID == 0xe8 && firstOwner.Manager == 3 && firstOwner.PrimaryGeneration == 10);
+  assert(firstOwner.Generation == 1 && firstOwner.PrimaryRX == First && firstOwner.SecondRX == Tail);
   {
     MapFixture map;
     const LookupCacheWriteLockToken write;
@@ -158,15 +167,20 @@ int main(int argc, char** argv) {
   assert(current->TryAttach(16, Guard, Allocate, Free, Id) == Append::AlreadyFull);
   assert(current->Offset == Bytes - Guard && allocations == 2);
   current = std::make_shared<SecondSegment>(); // rollover, with old group pinned
-  assert(current->TryAttach(16, Guard, Allocate, Free, Id) == Append::Budget);
+  const BudgetOwner next {0xe8, 3, 11, 0, First + 0x10000000, 0};
+  assert(current->TryAttach(16, Guard, Allocate, Free, Id, next, ReportRelease) == Append::Budget);
+  assert(ReadBudgetOwner().Generation == 1 && ReadBudgetOwner().PrimaryGeneration == 10);
   thread.reset();
-  assert(!frees && exception->Address() == Tail && Reserved == 1);
+  assert(!frees && !released.Generation && exception->Address() == Tail && Reserved == 1);
   exception.reset();
-  assert(frees == 1 && !ActiveSecondRX && !Reserved);
-  assert(current->TryAttach(16, Guard, Allocate, Free, Id) == Append::Added);
+  assert(frees == 1 && !ActiveSecondRX && !Reserved && !ReadBudgetOwner().Generation);
+  assert(released.Generation == 1 && released.PrimaryRX == First && released.SecondRX == Tail);
+  assert(current->TryAttach(16, Guard, Allocate, Free, Id, next, ReportRelease) == Append::Added);
+  assert(ReadBudgetOwner().Generation == 2 && ReadBudgetOwner().PrimaryGeneration == 11);
   assert(current->Generation == 2 && current->Offset == 0); // reuse the same VA safely
   current.reset();
   assert(frees == 2 && allocations == 3 && !ActiveSecondRX && !Reserved);
+  assert(released.Generation == 2 && released.PrimaryRX == next.PrimaryRX);
 }
 '''.replace('@MAP_METHODS@', map_methods))
     exe = work / 'dual'
@@ -183,11 +197,19 @@ int main(int argc, char** argv) {
     branch = (base / 'JIT/BranchOps.cpp').read_text()
     append = backend.split('bool CodeBufferManager::TryAppendCodeSegment(', 1)[1].split('#endif', 1)[0]
     assert append.count('VirtualAlloc(Size, true)') == 1 and 'PoolContains(' in append
+    assert 'budget_owner={}' in append and 'request_owner={}' in append and 'event=released' in append
     for forbidden in ('LookupCache', 'AllocateNew(', 'IosCodeBufferGenCounter', 'ResetCallRetStack'):
         assert forbidden not in append
     assert 'MDeckSegments::SecondSegment MDeckSecond;' in backend_h
     pc_check = backend.split('bool CPUBackend::IsAddressInCodeBuffer(', 1)[1]
     assert 'Buffer.SegmentForAddress(Address)' in pc_check and 'SignalHandlerCodeBuffers' in pc_check
+    count_refs = method(backend, '  int CPUBackend::IosTryCountSegmentReferences(')
+    assert 'compare_exchange_strong' in count_refs and 'return -1;' in count_refs
+    assert 'Matches(CurrentCodeBuffer)' in count_refs and 'Buffer : SignalHandlerCodeBuffers' in count_refs
+    sweep = method(backend, '  extern "C" void IosMaybeSweepCodeBuffers(')
+    assert sweep.index('IosCodeBufferSweepGate, 0') < sweep.index('Sample(*Snap[i].Thread->CPUBackend)')
+    assert sweep.index('Sample(*Snap[i].Thread->CPUBackend)') < sweep.index('IosSweepBusy.store(0')
+    assert sweep.index('IosSweepBusy.store(0') < sweep.index('event=reference-snapshot')
     output = jit.split('const auto TempSize = GetCursorOffset();', 1)[1]
     assert output.index('if (IosUnpubMode)') < output.index('TryAppendCodeSegment(') < output.index('CTX->ClearCodeCache(')
     assert 'IosStampTeb && !IosNestedS' in output

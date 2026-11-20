@@ -1,0 +1,80 @@
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+--- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
++++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+@@ -1089,5 +1089,41 @@
+     std::atomic_thread_fence(std::memory_order_seq_cst);
+     __atomic_store_n(&IosCodeBufferSweepGate, 0, __ATOMIC_SEQ_CST);
+     IosSweepLastGen.store(Gen, std::memory_order_relaxed);
+     IosSweepLastSkipped.store(InSimSkip + SigPinSkip + Raced, std::memory_order_relaxed);   /* ml1106 */
++#if defined(_WIN32)
++    MDeckSegments::BudgetOwner Budget;
++    unsigned CurrentRefs = 0, SignalRefs = 0, SignalThreads = 0, BusyThreads = 0;
++    const auto RetryLeft = IosSweepRetryLeft.load(std::memory_order_relaxed);
++    if (!Retry || RetryLeft == 255 || (RetryLeft & 31) == 0) {
++      Budget = MDeckSegments::ReadBudgetOwner();
++      if (Budget.Generation) {
++        const auto Sample = [&](CPUBackend& Backend) {
++          unsigned Signals = 0;
++          const int Current = Backend.IosTryCountSegmentReferences(Budget.Generation, Signals);
++          if (Current < 0) {
++            ++BusyThreads;
++          } else {
++            CurrentRefs += Current;
++            SignalRefs += Signals;
++            SignalThreads += Signals != 0;
++          }
++        };
++        // The registry keeps this sweep's snapshot alive until IosSweepBusy
++        // clears. Do not wait for threads that reentered simulation.
++        for (size_t i = 0; i < SnapCount; ++i) Sample(*Snap[i].Thread->CPUBackend);
++        Sample(*CallerThread->CPUBackend);
++        if (MDeckSegments::ReadBudgetOwner().Generation != Budget.Generation) Budget = {};
++      }
++    }
++#endif
+     IosSweepBusy.store(0, std::memory_order_release);
++#if defined(_WIN32)
++    if (Budget.Generation) {
++      LogMan::Msg::IFmt("[fex-segment-budget] event=reference-snapshot pid={:04x} owner={} primary_generation={} generation={} "
++                       "primary=0x{:x} second=0x{:x} sweep_gen={} scanned={} busy={} current_refs={} signal_refs={} signal_threads={} "
++                       "migrated={} in_sim={} sig_pin={} raced={} retry={}",
++                       Budget.PID, Budget.Manager, Budget.PrimaryGeneration, Budget.Generation, Budget.PrimaryRX, Budget.SecondRX,
++                       Gen, SnapCount + 1 - BusyThreads, BusyThreads, CurrentRefs, SignalRefs, SignalThreads,
++                       Migrated, InSimSkip, SigPinSkip, Raced, Retry);
++    }
++#endif
+@@ -1103,3 +1139,20 @@
++#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  int CPUBackend::IosTryCountSegmentReferences(uint64_t Generation, unsigned& Signals) const {
++    uint64_t Expected = 0;
++    if (!IosMigrateLock.compare_exchange_strong(Expected, IosMigrateLockGuard::Me(), std::memory_order_acquire,
++                                               std::memory_order_relaxed)) {
++      return -1;
++    }
++    const auto Matches = [Generation](const auto& Buffer) {
++      return Buffer && Buffer->MDeckSecond.Address() && Buffer->MDeckSecond.Generation == Generation;
++    };
++    const int Current = Matches(CurrentCodeBuffer);
++    for (const auto& Buffer : SignalHandlerCodeBuffers) Signals += Matches(Buffer);
++    IosMigrateLock.store(0, std::memory_order_release);
++    return Current;
++  }
++#endif
++
+   bool CPUBackend::IsAddressInCodeBuffer(uintptr_t Address) const {
+ #ifdef FEX_IOS_HOST
+     /* ml460: exception paths call this on threads that are native-side
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.h b/FEXCore/Source/Interface/Core/CPUBackend.h
+--- a/FEXCore/Source/Interface/Core/CPUBackend.h
++++ b/FEXCore/Source/Interface/Core/CPUBackend.h
+@@ -281,6 +281,10 @@
+     // in flight), -2 = raced out. Caller must have established via the sweep
+     // gate that this thread is outside emitted code (InSimulation == 0).
+     int IosRemoteMigrateStale(const fextl::shared_ptr<CodeBuffer>& LatestBuf);
++#if defined(_WIN32)
++    // Returns 1 for a matching current reference, 0 for none, -1 if busy.
++    int IosTryCountSegmentReferences(uint64_t Generation, unsigned& Signals) const;
++#endif
+     CodeBufferManager& GetCodeBufferManager() {
+       return CodeBuffers;
+     }

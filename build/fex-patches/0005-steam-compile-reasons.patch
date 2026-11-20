@@ -31,14 +31,20 @@ diff --git a/FEXCore/Source/Interface/Context/Context.h b/FEXCore/Source/Interfa
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -551,6 +551,40 @@
+@@ -551,6 +551,55 @@
      FEXCore::Allocator::VirtualFree(Ptr, AllocatedSize);
    }
  
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
++  static unsigned SegmentBudgetPID() {
++    const auto TEB = FEXCore::CompileReason::mdeck_steam_probe_teb();
++    return TEB ? static_cast<unsigned>(*reinterpret_cast<const uint64_t*>(TEB + 0x40)) : 0;
++  }
++
 +  bool CodeBufferManager::TryAppendCodeSegment(CodeBuffer& Group, size_t Required) {
 +    using namespace MDeckSegments;
 +    constexpr size_t Guard = FEXCore::Utils::FEX_PAGE_SIZE;
++    const auto PrimaryRX = reinterpret_cast<uintptr_t>(Group.Ptr);
 +    const auto Result = Group.MDeckSecond.TryAttach(Required, Guard, [](size_t Size) -> void* {
 +      // Exactly one optional attempt using the same EC_CODE carve and headroom
 +      // policy as a regular buffer; no halve-and-retry or general RWX fallback.
@@ -54,7 +60,11 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +      DWORD OldProtection {};
 +      ::VirtualProtect(P + Size - Guard, Guard, PAGE_NOACCESS, &OldProtection);
 +      return P;
-+    }, FEXCore::Allocator::VirtualFree, FEXCore::CompileReason::NextId);
++    }, FEXCore::Allocator::VirtualFree, FEXCore::CompileReason::NextId,
++      {SegmentBudgetPID(), MDeckReasonOwner, Group.MDeckReasonGeneration, 0, PrimaryRX, 0}, [](const BudgetOwner& Owner) {
++      LogMan::Msg::IFmt("[fex-segment-budget] event=released pid={:04x} owner={} primary_generation={} generation={} primary=0x{:x} second=0x{:x}",
++                       Owner.PID, Owner.Manager, Owner.PrimaryGeneration, Owner.Generation, Owner.PrimaryRX, Owner.SecondRX);
++    });
 +    static unsigned ReportCount {};
 +    if (Result == Append::Added) {
 +      FEXCore::CompileReason::BufferAllocated(MDeckReasonOwner, Group.MDeckReasonGeneration,
@@ -62,8 +72,13 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +          Group.ActiveCodeGeneration(), Group.ActiveCodeRX(), Group.ActiveCodeUsableSize(), Required, true);
 +    }
 +    if (__atomic_fetch_add(&ReportCount, 1u, __ATOMIC_RELAXED) < 32) {
-+      LogMan::Msg::IFmt("[fex-segments] append={} primary=0x{:x} second=0x{:x} used={} requested={}",
-+                       AppendName(Result), reinterpret_cast<uintptr_t>(Group.Ptr), Group.MDeckSecond.Address(), LatestOffset, Required);
++      const auto Owner = Result == Append::Budget ? ReadBudgetOwner() : Group.MDeckSecond.AttachedOwner();
++      LogMan::Msg::IFmt("[fex-segments] append={} primary=0x{:x} second=0x{:x} used={} requested={} pid={:04x} "
++                       "request_owner={} request_generation={} budget_pid={:04x} budget_owner={} budget_primary_generation={} budget_generation={} "
++                       "budget_primary=0x{:x} budget_second=0x{:x}",
++                       AppendName(Result), PrimaryRX, Group.MDeckSecond.Address(), LatestOffset, Required, SegmentBudgetPID(),
++                       MDeckReasonOwner, Group.MDeckReasonGeneration, Owner.PID, Owner.Manager, Owner.PrimaryGeneration,
++                       Owner.Generation, Owner.PrimaryRX, Owner.SecondRX);
 +    }
 +    return Result == Append::Added;
 +  }
@@ -72,7 +87,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
  #ifdef FEX_IOS_HOST
    /* ml460 (#75): process-wide generation counter; read by the deferred-sweep
     * trigger (Core.cpp) and the sweeper (Module.cpp) via IosCodeBufferGeneration. */
-@@ -587,6 +621,9 @@
+@@ -587,6 +636,9 @@
  #endif
  
      auto Buffer = fextl::make_shared<CodeBuffer>(Size);
@@ -82,7 +97,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
  
  #ifdef FEX_IOS_HOST
      /* ml460 (#75): generation bookkeeping. prev_use_count at swap time is the
-@@ -603,6 +640,13 @@
+@@ -603,6 +655,13 @@
            PrevUseCount = Latest.use_count();
            PrevSize = Latest->AllocatedSize;
          }
@@ -96,7 +111,7 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
          Latest = Buffer;
          LatestOffset = 0;
        }
-@@ -880,10 +924,14 @@
+@@ -880,10 +939,14 @@
      IosMigrateLockGuard g {IosMigrateLock};
  #endif
      auto CheckCodeBuffer = [](CodeBuffer& Buffer, uintptr_t Address) {

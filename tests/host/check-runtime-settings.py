@@ -222,6 +222,26 @@ for reuse in [false,true] { for logging in [false,true] {
            && SteamDFEScratchSettings.enabled(global:[:],profile:combination)
            && !SteamCacheLookupSettings.enabled(global:[:],profile:combination), "previous-code choice is independent of DFE, L1 and logging")
 } }
+let dualKey = SteamDualCodeSegmentsSettings.key
+expect(!SteamDualCodeSegmentsSettings.enabled(global: [:], profile: ""), "dual segments default off")
+expect(SteamDualCodeSegmentsSettings.enabled(global: [dualKey:"1"], profile: ""), "dual segments inherit global on")
+expect(SteamDualCodeSegmentsSettings.enabled(global: [dualKey:"0"], profile: dualKey + "=1"), "manual profile on overrides global off")
+for invalid in ["", "true", "2", "1junk"] {
+    expect(!SteamDualCodeSegmentsSettings.enabled(global: [dualKey:invalid], profile: ""), "dual segments require exact one")
+}
+let dualSeed = previousOn + "# keep dual comment\npool=1152\n" + dualKey + "=0\n " + dualKey + " = 1\n"
+let dualOn = SteamDualCodeSegmentsSettings.text(dualSeed, enabled: true)
+let dualOff = SteamDualCodeSegmentsSettings.text(dualOn, enabled: false)
+expect(SteamDualCodeSegmentsSettings.enabled(global: [:], profile: dualOn)
+       && dualOn.components(separatedBy: dualKey).count == 2
+       && dualOn.contains("# keep dual comment") && dualOn.contains("pool=1152"), "dual segments preserve other settings and deduplicate")
+expect(SteamDualCodeSegmentsSettings.text(dualOn, enabled: true) == dualOn
+       && SteamDualCodeSegmentsSettings.text(dualOff, enabled: false) == dualOff, "dual segment writes are idempotent")
+expect(!SteamDualCodeSegmentsSettings.enabled(global: [dualKey:"1"], profile: dualOff), "dual segment off overrides global on")
+for profile in [dualOn, dualOff] {
+    expect(SteamPreviousCodeSettings.enabled(global: [:], profile: profile)
+           && !SteamCompileReasonSettings.enabled(global: [:], profile: profile), "dual segment toggle leaves previous reuse and diagnostics settings unchanged")
+}
 expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
 let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
 expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)
