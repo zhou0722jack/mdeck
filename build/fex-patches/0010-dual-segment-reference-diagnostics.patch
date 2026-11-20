@@ -1,7 +1,7 @@
 diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
 --- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
 +++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
-@@ -1089,5 +1089,41 @@
+@@ -1089,8 +1089,44 @@
      std::atomic_thread_fence(std::memory_order_seq_cst);
      __atomic_store_n(&IosCodeBufferSweepGate, 0, __ATOMIC_SEQ_CST);
      IosSweepLastGen.store(Gen, std::memory_order_relaxed);
@@ -43,7 +43,15 @@ diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Inter
 +                       Migrated, InSimSkip, SigPinSkip, Raced, Retry);
 +    }
 +#endif
-@@ -1103,3 +1139,20 @@
+-
++
+     static std::atomic<int> SweepLogCount {0};
+     if ((Migrated || SigPinSkip || Raced) && SweepLogCount.fetch_add(1, std::memory_order_relaxed) < 128) {
+@@ -1100,6 +1136,23 @@
+   }
+ #endif
+-
++
 +#if defined(FEX_IOS_HOST) && defined(_WIN32)
 +  int CPUBackend::IosTryCountSegmentReferences(uint64_t Generation, unsigned& Signals) const {
 +    uint64_t Expected = 0;
