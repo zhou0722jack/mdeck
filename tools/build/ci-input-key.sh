@@ -24,6 +24,8 @@ if [[ -n "${MADEIRA_PLANNED_SDK:-}" && "$key" != "$MADEIRA_PLANNED_SDK" ]]; then
   exit 1
 fi
 if [[ -n "${MADEIRA_PLANNED_IPA:-}" && "$ipa" != "$MADEIRA_PLANNED_IPA" ]]; then
+  printf 'Planned app key: %s\nActual app key: %s\nRust key: %s\nGraphics key: %s\n%s\n' \
+    "$MADEIRA_PLANNED_IPA" "$ipa" "$rust" "$graphics" "$rustc" >&2
   echo "ERROR: this runner's app build inputs differ from the planned IPA key" >&2
   exit 1
 fi

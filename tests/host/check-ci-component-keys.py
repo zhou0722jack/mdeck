@@ -60,6 +60,7 @@ cases = {
     'rust-build': ('build/rppairing-ios/build.rs', {'rppairing', 'ipa'}),
     'cargo-config': ('.cargo/config.toml', {'rppairing', 'ipa'}),
     'rust-toolchain': ('rust-toolchain.toml', {'rppairing', 'ipa'}),
+    'pairing-rust-toolchain': ('build/rppairing-ios/rust-toolchain.toml', {'rppairing', 'ipa'}),
     'fex-inner-recipe': ('build/fex-ios/build.sh', {'fex', 'ipa'}),
     'docs': ('BUILDING.md', {'ipa'}),
     'workflow': ('.github/workflows/build.yml', {'ipa'}),
