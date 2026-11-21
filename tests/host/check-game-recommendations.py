@@ -606,7 +606,12 @@ assert 'entry.desktop == true ? [.advanced] : [.library, .iniFiles, .advanced]' 
 assert 'if let error { Section' in detail
 assert '!remove, !confirmReset else { return }' in detail
 launch = block(content, '    private func launchPreparedLibraryEntry(_ entry: LibraryEntry, steamRequest: UUID? = nil) {', '\n    }\n')
-assert launch.index('if GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }') < launch.index('startLibraryEntry(entry)')
+recommendation = (
+    'if entry.id != RuntimeCheckpointProbe.id, '
+    'GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }'
+)
+launch = ' '.join(launch.split())
+assert launch.index(recommendation) < launch.index('startLibraryEntry(entry)')
 start_library = block(content, '    private func startLibraryEntry(', '\n    }\n')
 assert start_library.index('BCDLaunch.applyLibrary(entry)') < start_library.index('runWineFullSequence(profile: entry)')
 for name in ('GameRecommendations.swift', 'GameRecommendationsApply.swift'):
