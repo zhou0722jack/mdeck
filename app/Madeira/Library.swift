@@ -4,6 +4,7 @@ import UIKit
 import Darwin
 import ImageIO
 import Combine
+import CryptoKit
 import Metal
 
 // ============================================================================
@@ -1046,6 +1047,8 @@ final class LibraryModel: ObservableObject {
     }
     @Published var error: String? { didSet { if error != nil { preparing = nil } } }
     @Published var sessionMessage = ""
+    @Published private(set) var savingRuntimeSnapshot = false
+    private var runtimeSnapshotTask: Task<Void, Never>?
     private var smallPoolNoted = false
     /// Quit game was asked for and the program is still running after `forceCloseAfter`
     /// seconds: a frozen program never handles Alt+F4, so the menu offers to close Madeira.
@@ -1070,7 +1073,7 @@ final class LibraryModel: ObservableObject {
     var menuButtonRect = CGRect.zero
     var performanceRect = CGRect.zero
     /// The in-game menu and the starting screen take every touch.
-    var blocksGameplayTouch: Bool { MainActor.assumeIsolated { DeckSteamLaunchPreparation.shared.presented } || preparing != nil || (current != nil && (menu || launching)) }
+    var blocksGameplayTouch: Bool { MainActor.assumeIsolated { DeckSteamLaunchPreparation.shared.presented } || preparing != nil || (current != nil && (menu || launching || savingRuntimeSnapshot)) }
     private var timer: Timer?
     private var sawProcess = false
     // Why a session ended by itself (not Quit): the program the app launched
@@ -1928,8 +1931,33 @@ final class LibraryModel: ObservableObject {
         LibraryController.shared.configure(enabled: enabled, ownsInput: true)
         menu = true
     }
+    @MainActor func createRuntimeSnapshot() {
+        guard activeEntry?.id == RuntimeCheckpointProbe.id, !launching,
+              runtimeSnapshotTask == nil, !quitRequested else { return }
+        savingRuntimeSnapshot = true
+        sessionMessage = L("Saving runtime snapshot…")
+        menu = false
+        runtimeSnapshotTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.runtimeSnapshotTask = nil
+                self.savingRuntimeSnapshot = false
+            }
+            do {
+                let state = try await RuntimeCheckpointProbe.saveSnapshot()
+                LogStore.shared.log("[checkpoint-probe] saved \(state.logDetails)")
+                self.sessionMessage = L("Runtime snapshot saved.")
+            } catch is CancellationError {
+                return
+            } catch {
+                LogStore.shared.log("[checkpoint-probe] save failed: \(error.localizedDescription)", level: .error)
+                self.sessionMessage = L("Runtime snapshot could not be saved.")
+            }
+        }
+    }
     func requestQuit() {
         LibraryKeyboard.hide()
+        runtimeSnapshotTask?.cancel()
         quitRequested = true
         if quitRequestedAt == nil { quitRequestedAt = Date() }
         if activeEntry?.id == SteamClient.installerID, MainActor.assumeIsolated({
@@ -1989,6 +2017,7 @@ final class LibraryModel: ObservableObject {
         save(entry)
     }
     private func finish() {
+        runtimeSnapshotTask?.cancel()
         if sawProcess, let next = steamRunRequest() { restartNotice = next }
         else if sawProcess, let report = exitReport() { error = report }
         MainActor.assumeIsolated {
@@ -2028,15 +2057,88 @@ enum RuntimeCheckpointProbe {
     static let id = UUID(uuidString: "65E5A10A-1FF8-45D9-B7EA-D5DEAF5B2CB9")!
     private static let folder = "Madeira/Diagnostics/CheckpointProbe"
     private static let programs = ["hibernate-probe", "hibernate-worker"]
+    private static let requestName = "snapshot-request.bin"
+    private static let replyName = "snapshot-reply.bin"
+    private static let restoreName = "snapshot-restore.bin"
 
-    static var entry: LibraryEntry {
+    struct State {
+        static let byteCount = 24
+        let bytes: Data
+        let session: UInt64
+        let count: UInt32
+
+        init?(_ bytes: Data) {
+            guard bytes.count == Self.byteCount else { return nil }
+            let fields = bytes.withUnsafeBytes { raw in
+                (UInt64(littleEndian: raw.loadUnaligned(as: UInt64.self)),
+                 UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 8, as: UInt32.self)),
+                 UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 12, as: UInt32.self)),
+                 UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 16, as: UInt32.self)),
+                 UInt32(littleEndian: raw.loadUnaligned(fromByteOffset: 20, as: UInt32.self)))
+            }
+            let (session, displayed, shared, worker, version) = fields
+            guard version == 1, session != 0, displayed <= UInt32(Int32.max),
+                  displayed == shared, displayed == worker else { return nil }
+            self.bytes = bytes
+            self.session = session
+            count = displayed
+        }
+
+        var logDetails: String {
+            "session=\(String(format: "%016llX", session)) count=\(count)"
+        }
+    }
+
+    private static var snapshotURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Madeira/Diagnostics", isDirectory: true)
+            .appendingPathComponent("checkpoint-probe.bin")
+    }
+
+    static var hasSavedSnapshot: Bool { FileManager.default.fileExists(atPath: snapshotURL.path) }
+
+    static func entry(restoring: Bool = false) -> LibraryEntry {
         var entry = LibraryEntry(title: L("Runtime snapshot test"),
                                  relativePath: folder + "/hibernate-probe.exe", bits: 32)
         entry.id = id
+        entry.workingDirectory = "C:\\" + folder.replacingOccurrences(of: "/", with: "\\")
+        entry.arguments = restoring ? "--restore" : "--checkpoint"
         return entry
     }
 
-    static func prepare() throws {
+    private static func installDirectory() throws -> URL {
+        let drive = LibraryModel.drive.standardizedFileURL
+        let directory = drive.appendingPathComponent(folder, isDirectory: true)
+        guard directory.resolvingSymlinksInPath().path == directory.path else {
+            throw LibraryError.message(L("The runtime snapshot test folder must stay inside Madeira's drive_c."))
+        }
+        return directory
+    }
+
+    private static func readRecord(_ url: URL, byteCount: Int) throws -> Data? {
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard descriptor >= 0 else { return nil }
+        let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
+        var info = stat()
+        guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
+              info.st_size == byteCount else { return nil }
+        let bytes = try file.read(upToCount: byteCount + 1)
+        return bytes?.count == byteCount ? bytes : nil
+    }
+
+    private static func savedState() throws -> State {
+        let size = State.byteCount
+        let digestSize = SHA256.Digest.byteCount
+        guard let record = try? readRecord(snapshotURL, byteCount: size + digestSize),
+              let state = State(Data(record.prefix(size))),
+              record.suffix(digestSize).elementsEqual(SHA256.hash(data: state.bytes)) else {
+            throw LibraryError.message(L("The saved runtime snapshot is missing or damaged."))
+        }
+        return state
+    }
+
+    static func prepare(_ entry: LibraryEntry) throws {
+        let restored = entry.arguments == "--restore" ? try savedState() : nil
         let files = try programs.map { name -> (String, Data) in
             guard let source = Bundle.main.url(forResource: name, withExtension: "exe", subdirectory: "BundledInstallers"),
                   LibraryEntry.peMachine(source) == 0x14c else {
@@ -2044,15 +2146,52 @@ enum RuntimeCheckpointProbe {
             }
             return (name + ".exe", try Data(contentsOf: source))
         }
-        let drive = LibraryModel.drive.standardizedFileURL
-        let directory = drive.appendingPathComponent(folder, isDirectory: true)
-        guard directory.resolvingSymlinksInPath().path == directory.path else {
-            throw LibraryError.message(L("The runtime snapshot test folder must stay inside Madeira's drive_c."))
-        }
+        let directory = try installDirectory()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for name in [requestName, replyName, "snapshot-reply.tmp", restoreName] {
+            let file = directory.appendingPathComponent(name)
+            do { try FileManager.default.removeItem(at: file) }
+            catch let error as CocoaError where error.code == .fileNoSuchFile { continue }
+        }
         for (name, data) in files {
             try data.write(to: directory.appendingPathComponent(name), options: .atomic)
         }
+        if let restored {
+            try restored.bytes.write(to: directory.appendingPathComponent(restoreName), options: .atomic)
+            LogStore.shared.log("[checkpoint-probe] staging restore \(restored.logDetails)")
+        }
+    }
+
+    static func saveSnapshot() async throws -> State {
+        let directory = try installDirectory()
+        let request = directory.appendingPathComponent(requestName)
+        let reply = directory.appendingPathComponent(replyName)
+        let token = withUnsafeBytes(of: UUID().uuid) { Data($0) }
+        try Task.checkCancellation()
+        try token.write(to: request, options: .atomic)
+        defer {
+            try? FileManager.default.removeItem(at: request)
+            try? FileManager.default.removeItem(at: reply)
+        }
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(6)
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            if let bytes = try? readRecord(reply, byteCount: token.count + State.byteCount),
+               bytes.prefix(token.count).elementsEqual(token) {
+                guard let state = State(Data(bytes.dropFirst(token.count))) else {
+                    throw LibraryError.message(L("The test processes returned inconsistent snapshot data."))
+                }
+                try FileManager.default.createDirectory(at: snapshotURL.deletingLastPathComponent(),
+                                                        withIntermediateDirectories: true)
+                var record = state.bytes
+                record.append(contentsOf: SHA256.hash(data: state.bytes))
+                try record.write(to: snapshotURL, options: .atomic)
+                return state
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw LibraryError.message(L("The test processes did not respond to the snapshot request."))
     }
 }
 
@@ -3671,7 +3810,7 @@ struct LibraryView: View {
     }
     private var runtimeCheckpointProbeButton: some View {
         Button("Run runtime snapshot test", systemImage: "internaldrive") {
-            play(RuntimeCheckpointProbe.entry)
+            play(RuntimeCheckpointProbe.entry())
         }
         .disabled(model.launching || model.current != nil || model.preparing != nil || steamLaunchPreparation.presented)
     }
@@ -4325,6 +4464,11 @@ private extension LibraryView {
             Section("Diagnostics") {
                 ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
                 runtimeCheckpointProbeButton
+                Button("Restore runtime snapshot test", systemImage: "arrow.counterclockwise") {
+                    play(RuntimeCheckpointProbe.entry(restoring: true))
+                }
+                .disabled(!RuntimeCheckpointProbe.hasSavedSnapshot || model.launching ||
+                          model.current != nil || model.preparing != nil || steamLaunchPreparation.presented)
                 ClaudeHelpButton(entry: nil)
             }
             Section("Live logs") { LibraryLiveLogs().frame(height: 240) }
@@ -6697,7 +6841,12 @@ struct LibraryHUD: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack { Label("Session", systemImage: "gamecontroller.fill").font(.title2.bold()); Spacer(); Button("Done") { model.menu = false }.buttonStyle(.bordered) }
-                if let entry = model.activeEntry, entry.id == SteamClient.clientID, entry.steamClientAppID == nil {
+                if model.activeEntry?.id == RuntimeCheckpointProbe.id {
+                    Button("Create local runtime snapshot", systemImage: "internaldrive") {
+                        model.createRuntimeSnapshot()
+                    }
+                    .disabled(model.savingRuntimeSnapshot || model.launching)
+                } else if let entry = model.activeEntry, entry.id == SteamClient.clientID, entry.steamClientAppID == nil {
                     VStack(alignment: .leading, spacing: 4) {
                         // Enable this when Wine can write a complete, restorable Steam session.
                         Button("Create local runtime snapshot", systemImage: "internaldrive") {}.disabled(true)

@@ -1,18 +1,20 @@
-/* A black-box checkpoint workload. Both processes keep their state in RAM.
- * The worker sleeps on an event and the parent sleeps in its window loop.
- * A fresh launch changes the session identifier and resets both counters. */
+/* Both processes keep their live state in RAM. A fresh launch resets it.
+ * In checkpoint mode, Madeira can request a joint snapshot between clicks. */
 #include "hibernate-probe.h"
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 #include <wchar.h>
 
-enum { BUTTON_ID = 100 };
+enum { BUTTON_ID = 100, CHECKPOINT_TIMER = 101 };
 
 static struct shared_state *shared;
 static HANDLE request, worker;
 static HWND button, status;
 static LONG displayed;
-static BOOL pending, selftest;
+static enum work_kind pending;
+static BOOL ready, selftest;
+static unsigned char capture_token[CHECKPOINT_TOKEN_SIZE];
 static int result = 1;
 
 static void update_count(void)
@@ -22,26 +24,90 @@ static void update_count(void)
     SetWindowTextW(status, text);
 }
 
+static BOOL read_record(const wchar_t *path, void *record, DWORD length)
+{
+    HANDLE file = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_DELETE, NULL,
+                              OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return FALSE;
+    LARGE_INTEGER size;
+    DWORD count;
+    BOOL ok = GetFileSizeEx(file, &size) && size.QuadPart == length &&
+              ReadFile(file, record, length, &count, NULL) && count == length;
+    CloseHandle(file);
+    return ok;
+}
+
+static void send_snapshot(LONG private_count)
+{
+    struct checkpoint_reply reply = {
+        .state = {
+            .session = shared->session,
+            .displayed = displayed,
+            .completed = InterlockedCompareExchange(&shared->completed, 0, 0),
+            .worker = private_count,
+            .version = CHECKPOINT_VERSION,
+        },
+    };
+    memcpy(reply.token, capture_token, sizeof(reply.token));
+    HANDLE file = CreateFileW(CHECKPOINT_REPLY_TEMP, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS,
+                              FILE_ATTRIBUTE_NORMAL, NULL);
+    if (file == INVALID_HANDLE_VALUE) return;
+    DWORD count;
+    BOOL written = WriteFile(file, &reply, sizeof(reply), &count, NULL) && count == sizeof(reply);
+    CloseHandle(file);
+    if (written) MoveFileExW(CHECKPOINT_REPLY_TEMP, CHECKPOINT_REPLY, MOVEFILE_REPLACE_EXISTING);
+}
+
+static void signal_worker(HWND window, enum work_kind work)
+{
+    pending = work;
+    EnableWindow(button, FALSE);
+    InterlockedExchange(&shared->operation, work);
+    if (!SetEvent(request)) DestroyWindow(window);
+}
+
 static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM lp)
 {
     switch (message) {
     case WM_COMMAND:
-        if (LOWORD(wp) == BUTTON_ID && HIWORD(wp) == BN_CLICKED && !pending) {
-            pending = TRUE;
-            EnableWindow(button, FALSE);
-            if (!SetEvent(request)) DestroyWindow(window);
+        if (LOWORD(wp) == BUTTON_ID && HIWORD(wp) == BN_CLICKED && ready && pending == IDLE &&
+            displayed < LONG_MAX)
+            signal_worker(window, INCREMENT);
+        return 0;
+    case WM_TIMER: {
+        unsigned char token[CHECKPOINT_TOKEN_SIZE];
+        if (wp == CHECKPOINT_TIMER && ready && pending == IDLE &&
+            read_record(CHECKPOINT_REQUEST, token, sizeof(token)) &&
+            memcmp(token, capture_token, sizeof(token))) {
+            memcpy(capture_token, token, sizeof(token));
+            signal_worker(window, CAPTURE);
         }
         return 0;
-    case WORKER_REPLY:
-        if (!pending || displayed == LONG_MAX || wp != (WPARAM)(displayed + 1) ||
-            InterlockedCompareExchange(&shared->completed, 0, 0) != (LONG)wp) {
+    }
+    case WORKER_READY:
+        if (ready || wp != (WPARAM)displayed) {
             DestroyWindow(window);
             return 0;
         }
-        pending = FALSE;
-        displayed++;
+        ready = TRUE;
         update_count();
-        EnableWindow(button, TRUE);
+        ShowWindow(window, SW_SHOW);
+        if (selftest) PostMessageW(window, WM_COMMAND, BUTTON_ID, 0);
+        return 0;
+    case WORKER_REPLY: {
+        LONG expected = displayed + (pending == INCREMENT);
+        if (pending == IDLE || lp != (LPARAM)pending || wp != (WPARAM)expected ||
+            InterlockedCompareExchange(&shared->completed, 0, 0) != expected) {
+            DestroyWindow(window);
+            return 0;
+        }
+        if (pending == CAPTURE) send_snapshot((LONG)wp);
+        else {
+            displayed = expected;
+            update_count();
+        }
+        pending = IDLE;
+        EnableWindow(button, displayed < LONG_MAX);
         if (selftest) {
             if (displayed == 8) {
                 result = 0;
@@ -51,6 +117,7 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM
             }
         }
         return 0;
+    }
     case WM_CLOSE:
         result = selftest ? 1 : 0;
         DestroyWindow(window);
@@ -66,12 +133,23 @@ static LRESULT CALLBACK window_proc(HWND window, UINT message, WPARAM wp, LPARAM
 int wmain(int argc, wchar_t **argv)
 {
     selftest = argc == 2 && !wcscmp(argv[1], L"--selftest");
-    if (argc != 1 && !selftest) return 1;
+    BOOL restoring = argc == 2 && !wcscmp(argv[1], L"--restore");
+    BOOL checkpoint = restoring || (argc == 2 && !wcscmp(argv[1], L"--checkpoint"));
+    if (argc != 1 && !selftest && !checkpoint) return 1;
 
     FILETIME time;
     GetSystemTimeAsFileTime(&time);
     DWORD pid = GetCurrentProcessId();
     ULONGLONG session = (((ULONGLONG)time.dwHighDateTime << 32) | time.dwLowDateTime) ^ pid;
+    struct checkpoint_state restored = {0};
+    if (restoring) {
+        if (!read_record(CHECKPOINT_RESTORE, &restored, sizeof(restored)) ||
+            restored.version != CHECKPOINT_VERSION || !restored.session || restored.displayed < 0 ||
+            restored.displayed != restored.completed || restored.displayed != restored.worker)
+            return 7;
+        session = restored.session;
+        displayed = restored.displayed;
+    }
     wchar_t map_name[80], event_name[80];
     swprintf(map_name, 80, L"Local\\mdeck-probe-%016llX-page", session);
     swprintf(event_name, 80, L"Local\\mdeck-probe-%016llX-event", session);
@@ -83,6 +161,8 @@ int wmain(int argc, wchar_t **argv)
     shared = MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(*shared));
     if (!shared) return 3;
     shared->session = session;
+    shared->completed = restored.completed;
+    shared->initial_worker = restored.worker;
 
     HINSTANCE module = GetModuleHandleW(NULL);
     WNDCLASSW cls = { .lpfnWndProc = window_proc, .hInstance = module,
@@ -98,6 +178,7 @@ int wmain(int argc, wchar_t **argv)
     button = CreateWindowW(L"BUTTON", L"+1", WS_VISIBLE | WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
                            16, 52, 160, 64, window, (HMENU)(UINT_PTR)BUTTON_ID, module, NULL);
     if (!status || !button) return 4;
+    if (checkpoint && !SetTimer(window, CHECKPOINT_TIMER, 250, NULL)) return 4;
 
     const wchar_t worker_name[] = L"hibernate-worker.exe";
     wchar_t path[MAX_PATH], command[2 * MAX_PATH];
@@ -115,9 +196,6 @@ int wmain(int argc, wchar_t **argv)
     if (!CreateProcessW(path, command, NULL, NULL, FALSE, 0, NULL, NULL, &startup, &child)) return 5;
     CloseHandle(child.hThread);
     worker = child.hProcess;
-    update_count();
-    ShowWindow(window, SW_SHOW);
-    if (selftest) PostMessageW(window, WM_COMMAND, BUTTON_ID, 0);
 
     for (;;) {
         DWORD wake = MsgWaitForMultipleObjects(1, &worker, FALSE, selftest ? 15000 : INFINITE, QS_ALLINPUT);

@@ -2729,7 +2729,7 @@ struct ContentView: View {
         }
         do {
             try SteamClient.prepare(entry)
-            if entry.id == RuntimeCheckpointProbe.id { try RuntimeCheckpointProbe.prepare() }
+            if entry.id == RuntimeCheckpointProbe.id { try RuntimeCheckpointProbe.prepare(entry) }
             if entry.desktop != true { _ = try LibraryModel.executable(entry.launchRelativePath) }
             try entry.validate()
         }
