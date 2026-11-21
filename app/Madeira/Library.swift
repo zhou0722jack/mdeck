@@ -2024,6 +2024,38 @@ final class LibraryModel: ObservableObject {
     }
 }
 
+enum RuntimeCheckpointProbe {
+    static let id = UUID(uuidString: "65E5A10A-1FF8-45D9-B7EA-D5DEAF5B2CB9")!
+    private static let folder = "Madeira/Diagnostics/CheckpointProbe"
+    private static let programs = ["hibernate-probe", "hibernate-worker"]
+
+    static var entry: LibraryEntry {
+        var entry = LibraryEntry(title: L("Runtime snapshot test"),
+                                 relativePath: folder + "/hibernate-probe.exe", bits: 32)
+        entry.id = id
+        return entry
+    }
+
+    static func prepare() throws {
+        let files = try programs.map { name -> (String, Data) in
+            guard let source = Bundle.main.url(forResource: name, withExtension: "exe", subdirectory: "BundledInstallers"),
+                  LibraryEntry.peMachine(source) == 0x14c else {
+                throw LibraryError.message(L("The bundled runtime snapshot test is missing or damaged."))
+            }
+            return (name + ".exe", try Data(contentsOf: source))
+        }
+        let drive = LibraryModel.drive.standardizedFileURL
+        let directory = drive.appendingPathComponent(folder, isDirectory: true)
+        guard directory.resolvingSymlinksInPath().path == directory.path else {
+            throw LibraryError.message(L("The runtime snapshot test folder must stay inside Madeira's drive_c."))
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        for (name, data) in files {
+            try data.write(to: directory.appendingPathComponent(name), options: .atomic)
+        }
+    }
+}
+
 enum LibraryError: LocalizedError {
     case message(String)
     var errorDescription: String? { if case let .message(text) = self { return text }; return nil }
@@ -3634,7 +3666,14 @@ struct LibraryView: View {
                     Label("Recently added", systemImage: "plus").tag("added")
                     Label("Folder size", systemImage: "internaldrive").tag("size")
                 }
+                runtimeCheckpointProbeButton
             } label: { Label("Library options", systemImage: "line.3.horizontal.decrease") }
+    }
+    private var runtimeCheckpointProbeButton: some View {
+        Button("Run runtime snapshot test", systemImage: "internaldrive") {
+            play(RuntimeCheckpointProbe.entry)
+        }
+        .disabled(model.launching || model.current != nil || model.preparing != nil || steamLaunchPreparation.presented)
     }
     @ToolbarContentBuilder private var libraryToolbar: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) { libraryOptionsMenu }
@@ -4285,6 +4324,7 @@ private extension LibraryView {
             Section { LibraryStatus() }
             Section("Diagnostics") {
                 ShareLink(item: LogStore.shared.logURL) { Label("Share log", systemImage: "square.and.arrow.up") }
+                runtimeCheckpointProbeButton
                 ClaudeHelpButton(entry: nil)
             }
             Section("Live logs") { LibraryLiveLogs().frame(height: 240) }
@@ -6657,6 +6697,13 @@ struct LibraryHUD: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack { Label("Session", systemImage: "gamecontroller.fill").font(.title2.bold()); Spacer(); Button("Done") { model.menu = false }.buttonStyle(.bordered) }
+                if let entry = model.activeEntry, entry.id == SteamClient.clientID, entry.steamClientAppID == nil {
+                    VStack(alignment: .leading, spacing: 4) {
+                        // Enable this when Wine can write a complete, restorable Steam session.
+                        Button("Create local runtime snapshot", systemImage: "internaldrive") {}.disabled(true)
+                        Text("Unavailable in this build").font(.caption).foregroundStyle(.secondary)
+                    }
+                }
                 // The controls come first, the easiest to reach; the overlay settings last.
                 Toggle("Touch controls", isOn: $controls.visible)
                 // The named layouts (Xbox controller, custom ones) live here in a session: this

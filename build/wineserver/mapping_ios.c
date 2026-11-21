@@ -60,6 +60,8 @@ extern void ws_log(const char *fmt, ...);
 #include "process.h"
 #include "request.h"
 #include "security.h"
+#include "checkpoint_section.h"
+#include "checkpoint_view.h"
 
 /* ml936: iOS reserves the low 4GB of every task; no PE can be mapped below it.
  * Measured four ways -- see reference_ios_va_budget and the ml938 block in
@@ -1291,6 +1293,97 @@ static struct mapping *create_mapping( struct object *root, const struct unicode
  error:
     release_object( mapping );
     return NULL;
+}
+
+/* Restore one backing per object ID, then attach all owning handles and
+ * views to that object. Name/security metadata is supplied by the caller.
+ * The server must perform both operations between requests while all guest
+ * writers are parked. A partially restored mapping is never returned. */
+int ios_checkpoint_save_section( int directory, uint64_t id, struct object *obj )
+{
+    if (!obj || obj->ops != &mapping_ops) return EINVAL;
+    struct mapping *mapping = (struct mapping *)obj;
+    if (mapping->flags != SEC_COMMIT || !mapping->fd) return ENOTSUP;
+    return madeira_save_section_bytes( directory, id, get_unix_fd( mapping->fd ), mapping->size );
+}
+
+struct mapping *ios_checkpoint_restore_section( int directory, uint64_t id, mem_size_t size,
+                                                struct object *root, const struct unicode_str *name,
+                                                unsigned int attr, const struct security_descriptor *sd )
+{
+    if (!id || !size || (size & page_mask) || size > INT64_MAX - 32)
+    {
+        set_error( STATUS_INVALID_PARAMETER );
+        return NULL;
+    }
+    struct mapping *mapping = create_mapping( root, name, attr, size, SEC_COMMIT, 0,
+                                               FILE_READ_DATA | FILE_WRITE_DATA, sd );
+    if (!mapping) return NULL;
+    if (get_error() == STATUS_OBJECT_NAME_EXISTS)
+    {
+        release_object( mapping );
+        set_error( STATUS_OBJECT_NAME_COLLISION );
+        return NULL;
+    }
+    int err = madeira_load_section_bytes( directory, id, get_unix_fd( mapping->fd ), size );
+    if (!err) return mapping;
+    release_object( mapping );
+    errno = err;
+    file_set_error();
+    return NULL;
+}
+
+/* The backing, unlike an open section handle, remains live as long as any
+ * process maps it. Use the same key when walking handles and views. */
+static unsigned int checkpoint_backing( struct fd *fd, ios_checkpoint_backing_id identify,
+                                        void *context, uint64_t *id, uint64_t *size )
+{
+    struct stat st;
+    int unix_fd;
+    if (!fd || (unix_fd = get_unix_fd( fd )) < 0 || fstat( unix_fd, &st ) ||
+        !S_ISREG(st.st_mode) || st.st_size <= 0) return STATUS_NOT_SUPPORTED;
+    *size = st.st_size;
+    *id = 0;
+    unsigned int status = identify( context, fd, unix_fd, *size, id );
+    if (status) return status;
+    return *id ? STATUS_SUCCESS : STATUS_INVALID_PARAMETER;
+}
+
+unsigned int ios_checkpoint_section_backing( struct object *obj, ios_checkpoint_backing_id identify,
+                                             void *context, uint64_t *id )
+{
+    if (!obj || !id || !identify) return STATUS_INVALID_PARAMETER;
+    if (obj->ops != &mapping_ops) return STATUS_NOT_SUPPORTED;
+    struct mapping *mapping = (struct mapping *)obj;
+    if (mapping->flags != SEC_COMMIT) return STATUS_NOT_SUPPORTED;
+    uint64_t size;
+    unsigned int status = checkpoint_backing( mapping->fd, identify, context, id, &size );
+    if (status) return status;
+    return size == mapping->size ? STATUS_SUCCESS : STATUS_NOT_SUPPORTED;
+}
+
+/* Only the plain SEC_COMMIT portion of the process view list. Images,
+ * reserved sections and file views need their own capture pass. Call once
+ * all clients are quiescent and no one is holding the client VM lock. */
+unsigned int ios_checkpoint_capture_section_views( struct process *process, ios_checkpoint_backing_id identify,
+                                                   ios_checkpoint_emit_view emit, void *context )
+{
+    struct memory_view *view;
+    if (!process || !identify || !emit) return STATUS_INVALID_PARAMETER;
+    LIST_FOR_EACH_ENTRY( view, &process->views, struct memory_view, entry )
+    {
+        if (view->flags != SEC_COMMIT) continue;
+        uint64_t id, size;
+        struct ios_checkpoint_view record;
+        unsigned int status = checkpoint_backing( view->fd, identify, context, &id, &size );
+        if (status) return status;
+        if (view->start > size || view->size > size - view->start) return STATUS_INVALID_VIEW_SIZE;
+        status = ios_checkpoint_describe_view( process->id, process->peb, view->base, view->size,
+                                               view->start, id, &record );
+        if (!status) status = emit( context, &record );
+        if (status) return status;
+    }
+    return STATUS_SUCCESS;
 }
 
 /* create a read-only file mapping for the specified fd */

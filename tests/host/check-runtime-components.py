@@ -109,6 +109,8 @@ class RuntimeTests(unittest.TestCase):
         for path in ['Madeira', 'Madeira.debug.dylib', 'prefix-template.tar.gz',
                      'x86_64-vcruntime/vcruntime140.dll', 'i386-windows/ntdll.dll']:
             self.write('app/Madeira/' + path, b'app fixture')
+        for path in runtime.CHECKPOINT_PROBES:
+            self.write('app/Madeira/' + path, pe(0x14c))
         ipa = self.root / 'test.ipa'
         with zipfile.ZipFile(ipa, 'w') as archive:
             for path in bundle.rglob('*'):
@@ -342,14 +344,21 @@ exit 86
         runtime.validate_ipa(ipa, self.sdk)
         with zipfile.ZipFile(ipa) as archive:
             original = {p: archive.read(p) for p in archive.namelist()}
-        for name, entry in runtime.CONTRACT.items():
-            for path in entry['required']:
-                with zipfile.ZipFile(ipa, 'w') as archive:
-                    for filename, data in original.items():
-                        if filename != 'Payload/Madeira.app/' + path:
-                            archive.writestr(filename, data)
-                with self.assertRaises(KeyError, msg=path):
-                    runtime.validate_ipa(ipa, self.sdk)
+        required = [path for entry in runtime.CONTRACT.values() for path in entry['required']]
+        required.extend(runtime.CHECKPOINT_PROBES)
+        for path in required:
+            with zipfile.ZipFile(ipa, 'w') as archive:
+                for filename, data in original.items():
+                    if filename != 'Payload/Madeira.app/' + path:
+                        archive.writestr(filename, data)
+            with self.assertRaises(KeyError, msg=path):
+                runtime.validate_ipa(ipa, self.sdk)
+        with zipfile.ZipFile(ipa, 'w') as archive:
+            wrong_arch = 'Payload/Madeira.app/' + runtime.CHECKPOINT_PROBES[0]
+            for filename, data in original.items():
+                archive.writestr(filename, pe(0xaa64) if filename == wrong_arch else data)
+        with self.assertRaisesRegex(ValueError, 'wrong PE architecture'):
+            runtime.validate_ipa(ipa, self.sdk)
         with zipfile.ZipFile(ipa, 'w') as archive:
             for filename, data in original.items():
                 archive.writestr(filename, data)

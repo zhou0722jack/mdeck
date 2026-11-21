@@ -3470,97 +3470,165 @@ static inline void check_for_driver_events(void)
     }
 }
 
-/* helper for kernel32->ntdll timeout format conversion */
-static inline LARGE_INTEGER *get_nt_timeout( LARGE_INTEGER *time, DWORD timeout )
+/* The interrupted call owns two deadlines: the application's deadline and
+ * the current driver poll. Both are absolute NT system times (0 = forever).
+ * The handle list includes the message queue as its final entry. */
+#include "checkpoint_message.h"
+struct ios_message_wait
 {
-    if (timeout == INFINITE) return NULL;
-    time->QuadPart = (ULONGLONG)timeout * -10000;
-    return time;
+    const HANDLE *handles;
+    DWORD count, timeout, wake_mask, changed_mask, flags;
+    BOOL sliced;
+    LARGE_INTEGER deadline, wait_deadline;
+    struct thunk_lock_params params;
+};
+
+extern int winios_input_wake_thread(void);
+
+static void next_message_deadline( struct ios_message_wait *wait )
+{
+    wait->wait_deadline = wait->deadline;
+    if (wait->sliced)
+    {
+        LARGE_INTEGER slice;
+        NtQuerySystemTime( &slice );
+        slice.QuadPart += 16 * 10000;
+        if (!wait->deadline.QuadPart || slice.QuadPart < wait->deadline.QuadPart)
+            wait->wait_deadline = slice;
+    }
 }
 
-extern int winios_input_wake_thread(void);   /* driver_ios.c */
-
-/* wait for message or signaled handle */
-static DWORD wait_message( DWORD count, const HANDLE *handles, DWORD timeout, DWORD wake_mask, DWORD changed_mask, DWORD flags )
+unsigned int ios_checkpoint_capture_message_wait( const struct ios_message_wait *wait, uint32_t tid,
+                                                 struct ios_checkpoint_message_wait *out )
 {
-    struct thunk_lock_params params = {.dispatch.callback = thunk_lock_callback};
-    WAIT_TYPE type = flags & MWMO_WAITALL ? WaitAll : WaitAny;
-    LARGE_INTEGER time, now, *abs;
+    if (!wait || !out || !tid || !wait->count || wait->count > MAXIMUM_WAIT_OBJECTS)
+        return STATUS_INVALID_PARAMETER;
+    struct ios_checkpoint_message_wait record = {
+        .version = 1, .tid = tid, .count = wait->count, .timeout = wait->timeout,
+        .wake_mask = wait->wake_mask, .changed_mask = wait->changed_mask, .flags = wait->flags,
+        .sliced = wait->sliced, .restore_locks = wait->params.restore, .locks = wait->params.locks,
+        .deadline = wait->deadline.QuadPart, .wait_deadline = wait->wait_deadline.QuadPart,
+    };
+    for (DWORD i = 0; i < wait->count; i++)
+    {
+        record.handles[i] = wine_server_obj_handle( wait->handles[i] );
+        if (wine_server_ptr_handle( record.handles[i] ) != wait->handles[i]) return STATUS_NOT_SUPPORTED;
+    }
+    *out = record;
+    return STATUS_SUCCESS;
+}
+
+#include "checkpoint_message_hold.inc"
+#include "checkpoint_session.inc"
+
+/* When resuming, the lower wait has already delivered one result. Handle
+ * it exactly once before issuing any further wait on an auto-reset object. */
+static DWORD run_message_wait( struct ios_message_wait *wait, BOOL have_wake, DWORD ret )
+{
+    const WAIT_TYPE type = wait->flags & MWMO_WAITALL ? WaitAll : WaitAny;
+    const DWORD queue = wait->count - 1;
     void *ret_ptr;
     ULONG ret_len;
-    HANDLE event;
-    DWORD ret;
-
-    if ((abs = get_nt_timeout( &time, timeout )))
+    for (;;)
     {
-        NtQuerySystemTime( &now );
-        abs->QuadPart = now.QuadPart - abs->QuadPart;
-    }
-
-    if (!KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len ) &&
-        ret_len == sizeof(params.locks))
-    {
-        params.locks = *(DWORD *)ret_ptr;
-        params.restore = TRUE;
-    }
-
-    process_driver_events( QS_ALLINPUT, wake_mask, changed_mask );
-    if (!(changed_mask & QS_SMRESULT) && (event = get_user_thread_info()->idle_event)) NtSetEvent( event, NULL );
-
-    /* iOS desktop mode: trackpad events sit in the app-side ring until a
-     * wine thread runs pProcessEvents — a thread sleeping here (e.g. the
-     * SC_MOVE / menu modal loops via NtUserGetMessage) never drains it,
-     * so drags advanced only when winemine's 1Hz timer woke the queue.
-     * Wake every 16ms to poll driver events; only surface WAIT_TIMEOUT
-     * when the CALLER's own deadline expires. Games path unchanged. */
-    {
-        static int ios_slice = -1;
-        if (ios_slice < 0)
+        if (!have_wake)
         {
-            const char *d = getenv( "MADEIRA_DESKTOP" );
-            ios_slice = (d && *d == '1');
+            checkpoint_before_message_wait( wait );
+            ret = NtWaitForMultipleObjects( wait->count, wait->handles, type, !!(wait->flags & MWMO_ALERTABLE),
+                                            wait->wait_deadline.QuadPart ? &wait->wait_deadline : NULL );
         }
-        /* game mode: the thread that shows a launcher / message box over
-         * the game slices too (driver_ios.c winios_input_wake_thread) */
-        if (!ios_slice && !winios_input_wake_thread())
+        have_wake = FALSE;
+        if (ret == queue && !process_driver_events( QS_ALLINPUT, wait->wake_mask, wait->changed_mask ))
+            continue; /* retry the same slice */
+        if (!wait->sliced || ret != WAIT_TIMEOUT) break;
+        if (process_driver_events( QS_ALLINPUT, wait->wake_mask, wait->changed_mask ))
         {
-            do ret = NtWaitForMultipleObjects( count, handles, type, !!(flags & MWMO_ALERTABLE), abs );
-            while (ret == count - 1 && !process_driver_events( QS_ALLINPUT, wake_mask, changed_mask ));
+            ret = queue;
+            break;
         }
-        else for (;;)
-        {
-            LARGE_INTEGER slice_time, snow, *slice;
-
-            slice = get_nt_timeout( &slice_time, 16 );
-            NtQuerySystemTime( &snow );
-            slice->QuadPart = snow.QuadPart - slice->QuadPart;      /* absolute, 16ms out */
-            if (abs && abs->QuadPart <= slice->QuadPart) slice = abs;
-
-            do ret = NtWaitForMultipleObjects( count, handles, type, !!(flags & MWMO_ALERTABLE), slice );
-            while (ret == count - 1 && !process_driver_events( QS_ALLINPUT, wake_mask, changed_mask ));
-
-            if (ret != WAIT_TIMEOUT) break;
-            if (process_driver_events( QS_ALLINPUT, wake_mask, changed_mask ))
-            {
-                ret = count - 1;                                    /* treat as queue signaled */
-                break;
-            }
-            if (slice == abs) break;                                /* caller deadline reached */
-        }
+        if (wait->deadline.QuadPart == wait->wait_deadline.QuadPart) break;
+        next_message_deadline( wait );
     }
-
-    if (HIWORD(ret)) /* is it an error code? */
+    if (HIWORD(ret))
     {
         RtlSetLastWin32Error( RtlNtStatusToDosError(ret) );
         ret = WAIT_FAILED;
     }
-
-    if (ret == WAIT_TIMEOUT && !count && !timeout) NtYieldExecution();
-    if (ret == count - 1) get_user_thread_info()->last_driver_time = get_driver_check_time();
-
-    KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len );
-
+    if (ret == WAIT_TIMEOUT && !wait->count && !wait->timeout) NtYieldExecution();
+    if (ret == queue) get_user_thread_info()->last_driver_time = get_driver_check_time();
+    KeUserDispatchCallback( &wait->params.dispatch, sizeof(wait->params), &ret_ptr, &ret_len );
     return ret;
+}
+
+static unsigned int restore_message_wait( const struct ios_checkpoint_message_wait *record,
+                                          BOOL have_wake, uint32_t wake, uint32_t *result )
+{
+    HANDLE handles[MAXIMUM_WAIT_OBJECTS];
+    if (!record || !result || record->version != 1 || !record->tid ||
+        record->tid != HandleToULong( NtCurrentTeb()->ClientId.UniqueThread ) ||
+        !record->count || record->count > MAXIMUM_WAIT_OBJECTS || record->sliced > 1 ||
+        record->restore_locks > 1 || record->deadline < 0 || record->wait_deadline < 0 ||
+        (!!record->deadline != (record->timeout != INFINITE)) ||
+        (!record->sliced && record->wait_deadline != record->deadline) ||
+        (record->sliced && !record->wait_deadline) ||
+        (record->deadline && record->wait_deadline > record->deadline))
+        return STATUS_INVALID_PARAMETER;
+    for (DWORD i = 0; i < record->count; i++)
+        handles[i] = wine_server_ptr_handle( record->handles[i] );
+    struct ios_message_wait wait = {
+        .handles = handles, .count = record->count, .timeout = record->timeout, .flags = record->flags,
+        .wake_mask = record->wake_mask, .changed_mask = record->changed_mask, .sliced = record->sliced,
+        .deadline.QuadPart = record->deadline, .wait_deadline.QuadPart = record->wait_deadline,
+        .params = {.dispatch.callback = thunk_lock_callback, .restore = record->restore_locks,
+                   .locks = record->locks},
+    };
+    *result = run_message_wait( &wait, have_wake, wake );
+    return STATUS_SUCCESS;
+}
+
+unsigned int ios_checkpoint_resume_message_wait( const struct ios_checkpoint_message_wait *record,
+                                                uint32_t wake, uint32_t *result )
+{
+    return restore_message_wait( record, TRUE, wake, result );
+}
+
+unsigned int ios_checkpoint_restart_message_wait( const struct ios_checkpoint_message_wait *record,
+                                                 uint32_t *result )
+{
+    return restore_message_wait( record, FALSE, 0, result );
+}
+
+static DWORD wait_message( DWORD count, const HANDLE *handles, DWORD timeout, DWORD wake_mask, DWORD changed_mask, DWORD flags )
+{
+    static int ios_slice = -1;
+    struct ios_message_wait wait = {
+        .handles = handles, .count = count, .timeout = timeout, .wake_mask = wake_mask,
+        .changed_mask = changed_mask, .flags = flags, .params.dispatch.callback = thunk_lock_callback,
+    };
+    void *ret_ptr;
+    ULONG ret_len;
+    HANDLE event;
+    if (timeout != INFINITE)
+    {
+        NtQuerySystemTime( &wait.deadline );
+        wait.deadline.QuadPart += (LONGLONG)timeout * 10000;
+    }
+    if (!KeUserDispatchCallback( &wait.params.dispatch, sizeof(wait.params), &ret_ptr, &ret_len ) &&
+        ret_len == sizeof(wait.params.locks))
+    {
+        wait.params.locks = *(DWORD *)ret_ptr;
+        wait.params.restore = TRUE;
+    }
+    process_driver_events( QS_ALLINPUT, wake_mask, changed_mask );
+    if (!(changed_mask & QS_SMRESULT) && (event = get_user_thread_info()->idle_event)) NtSetEvent( event, NULL );
+    if (ios_slice < 0)
+    {
+        const char *d = getenv( "MADEIRA_DESKTOP" );
+        ios_slice = d && *d == '1';
+    }
+    wait.sliced = ios_slice || winios_input_wake_thread();
+    next_message_deadline( &wait );
+    return run_message_wait( &wait, FALSE, 0 );
 }
 
 /***********************************************************************

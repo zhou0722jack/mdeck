@@ -1502,6 +1502,10 @@ static signed char ios_fd_is_inet( int user, int fd )
     return ios_inet_cache_val[user];
 }
 
+#ifdef WINE_IOS
+#include "checkpoint_server.inc"
+#endif
+
 void main_loop(void)
 {
     int i, ret, timeout;
@@ -1602,6 +1606,7 @@ void main_loop(void)
             if (skr != KERN_SUCCESS) ios_srv_wake_sem = 0;
         }
         ios_srv_loop_enter();   /* madeira-bcd: MADEIRA_SRV_DIRECT; the lock is let go only to sleep */
+        checkpoint_server_start();
         while (active_users)
         {
             /* Check stop flag */
@@ -1611,6 +1616,7 @@ void main_loop(void)
                 break;
             }
 
+            checkpoint_server_dispatch();
             /* Process expired timers (also computes the next deadline) */
             {
                 struct timespec next_ts;
@@ -1988,6 +1994,7 @@ void main_loop(void)
                 ws_log("[wineserver-fd] POST iter=%d act=%d nb=%d ef=%d", ios_iter, active_users, nb_users, ios_events_fired);
             }
         }
+        checkpoint_server_stop();
         ios_srv_loop_exit();   /* madeira-bcd: no direct request after the loop */
     }
     ws_log("[wineserver-fd] main_loop EXITED! active_users=%d", active_users);

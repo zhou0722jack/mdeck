@@ -7945,6 +7945,8 @@ struct file_view
     unsigned int  ios_flags;     /* IOS_VIEW_* */
 };
 #define IOS_VIEW_QUARANTINED 0x4   /* a dead thread's stack held by the stack quarantine */
+#define IOS_VIEW_GUEST_STACK 0x10  /* allocated by the 32-bit thread stack constructor */
+#define IOS_VIEW_SHARED_SECTION 0x20 /* complete section view mapped MAP_SHARED */
 #define IOS_VIEW_WOW_CPU     0x8   /* [wow-cpu-pool]: the WoW64 CPU module (xtajit.dll) */
 
 /* per-page protection flags */
@@ -22698,6 +22700,9 @@ static NTSTATUS map_file_into_view_ex( struct file_view *view, int fd, size_t st
         }
         if (mmap( host_addr, host_size, prot, flags, fd, offset ) != MAP_FAILED)
         {
+            if (!for_image && (flags & MAP_SHARED) && !start && size == view->size &&
+                host_size == size && (view->protect & SEC_COMMIT))
+                view->ios_flags |= IOS_VIEW_SHARED_SECTION;
             ios_map_record( view->base, view->size, start, size, map_size, host_size,
                             fd, (long long)offset, (flags & MAP_SHARED) != 0, for_image );
             return STATUS_SUCCESS;
@@ -29206,8 +29211,8 @@ static SIZE_T ios_thread_stack_floor(void)
 /***********************************************************************
  *           virtual_alloc_thread_stack
  */
-NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, ULONG_PTR limit_high,
-                                     SIZE_T reserve_size, SIZE_T commit_size, BOOL guard_page )
+static NTSTATUS allocate_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, ULONG_PTR limit_high,
+                                       SIZE_T reserve_size, SIZE_T commit_size, BOOL guard_page, unsigned int ios_flags )
 {
     struct file_view *view;
     NTSTATUS status;
@@ -29279,6 +29284,7 @@ NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, UL
                        limit_low, limit_high, 0 );
     if (status != STATUS_SUCCESS) goto done;
 
+    view->ios_flags |= ios_flags;
 #ifdef VALGRIND_STACK_REGISTER
     VALGRIND_STACK_REGISTER( view->base, (char *)view->base + view->size );
 #endif
@@ -29304,6 +29310,121 @@ done:
     return status;
 }
 
+
+#include "checkpoint_stack.h"
+#include "checkpoint_view.inc"
+
+NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR low, ULONG_PTR high,
+                                     SIZE_T reserve, SIZE_T commit, BOOL guard )
+{
+    return allocate_thread_stack( stack, low, high, reserve, commit, guard, 0 );
+}
+
+NTSTATUS ios_allocate_guest_stack( INITIAL_TEB *stack, ULONG_PTR high, SIZE_T reserve, SIZE_T commit )
+{
+    return allocate_thread_stack( stack, 0, high, reserve, commit, TRUE, IOS_VIEW_GUEST_STACK );
+}
+
+/* The native and guest TEBs and stacks coexist. Only the allocation tagged
+ * by the guest constructor can supply bytes. Custom fiber stacks and
+ * altered page layouts require a general private-VM checkpoint. */
+static NTSTATUS checkpoint_stack_layout( TEB *teb, struct ios_checkpoint_stack *record, char **base )
+{
+    WOW_TEB *wow = get_wow_teb( teb );
+    struct ios_wow_window *owner = ios_wow_slot_for_peb( teb->Peb );
+    if (!wow || !owner || owner != ios_wow_live_slot_for_addr( teb )) return STATUS_NOT_SUPPORTED;
+    uint32_t low = wow->DeallocationStack, limit = wow->Tib.StackLimit, top = wow->Tib.StackBase;
+    if (!low || low >= limit || limit >= top || (uint64_t)low + 2 * host_page_size != limit ||
+        ((low | top) & (host_page_size - 1))) return STATUS_NOT_SUPPORTED;
+    char *addr = (char *)(owner->base + low);
+    struct file_view *view = find_view( addr, top - low );
+    if (!view || view->base != addr || view->size != top - low ||
+        view->ios_flags != IOS_VIEW_GUEST_STACK) return STATUS_NOT_SUPPORTED;
+    const BYTE rw = VPROT_READ | VPROT_WRITE | VPROT_COMMITTED;
+    BYTE prot;
+    if (get_vprot_range_size( addr, view->size, 0xff, &prot ) != host_page_size || prot ||
+        get_vprot_range_size( addr + host_page_size, view->size - host_page_size, 0xff, &prot ) != host_page_size ||
+        prot != (rw | VPROT_GUARD) ||
+        get_vprot_range_size( addr + 2 * host_page_size, top - limit, 0xff, &prot ) != top - limit ||
+        prot != rw) return STATUS_NOT_SUPPORTED;
+    *record = (struct ios_checkpoint_stack){
+        1, HandleToULong(teb->ClientId.UniqueProcess), HandleToULong(teb->ClientId.UniqueThread),
+        low, limit, top, host_page_size, wow->GuaranteedStackBytes
+    };
+    *base = addr;
+    return STATUS_SUCCESS;
+}
+
+/* A separate mapping accesses the committed guard's bytes without clearing
+ * the guard in the guest. A shared alias is needed only for restore. */
+static NTSTATUS checkpoint_stack_bytes( char *base, size_t guard_size, size_t length,
+                                        void *bytes, BOOL restoring )
+{
+    vm_address_t alias = 0;
+    vm_prot_t cur, maxprot;
+    task_t task = mach_task_self();
+    if (vm_remap( task, &alias, guard_size, 0, VM_FLAGS_ANYWHERE, task,
+                  (vm_address_t)(base + guard_size), !restoring, &cur, &maxprot,
+                  VM_INHERIT_NONE ) != KERN_SUCCESS) return STATUS_ACCESS_DENIED;
+    vm_prot_t needed = restoring ? VM_PROT_READ | VM_PROT_WRITE : VM_PROT_READ;
+    NTSTATUS status = STATUS_ACCESS_DENIED;
+    if (vm_protect( task, alias, guard_size, FALSE, needed ) == KERN_SUCCESS)
+    {
+        char *body = base + 2 * guard_size;
+        char *payload = (char *)bytes + guard_size;
+        if (restoring)
+        {
+            memcpy( (void *)alias, bytes, guard_size );
+            memcpy( body, payload, length - guard_size );
+        }
+        else
+        {
+            memcpy( bytes, (void *)alias, guard_size );
+            memcpy( payload, body, length - guard_size );
+        }
+        status = STATUS_SUCCESS;
+    }
+    vm_deallocate( task, alias, guard_size );
+    return status;
+}
+
+NTSTATUS ios_checkpoint_capture_stack( TEB *teb, struct ios_checkpoint_stack *record, void *bytes, size_t length )
+{
+    char *base;
+    sigset_t sigset;
+    if (!teb || !record) return STATUS_INVALID_PARAMETER;
+    server_enter_uninterrupted_section( &virtual_mutex, &sigset );
+    NTSTATUS status = checkpoint_stack_layout( teb, record, &base );
+    if (!status)
+    {
+        size_t needed = record->top - record->allocation - record->guard_size;
+        if (!bytes || length < needed) status = STATUS_BUFFER_TOO_SMALL;
+        else status = checkpoint_stack_bytes( base, record->guard_size, needed, bytes, FALSE );
+    }
+    server_leave_uninterrupted_section( &virtual_mutex, &sigset );
+    return status;
+}
+
+NTSTATUS ios_checkpoint_restore_stack( TEB *teb, const struct ios_checkpoint_stack *record,
+                                       const void *bytes, size_t length )
+{
+    struct ios_checkpoint_stack layout;
+    char *base;
+    sigset_t sigset;
+    if (!teb || !record || !bytes) return STATUS_INVALID_PARAMETER;
+    server_enter_uninterrupted_section( &virtual_mutex, &sigset );
+    NTSTATUS status = checkpoint_stack_layout( teb, &layout, &base );
+    if (!status)
+    {
+        layout.guaranteed = record->guaranteed;
+        if (memcmp( &layout, record, sizeof(layout) ) ||
+            length != layout.top - layout.allocation - layout.guard_size) status = STATUS_INVALID_PARAMETER;
+        else if (!(status = checkpoint_stack_bytes( base, layout.guard_size, length, (void *)bytes, TRUE )))
+            get_wow_teb( teb )->GuaranteedStackBytes = record->guaranteed;
+    }
+    server_leave_uninterrupted_section( &virtual_mutex, &sigset );
+    return status;
+}
 
 static const WCHAR shared_data_nameW[] = {'\\','K','e','r','n','e','l','O','b','j','e','c','t','s',
                                           '\\','_','_','w','i','n','e','_','u','s','e','r','_','s','h','a','r','e','d','_','d','a','t','a',0};

@@ -2638,7 +2638,8 @@ struct ContentView: View {
         // Repair saved installer routes before recommendation/JIT checks.
         SteamClient.normalizeLaunch(&entry)
         let isNew = !library.entries.contains { $0.id == entry.id }
-        if GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }
+        if entry.id != RuntimeCheckpointProbe.id,
+           GameRecommendations.prepare(&entry, new: isNew && !SteamClient.owns(entry)) { library.save(entry) }
         SteamClient.normalizeLaunch(&entry)
         // A resumed/retried game request must pass the same component and
         // interactive-client route as the initial library button.
@@ -2728,6 +2729,7 @@ struct ContentView: View {
         }
         do {
             try SteamClient.prepare(entry)
+            if entry.id == RuntimeCheckpointProbe.id { try RuntimeCheckpointProbe.prepare() }
             if entry.desktop != true { _ = try LibraryModel.executable(entry.launchRelativePath) }
             try entry.validate()
         }
@@ -2760,7 +2762,7 @@ struct ContentView: View {
            var game = library.entries.first(where: { $0.steamAppID == appID }) {
             game.lastPlayed = Date(); library.save(game)
         }
-        library.begin(entry, remember: entry.steamClientAppID == nil)
+        library.begin(entry, remember: entry.steamClientAppID == nil && entry.id != RuntimeCheckpointProbe.id)
         if SteamClient.owns(entry), steamPreparation.sessionStarted(entry.id) { DeckSteamNativeFrames.begin() }
         runWineFullSequence(profile: entry)
     }

@@ -1,6 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Create local runtime snapshot": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "创建本地运行快照"}}}},
+    "Unavailable in this build": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "当前版本暂不可用"}}}},
+    "Run runtime snapshot test": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "运行快照测试"}}}},
+    "Runtime snapshot test": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "运行快照测试"}}}},
+    "The bundled runtime snapshot test is missing or damaged.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "内置的快照测试程序缺失或损坏。"}}}},
+    "The runtime snapshot test folder must stay inside Madeira's drive_c.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "快照测试程序的文件夹必须位于 Madeira 的 drive_c 内。"}}}},
     "CEF dual code segments (experimental)": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "CEF 双段代码缓存（实验性）"}}}},
     "The dual code segments setting could not be saved.": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "无法保存 CEF 双段代码缓存设置。"}}}},
     "CEF retired cache migration (experimental)": {"extractionState": "manual", "localizations": {"zh-Hans": {"stringUnit": {"state": "translated", "value": "CEF 旧缓存主动迁移（实验性）"}}}},

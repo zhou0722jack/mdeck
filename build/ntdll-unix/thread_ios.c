@@ -80,6 +80,7 @@ volatile long long ios_affinity_sets;   /* ml1117 */
 #include "wine/debug.h"
 #include "unix_private.h"
 #include "ios_wow.h"
+#include "checkpoint_stack.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(thread);
 WINE_DECLARE_DEBUG_CHANNEL(seh);
@@ -1800,7 +1801,7 @@ NTSTATUS init_thread_stack( TEB *teb, ULONG_PTR limit, SIZE_T reserve_size, SIZE
         if (!limit && ios_wow_base()) limit = limit_2g - 1;
 #endif
         ios_its_step = "WoW64 32-bit stack";
-        if ((status = virtual_alloc_thread_stack( &stack, 0, limit, reserve_size, commit_size, TRUE )))
+        if ((status = ios_allocate_guest_stack( &stack, limit, reserve_size, commit_size )))
             return status;
         wow_teb->Tib.StackBase = ios_wow_guest_addr( stack.StackBase );
         wow_teb->Tib.StackLimit = ios_wow_guest_addr( stack.StackLimit );

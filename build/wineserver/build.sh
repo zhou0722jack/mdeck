@@ -63,20 +63,21 @@ PATCHED_FILES=(
     # ml805: event/handle carry the [evt-hist] instrumentation. Both MUST be
     # listed here -- they are otherwise linked from a prebuilt object and the
     # source edits would be dead code, the same trap as the unix/*.c forks.
-    "event:$WINE_SRC/server/event.c:event.o"
+    "event:$BUILD_DIR/event_ios.c:event.o"
     # Fastsync's semaphore half (madeira_semaphore_cell_index and friends in
     # server/semaphore.c) is referenced by inproc_sync.c and thread.c, so it is
     # compiled from the submodule and swapped in as well.
     "semaphore:$WINE_SRC/server/semaphore.c:semaphore.o"
-    "handle:$WINE_SRC/server/handle.c:handle.o"
+    "handle:$BUILD_DIR/handle_ios.c:handle.o"
     # ml575: async.c carries the free_async_queue UAF fix.
     "async:$WINE_SRC/server/async.c:async.o"
-    "process_ios:$WINE_SRC/server/process.c:process.o"
+    "process_ios:$BUILD_DIR/process_ios.c:process.o"
     # Files needing rebuild only because the -Dws_* renames must apply
     # to both definers and callers — fixes 10 symbol collisions with win32u.
     "window:$BUILD_DIR/window_ios.c:window.o"
     "user:$WINE_SRC/server/user.c:user.o"
     "mapping:$BUILD_DIR/mapping_ios.c:mapping.o"
+    "checkpoint_section:checkpoint_section.c:checkpoint_section.o"
     # Madeira: GC64 LuaJIT substitution, called from mapping_ios.c (both lists).
     "luajit_compat:$BUILD_DIR/luajit_compat.c:luajit_compat.o"
     "class:$WINE_SRC/server/class.c:class.o"
@@ -87,7 +88,7 @@ PATCHED_FILES=(
     "winstation:$WINE_SRC/server/winstation.c:winstation.o"
     # task#32 Steam: stop_thread Mach-based context capture (iOS signal
     # suspend is dead) lives in the submodule's thread.c
-    "thread:$WINE_SRC/server/thread.c:thread.o"
+    "thread:$BUILD_DIR/thread_ios.c:thread.o"
     # ml1058: in-process synchronisation. The archive's copy was compiled with no
     # ntsync header, i.e. as the all-stubs variant; build the real one against the
     # userspace driver in build/madsync.
@@ -190,6 +191,7 @@ REPLACEMENTS=(
     "region.o:region.o"
     "queue.o:queue.o"
     "mapping.o:mapping.o"
+    "checkpoint_section.o:checkpoint_section.o"
     "luajit_compat.o:luajit_compat.o"
     "winstation.o:winstation.o"
     "thread.o:thread.o"

@@ -16,6 +16,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = json.loads((ROOT / 'tools/build/runtime-components.json').read_text())
 MANIFEST = 'runtime-build.json'
+CHECKPOINT_PROBES = ('BundledInstallers/hibernate-probe.exe', 'BundledInstallers/hibernate-worker.exe')
 
 
 def digest(data):
@@ -83,7 +84,7 @@ def check_binary(path, data):
             expected = {0x8664}
         elif path.startswith('vulkan/'):
             expected = {0xa641, 0x8664}
-        elif path.startswith('i386-windows/'):
+        elif path.startswith('i386-windows/') or path in CHECKPOINT_PROBES:
             expected = {0x14c}
         if path.endswith('/dockhost.exe'):
             expected = {0x8664}
@@ -273,6 +274,8 @@ def validate_ipa(ipa, sdk):
                      'x86_64-vcruntime/vcruntime140.dll', 'i386-windows/ntdll.dll']:
             if not archive.read(prefix + path):
                 raise ValueError(f'empty app resource: {path}')
+        for path in CHECKPOINT_PROBES:
+            check_binary(path, archive.read(prefix + path))
         if archive.testzip():
             raise ValueError('corrupt IPA archive')
     print(f'Validated complete IPA: {ipa}')

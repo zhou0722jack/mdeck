@@ -229,3 +229,5 @@ __pycache__/
 # Exact-source GitHub Actions host-check pass receipts
 .ci-checks/
 app/Madeira/BundledInstallers/SteamBootstrap.exe
+app/Madeira/BundledInstallers/hibernate-probe.exe
+app/Madeira/BundledInstallers/hibernate-worker.exe

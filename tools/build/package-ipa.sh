@@ -61,6 +61,8 @@ bundle_required=(
   "$APP/prefix-template.tar.gz"
   "$APP/arm64ec-windows/xtajit64.dll"
   "$APP/x86_64-vcruntime/vcruntime140.dll"
+  "$APP/BundledInstallers/hibernate-probe.exe"
+  "$APP/BundledInstallers/hibernate-worker.exe"
   "$APP/fonts-zh/NotoSansSC-Regular.otf"
   "$APP/fonts-zh/LICENSE-NotoSansSC-OFL-1.1.txt"
   "$APP/fonts-zh/NOTICE.txt"
@@ -68,6 +70,12 @@ bundle_required=(
 )
 for path in "${bundle_required[@]}"; do
   [[ -e "$path" ]] || { echo "ERROR: required bundle resource missing: $path" >&2; exit 1; }
+done
+for program in hibernate-probe.exe hibernate-worker.exe; do
+  cmp -s "$ROOT/app/Madeira/BundledInstallers/$program" "$APP/BundledInstallers/$program" || {
+    echo "ERROR: bundled snapshot test differs from the build: $program" >&2
+    exit 1
+  }
 done
 for resource in NotoSansSC-Regular.otf LICENSE-NotoSansSC-OFL-1.1.txt NOTICE.txt source.json; do
   cmp -s "$ROOT/app/Madeira/fonts-zh/$resource" "$APP/fonts-zh/$resource" || {
