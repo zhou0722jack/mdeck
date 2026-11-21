@@ -233,7 +233,16 @@ int main(int argc, char** argv) {
         mod = (src / f'Source/Windows/{path}/Module.cpp').read_text()
         assert mod.index('MDeckSegments::Configure(') < mod.index('MDeckPrevious::Configure(') < mod.index('CTX->InitCore();')
         assert 'CEF && Compatible' in mod and 'CEF && !Segments' in mod
+        if path == 'WOW64':
+            startup = method(mod, 'void BTCpuProcessInit()')
+            assert 'Segments ? getenv("MADEIRA_FEX_DUAL_OWNER_MIGRATION") : nullptr' in startup
+            assert startup.index('IosWowOwnerMigrationEnabled =') < startup.index('CTX->InitCore();')
+            attempt = method(mod, 'static void IosWowTryOwnerMigration(')
+            assert attempt.index('if (IosWowOwnerMigrationEnabled &&') < attempt.index('IosWowMigrateRetiredDualSegment(')
+        else:
+            assert 'MADEIRA_FEX_DUAL_OWNER_MIGRATION' not in mod
     bridge = (root / 'app/Madeira/WineProcessBridge.m').read_text()
     assert bridge.index('unsetenv("MADEIRA_FEX_DUAL_CODE_SEGMENTS")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
+    assert bridge.index('unsetenv("MADEIRA_FEX_DUAL_OWNER_MIGRATION")') < bridge.index('setenv(k.UTF8String, v.UTF8String, 1);')
     print('PASS dual-segment policy, size/range/budget, pin and reuse lifetime, plus patch integration contracts')
     print('UNRUN by this fixture: PE compilation, emitted ARM64 execution, and concurrent device invalidation/exception behavior')

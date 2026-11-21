@@ -66,12 +66,13 @@ enum SteamPreviousCodeSettings {
 
 enum SteamDualCodeSegmentsSettings {
     static let key = "env.MADEIRA_FEX_DUAL_CODE_SEGMENTS"
+    static let ownerMigrationKey = "env.MADEIRA_FEX_DUAL_OWNER_MIGRATION"
 
-    static func enabled(global: [String: String], profile: String) -> Bool {
+    static func enabled(global: [String: String], profile: String, key: String = key) -> Bool {
         global.merging(MadeiraConfig.parse(profile)) { _, own in own }[key] == "1"
     }
 
-    static func text(_ previous: String, enabled: Bool) -> String {
+    static func text(_ previous: String, enabled: Bool, key: String = key) -> String {
         var lines = previous.components(separatedBy: .newlines).filter { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             guard !trimmed.hasPrefix("#"), let equals = trimmed.firstIndex(of: "=") else { return true }

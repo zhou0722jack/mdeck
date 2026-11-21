@@ -5050,6 +5050,22 @@ struct LibraryDetail: View {
                 }))
                 .disabled(model.current != nil || model.startingScreen)
                 .accessibilityIdentifier("steam-dual-code-segments")
+                Toggle("CEF retired cache migration (experimental)", isOn: Binding(get: {
+                    SteamDualCodeSegmentsSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText,
+                                                          key: SteamDualCodeSegmentsSettings.ownerMigrationKey)
+                }, set: { enabled in
+                    let file = GameProfile(windowsPath: entry.windowsPath)
+                    let text = SteamDualCodeSegmentsSettings.text(file.text, enabled: enabled,
+                                                                key: SteamDualCodeSegmentsSettings.ownerMigrationKey)
+                    file.text = text
+                    guard file.text == text else {
+                        error = L("The retired cache migration setting could not be saved."); return
+                    }
+                    reloadBCD()
+                }))
+                .disabled(model.current != nil || model.startingScreen ||
+                          !SteamDualCodeSegmentsSettings.enabled(global: MadeiraConfig.all(), profile: bcd.configText))
+                .accessibilityIdentifier("steam-dual-owner-migration")
             }
             Section("Diagnostics") {
                 Toggle("Compilation reason logging", isOn: Binding(get: {

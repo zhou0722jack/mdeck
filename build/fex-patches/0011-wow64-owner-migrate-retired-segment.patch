@@ -1,0 +1,147 @@
+diff --git a/FEXCore/Source/Interface/Core/CPUBackend.cpp b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+--- a/FEXCore/Source/Interface/Core/CPUBackend.cpp
++++ b/FEXCore/Source/Interface/Core/CPUBackend.cpp
+@@ -629,4 +629,10 @@
+       if (!KeepAlive || KeepAlive == LatestBuf) {
+         return 0;
+       }
++#if defined(_WIN32)
++      // The sweeper can have taken its snapshot before a WoW64 owner moved.
++      if (MDeckSegments::Enabled() && LatestBuf->MDeckReasonGeneration < KeepAlive->MDeckReasonGeneration) {
++        return 0;
++      }
++#endif
+       auto lk = KeepAlive->LookupCache->AcquireWriteLock();
+@@ -1197,3 +1203,50 @@
+ 
+ #if defined(FEX_IOS_HOST) && defined(_WIN32)
++#if !defined(ARCHITECTURE_arm64ec)
++  extern "C" void IosWowMigrateRetiredDualSegment(FEXCore::Core::InternalThreadState* Thread, uint64_t& CheckedEpoch,
++                                                volatile uint8_t& Migrated, const char* SafePoint) {
++    const auto Epoch = IosCodeBufferGeneration();
++    if (CheckedEpoch == Epoch) {
++      return;
++    }
++    const auto Budget = MDeckSegments::ReadBudgetOwner();
++    auto& Backend = *Thread->CPUBackend;
++    auto& Manager = Backend.GetCodeBufferManager();
++    if (!Budget.Generation || Budget.Manager != Manager.MDeckReasonOwner) {
++      CheckedEpoch = Epoch;
++      return;
++    }
++    // WoW64 obtains the TEB from iOS thread-specific storage after a context switch.
++    const auto Scope = FEXCore::Utils::WritePriorityMutex::IosGetReuseScopeState(FEXCore::CompileReason::mdeck_steam_probe_teb());
++    if (!Scope.Valid || Scope.SharedDepth || Scope.BufferWriter || Scope.Unpublished) {
++      return;
++    }
++    unsigned SignalRefs = 0;
++    const int Current = Backend.IosTryCountSegmentReferences(Budget.Generation, SignalRefs);
++    if (Current <= 0) {
++      if (Current == 0) CheckedEpoch = Epoch;
++      return;
++    }
++    if (SignalRefs || Thread->CurrentFrame->SignalHandlerRefCounter) {
++      return;
++    }
++    const auto Latest = Manager.GetLatest();
++    // Appending a second segment leaves the primary generation active.
++    if (Latest->MDeckReasonGeneration <= Budget.PrimaryGeneration) {
++      CheckedEpoch = Epoch;
++      return;
++    }
++    std::shared_lock Invalidation {Thread->CTX->GetCodeInvalidationMutex(), std::try_to_lock};
++    if (!Invalidation.owns_lock() || Backend.IosRemoteMigrateStale(Latest) != 1) {
++      return;
++    }
++    Migrated = 1;
++    Invalidation.unlock();
++    CheckedEpoch = Epoch;
++    LogMan::Msg::IFmt("[fex-segment-budget] event=owner-migrated pid={:04x} tid={:04x} owner={} generation={} "
++                     "latest_generation={} safe_point={}", Budget.PID, ::GetCurrentThreadId(), Budget.Manager,
++                     Budget.Generation, Latest->MDeckReasonGeneration, SafePoint);
++  }
++#endif
++
+   int CPUBackend::IosTryCountSegmentReferences(uint64_t Generation, unsigned& Signals) const {
+diff --git a/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h b/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
+--- a/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
++++ b/FEXCore/include/FEXCore/Utils/WritePriorityMutex.h
+@@ -827,11 +827,11 @@
+ // A normal synchronous CompileBlock owns ONE WPM shared hold here. Testing
+ // IosEmissionLocksHeldBySelf() at this point mistakes our own read for delivery.
+ struct IosReuseScopeState { uint32_t SharedDepth; bool BufferWriter, Unpublished, Valid; };
+-static inline IosReuseScopeState IosGetReuseScopeState() {
++static inline IosReuseScopeState IosGetReuseScopeState([[maybe_unused]] uint64_t Teb = 0) {
+ #if defined(_WIN32) && defined(ARCHITECTURE_arm64)
+-  const uint64_t Teb = IosDeliveryProbeTeb();
++  if (!Teb) Teb = IosDeliveryProbeTeb();
+   if (Teb) return {*reinterpret_cast<const uint32_t*>(Teb + 0x16f0),
+                   *reinterpret_cast<const uint64_t*>(Teb + 0x16e8) != 0,
+                   *reinterpret_cast<const uint64_t*>(Teb + 0x16d0) != 0, true};
+ #endif
+   return {0, false, false, false}; // unknown context fails closed
+diff --git a/Source/Windows/WOW64/Module.cpp b/Source/Windows/WOW64/Module.cpp
+--- a/Source/Windows/WOW64/Module.cpp
++++ b/Source/Windows/WOW64/Module.cpp
+@@ -289,4 +289,5 @@
+   bool IosSyscallArmed {};
+   bool IosSweepRegistered {};
+   uint32_t IosSyscallDepth {};
++  uint64_t IosCheckedSegmentEpoch {};
+ };
+@@ -434,5 +435,7 @@
+ extern "C" void IosSweepUnregisterThread(FEXCore::Core::InternalThreadState* Thread);
+ extern "C" uint64_t IosCodeBufferSweepGate;
++extern "C" void IosWowMigrateRetiredDualSegment(FEXCore::Core::InternalThreadState* Thread, uint64_t& CheckedEpoch,
++                                                volatile uint8_t& Migrated, const char* SafePoint);
+ 
+ static bool IosWowSweepEnabled() {
+   static std::atomic<int8_t> Cached {-1};
+@@ -449,5 +452,16 @@
++static bool IosWowOwnerMigrationEnabled {};
++
++static void IosWowTryOwnerMigration(FEXCore::Core::InternalThreadState* Thread, FrontendThreadData* TD, const char* SafePoint) {
++  // The return bridge can discard the outgoing syscall block only when armed.
++  // As long as InSim remains set, the sweeper leaves this owner to us.
++  if (IosWowOwnerMigrationEnabled && TD->IosSyscallArmed && TD->IosInSim && !TD->IosMigrated) {
++    IosWowMigrateRetiredDualSegment(Thread, TD->IosCheckedSegmentEpoch, TD->IosMigrated, SafePoint);
++  }
++}
++
+ // Leaving emitted code for a blocking call: the sweeper may now move this thread.
+-static void IosWowPark(FrontendThreadData* TD) {
++static void IosWowPark(FEXCore::Core::InternalThreadState* Thread, FrontendThreadData* TD) {
+   if (TD && TD->IosSyscallArmed) {
++    IosWowTryOwnerMigration(Thread, TD, "before-wait");
+     __atomic_store_n(&TD->IosInSim, 0, __ATOMIC_RELEASE);
+   }
+@@ -898,4 +912,4 @@
+ #ifdef FEX_IOS_HOST
+       auto* TD = GetFrontendThreadData(TLS.ThreadState());
+-      IosWowPark(TD); // ml1430
++      IosWowPark(TLS.ThreadState(), TD); // ml1430
+ #endif
+@@ -919,4 +933,4 @@
+ #ifdef FEX_IOS_HOST
+       auto* TD = GetFrontendThreadData(TLS.ThreadState());
+-      IosWowPark(TD); // ml1430
++      IosWowPark(TLS.ThreadState(), TD); // ml1430
+ #endif
+@@ -1052,5 +1066,6 @@
+   }
+ 
+   Obj->HandleSyscall(Frame, Args);
++  IosWowTryOwnerMigration(Frame->Thread, TD, "after-syscall");
+ 
+   TD->IosSyscallArmed = PrevArmed;
+@@ -1326,6 +1341,8 @@
+     const bool Segments = FEXCore::MDeckSegments::Configure(getenv("MADEIRA_FEX_DUAL_CODE_SEGMENTS"), CEF && Compatible,
+         getenv("WINE_IOS_JIT_RX"), getenv("WINE_IOS_JIT_SIZE"), getenv("WINE_IOS_JIT_RW"), getenv("WINE_IOS_JIT_TAIL_REGION"));
+-    LogMan::Msg::IFmt("[fex-segments] path=wow64 mode={} target={} compatible={} extra-budget-mib=128",
+-        Segments ? "dual" : "off", CEF ? "cef" : "other", Compatible);
++    const char* OwnerMigration = Segments ? getenv("MADEIRA_FEX_DUAL_OWNER_MIGRATION") : nullptr;
++    IosWowOwnerMigrationEnabled = OwnerMigration && OwnerMigration[0] == '1' && OwnerMigration[1] == '\0' && IosWowSweepEnabled();
++    LogMan::Msg::IFmt("[fex-segments] path=wow64 mode={} target={} compatible={} extra-budget-mib=128 owner-migration={}",
++        Segments ? "dual" : "off", CEF ? "cef" : "other", Compatible, IosWowOwnerMigrationEnabled ? "on" : "off");
+     LogMan::Msg::IFmt("[fex-prev] path=wow64 mode={} target={} previous-budget-mib=128",
+         FEXCore::MDeckPrevious::Configure(getenv("MADEIRA_FEX_PREVIOUS_CODE"), CEF && !Segments) ? "on" : "off", CEF ? "cef" : "other");

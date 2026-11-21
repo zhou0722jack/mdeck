@@ -2,6 +2,8 @@
 
 在 **Steam 设置 → 高级 → 性能** 中打开 **CEF 双段代码缓存（实验性）**，下次启动 Steam 生效。开关读写原有的 `env.MADEIRA_FEX_DUAL_CODE_SEGMENTS` 配置，手动设置的值也会反映在界面上。默认关闭，仅针对识别出的 `steamwebhelper.exe`（WoW64 或 ARM64EC），独立于编译原因日志。关闭并重启可回退；若同时启用 PreviousCode，双段模式实际启用时优先，不运行旧代迁移。未能验证 JIT 池区间、启用了代码缓存序列化/校验或全局 JIT 命名时，不启用双段。
 
+同页的 **CEF 旧缓存主动迁移（实验性）** 默认关闭，保存到 `env.MADEIRA_FEX_DUAL_OWNER_MIGRATION`，下次启动 Steam 生效。WoW64 CEF 实际启用双段模式且允许系统调用停驻时，仍占用旧缓存组的线程可以在安全的系统调用边界上切换到新组。最后一个引用释放后，128 MiB 追加额度可以再次使用。
+
 ## 分配、查找和回退
 
 - 保持原 `CodeBuffer` 为逻辑所有者，仍只有一张 L3 和一份反向 guest 页索引。主段初始容量和增长规则不变，第二段不预分配。主段装不下当前翻译时，普通 emitter writer 才能尝试经既有 EC_CODE 分配器申请一次 128 MiB。沿用池余量约束，不改 A/B、C 的边界或 headroom，不减半重试，不接受池外地址。第二段预留同样的不可发射尾页；iOS 池 carve 的 OS 保护页仍是尽力设置，不作为安全边界。
@@ -16,6 +18,7 @@
 ## 验证与日志
 
 - `[fex-segments] mode=dual` 表示本模块启用，并不表示已分配；`append=added` 才表示第二段已接入。`extra-budget`、`alloc-failed`、`too-large`、`second-full` 分别表明相应回退。追加尝试日志有条数上限。
+- WoW64 的启动日志用 `owner-migration=on` 或 `off` 显示开关状态。`event=owner-migrated` 表示某个线程已在系统调用边界切换，`event=released` 表示旧组的追加额度已归还。
 - `[fex-segments] append=extra-budget` 的 `request_*` 是尝试追加的新组，`budget_*` 指当时可读到的额度持有者。用 PID、manager owner、第二段 generation 关联 `[fex-segment-budget] event=reference-snapshot` 和 `event=released`。若分配或释放时序使额度持有者不可读，`budget_generation=0`。
 - `reference-snapshot` 在现有换代扫描中记录匹配该组的线程当前引用 `current_refs`、异常保留引用 `signal_refs` 和持有异常引用的线程数 `signal_threads`。`busy` 是未取得线程迁移锁的数量，另列扫描的 `in_sim`、`sig_pin` 等全组迁移结果。各线程逐个采集，范围限已登记线程和调用者，临时编译引用及管理器引用不在两项计数中。`released` 在映射释放调用返回、额度归还后输出。双段模式启用时自动记录。
 - `event=reference-holder` 只列出扫描后确认仍引用退役组的线程，记录 Windows `tid`、该线程在本轮的 `in_sim` 和 `scan_result`。例如 `in-sim` 是扫描时仍在执行翻译代码，`signal-pinned` 是迁移检查发现异常上下文仍在使用，`raced` 是迁移检查期间状态已变动。`caller` 表示当前扫描发起者，原扫描跳过自身，因此 `in_sim=-1`。按 `pid`、`owner`、`generation`、`sweep_gen` 和 `retry_left` 与汇总关联。每次快照最多输出 8 个持有者，`holders_omitted` 列出仍有多少已确认持有者未单独打印。无法取得迁移锁的线程仍计入 `busy`。

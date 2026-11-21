@@ -1893,6 +1893,7 @@ static void *wine_process_thread(void *arg) {
                 unsetenv("MADEIRA_FEX_DFE_REUSE"); /* absent means enabled; do not retain a prior session override */
                 unsetenv("MADEIRA_FEX_PREVIOUS_CODE"); /* opt-in must not leak across sessions */
                 unsetenv("MADEIRA_FEX_DUAL_CODE_SEGMENTS");
+                unsetenv("MADEIRA_FEX_DUAL_OWNER_MIGRATION");
                 /* ml1095: "env.NAME = value" lines of madeira.cfg; the legacy
                  * madeira-env.txt (KEY=VALUE lines) only when madeira.cfg is absent. */
                 NSString *text = nil;

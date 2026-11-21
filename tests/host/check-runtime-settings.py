@@ -242,6 +242,16 @@ for profile in [dualOn, dualOff] {
     expect(SteamPreviousCodeSettings.enabled(global: [:], profile: profile)
            && !SteamCompileReasonSettings.enabled(global: [:], profile: profile), "dual segment toggle leaves previous reuse and diagnostics settings unchanged")
 }
+let ownerKey = SteamDualCodeSegmentsSettings.ownerMigrationKey
+expect(!SteamDualCodeSegmentsSettings.enabled(global: [:], profile: dualOn, key: ownerKey), "dual segments alone leave owner migration off")
+let ownerOn = SteamDualCodeSegmentsSettings.text(dualOn, enabled: true, key: ownerKey)
+let ownerOff = SteamDualCodeSegmentsSettings.text(ownerOn, enabled: false, key: ownerKey)
+expect(SteamDualCodeSegmentsSettings.enabled(global: [:], profile: ownerOn, key: ownerKey)
+       && SteamDualCodeSegmentsSettings.enabled(global: [:], profile: ownerOff)
+       && !SteamDualCodeSegmentsSettings.enabled(global: [ownerKey:"1"], profile: ownerOff, key: ownerKey),
+       "owner migration saves independently and profile off overrides global on")
+expect(SteamDualCodeSegmentsSettings.text(ownerOn, enabled: true, key: ownerKey) == ownerOn,
+       "owner migration writes are idempotent")
 expect(!SteamCacheLookupSettings.enabled(global: [:], profile: ""), "cache indexing experiment defaults off")
 let lookupOn = SteamCacheLookupSettings.text("# preserve\npool=1152\nenv.MADEIRA_FEX_L1_HASH=0\nenv.MADEIRA_FEX_L1_HASH=1\n", enabled: true)
 expect(SteamCacheLookupSettings.enabled(global: [:], profile: lookupOn)
