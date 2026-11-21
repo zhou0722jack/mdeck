@@ -454,7 +454,7 @@ with tempfile.TemporaryDirectory(prefix='mdeck-reasons-') as tmp:
     for p in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(source),'apply','--check',str(p)],check=True)
         subprocess.run(['git','-C',str(source),'apply',str(p)],check=True)
-    for p in sorted(patches.glob('*.patch')):subprocess.run(['git','-C',str(source),'apply','--reverse','--check',str(p)],check=True)
+        subprocess.run(['git','-C',str(source),'apply','--reverse','--check',str(p)],check=True)
     core_text=(source/'FEXCore/Source/Interface/Core/Core.cpp').read_text()
     assert 'Reason->Instruction(InstAddress, DecodedInfo->InstBytes, DecodedInfo->InstSize)' in core_text
     assert 'Reason->Block(Block.Entry)' in core_text and 'Reason && HasCustomIR' in core_text

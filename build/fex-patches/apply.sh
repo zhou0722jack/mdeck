@@ -16,6 +16,24 @@ shopt -s nullglob
 patches=("$R"/build/fex-patches/*.patch)
 # Nothing to do without patches (and bash 3.2 under set -u rejects "${patches[@]}" when empty).
 [ ${#patches[@]} -gt 0 ] || exit 0
+
+stack_already_applied() (
+    # A later patch can change an earlier patch's context. Check the complete
+    # stack in reverse order on copies of its files before touching the checkout.
+    scratch="$(mktemp -d)" || return 1
+    trap 'rm -rf "$scratch"' EXIT
+    files="$(git -C "$F" apply --numstat "${patches[@]}")" || return 1
+    while IFS=$'\t' read -r added removed file; do
+        if [ -f "$F/$file" ]; then
+            mkdir -p "$scratch/$(dirname "$file")" || return 1
+            cp "$F/$file" "$scratch/$file" || return 1
+        fi
+    done <<< "$files"
+    for ((i = ${#patches[@]} - 1; i >= 0; i--)); do
+        git -C "$scratch" apply --reverse "${patches[$i]}" 2>/dev/null || return 1
+    done
+)
+
 if [ "${1:-}" = --revert ]; then
     for ((i = ${#patches[@]} - 1; i >= 0; i--)); do
         p="${patches[$i]}"
@@ -40,6 +58,9 @@ for p in "${patches[@]}"; do
     elif git -C "$F" apply --check "$p" 2>/dev/null; then
         git -C "$F" apply "$p"
         echo "fex-patches: applied $(basename "$p")"
+    elif stack_already_applied; then
+        echo "fex-patches: complete patch stack already applied"
+        exit 0
     else
         echo "fex-patches: $(basename "$p") does not apply on FEX $(git -C "$F" rev-parse --short HEAD)" >&2
         exit 1

@@ -205,9 +205,8 @@ with tempfile.TemporaryDirectory(prefix='mdeck-front-fast-') as tmp:
             before = {p: (source/p).read_text() for p in (ra_path,front_path,op_path)}
         subprocess.run(['git','-C',str(source),'apply','--check',str(patch)],check=True)
         subprocess.run(['git','-C',str(source),'apply',str(patch)],check=True)
-    assert before is not None
-    for patch in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(source),'apply','--reverse','--check',str(patch)],check=True)
+    assert before is not None
     after = {p: (source/p).read_text() for p in before}
     new_body = body(after[ra_path], 'bool ConstrainedRAPass::TryPostRAMerge(')
     # 0006 now owns both telemetry and the fast guard, avoiding overlapping

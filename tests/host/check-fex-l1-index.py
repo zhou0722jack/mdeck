@@ -244,7 +244,6 @@ with tempfile.TemporaryDirectory(prefix='mdeck-l1-') as tmp:
     for patch in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(work),'apply','--check',str(patch)],check=True)
         subprocess.run(['git','-C',str(work),'apply',str(patch)],check=True)
-    for patch in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(work),'apply','--reverse','--check',str(patch)],check=True)
     deps=work/'include/FEXCore/Utils';deps.mkdir(parents=True)
     for name in ['L1CacheIndex.h','L1CacheIndexEmitter.h']:

@@ -22,7 +22,6 @@ with tempfile.TemporaryDirectory(prefix='mdeck-previous-') as tmp:
         target.write_bytes(subprocess.check_output(['git','-C',str(root/'FEX'),'show','HEAD:'+name]))
     for p in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(source),'apply',str(p)],check=True)
-    for p in sorted(patches.glob('*.patch')):
         subprocess.run(['git','-C',str(source),'apply','--reverse','--check',str(p)],check=True)
     backend=(source/'FEXCore/Source/Interface/Core/CPUBackend.cpp').read_text()
     lookup=(source/'FEXCore/Source/Interface/Core/LookupCache.h').read_text()
