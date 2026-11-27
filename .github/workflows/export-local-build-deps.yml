@@ -1,0 +1,83 @@
+name: Export cached local build dependencies
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [codex/droiddeck-ui]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    if: github.head_ref == 'codex/steam-cef-4gib-build77'
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-macOS-ARM64-1b92281cde88d13cbd79-llvm-ios-15.0.7-5e473ec3b9a0d564c7c4852848b53a3e8dedbda82ea05a570d79cad7678c9832
+          fail-on-cache-miss: true
+          path: |
+            toolchains/llvm-ios-build/.madeira-cache.sha256
+            toolchains/llvm-ios-build/lib/*.a
+            toolchains/llvm-ios-build/include
+            toolchains/llvm-project/llvm/include
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-1b92281cde88d13cbd79-fex-ios-1dc6ed4932bd231df1c53dd7b8043ffdee0ac34a-e73c6e3245eb89b0ec88c5407f548d8b86b1f642584a24f0b9b3898da49a116c
+          fail-on-cache-miss: true
+          path: |
+            FEX/build-ios
+            !FEX/build-ios/**/*.o
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-1b92281cde88d13cbd79-wine-host-ddf92babc5ba71f4586cc4713f5a8eb39f63d39b-864060376fd9c7e19a94e13d8fe1a305dfac9bb92d1ef496c144fe9f5f29e2d6
+          fail-on-cache-miss: true
+          path: |
+            wine/build-macos
+            wine/build-arm64ec
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-5908aebde2a29862c48a-dxmt-ios-3d62913b75fb8b21ad6494f9d9f9853b19d9a014-ddf92babc5ba71f4586cc4713f5a8eb39f63d39b-58b09e112ad9c4d12147cc70182417bb15c98fa03424eb682f188d6be6103cff
+          fail-on-cache-miss: true
+          path: |
+            app/Madeira/libdxmt_combined.a
+            build/dxmt-ios/shader-headers
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-64500ca75ac094fb75d0-rppairing-01af911aa70f8bdeba80a8712f545437b2a5cc59da102748b5cae84f0ad293eb
+          fail-on-cache-miss: true
+          path: |
+            app/Madeira/libmadeira_rppairing.a
+            app/Madeira/legal/LICENSES-rppairing-crates.txt
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-1b92281cde88d13cbd79-gnutls-b3a30737a0fe22bed27b432e4946689c654067a447ffbbea64c7e6395815f165
+          fail-on-cache-miss: true
+          path: |
+            toolchains/gnutls-ios
+            build/gnutls-ios/obj/*.done
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-1b92281cde88d13cbd79-ffmpeg-63500d457560e42596ba0be3ac57aa3593a1d479f71829a518a56e012c3326e3
+          fail-on-cache-miss: true
+          path: |
+            toolchains/ffmpeg-ios
+            build/ffmpeg/obj
+      - uses: actions/cache/restore@v4
+        with:
+          key: plan19-1b92281cde88d13cbd79-freetype-804d9f554e1ec028f2845324ab7661cddf8942cd1d41207ca9e25887df7faeee
+          fail-on-cache-miss: true
+          path: |
+            build/freetype-ios/build
+            research/freetype
+      - name: Archive existing dependencies
+        run: |
+          tar -cf local-build-deps.tar toolchains/llvm-ios-build toolchains/llvm-project/llvm/include FEX/build-ios wine/build-macos wine/build-arm64ec app/Madeira/libdxmt_combined.a app/Madeira/libmadeira_rppairing.a app/Madeira/legal/LICENSES-rppairing-crates.txt toolchains/gnutls-ios toolchains/ffmpeg-ios build/freetype-ios/build research/freetype
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-build-dependencies
+          path: local-build-deps.tar
+          retention-days: 1
