@@ -1,0 +1,28 @@
+From: mdeck experimental CEF build
+Subject: [PATCH] Limit Windows x64 PartitionAlloc pools to 4 GiB
+
+Base: Chromium 126.0.6478.183
+Commit: 2e81dea53f5ecdc1c057e4c70ecd66151987296a
+
+Apply in the Chromium src directory. Rebuild both libcef and chrome_elf
+from this tree. All pool masks, allocation bitmaps and reservation offset
+tables continue to derive from kPoolMaxSize. The BRP forbidden zone stays
+in place. This patch requires separate Steam CEF ABI validation.
+
+diff --git a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_constants.h b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_constants.h
+--- a/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_constants.h
++++ b/base/allocator/partition_allocator/src/partition_alloc/partition_alloc_constants.h
+@@ -314,7 +314,12 @@ constexpr size_t kNumPools = kMaxPoolHandle - 1;
+ // When pointer compression is enabled, we cannot use large pools (at most
+ // 8GB for each of the glued pools).
+ #if PA_BUILDFLAG(HAS_64_BIT_POINTERS)
+-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || \
++#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_X86_64)
++// Experimental Windows x64 CEF build for a constrained host address space.
++// Keep the regular/BRP masks and metadata sizes derived from this limit.
++// Rebuild every component that embeds PartitionAlloc with the same headers.
++constexpr size_t kPoolMaxSize = 4 * kGiB;
++#elif BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS) || \
+     PA_BUILDFLAG(ENABLE_POINTER_COMPRESSION)
+ constexpr size_t kPoolMaxSize = 8 * kGiB;
+ #else

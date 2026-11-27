@@ -10,6 +10,7 @@
     "check-steam-autoinstall.py",
     "check-steam-client-routing.py",
     "check-steam-client64.py",
+    "check-steam-cef-patch.py",
     "check-steam-client32.py",
     "check-steam-signin-sync.py",
     "check-steam-catalog.py",

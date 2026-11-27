@@ -2717,6 +2717,21 @@ NTSTATUS WINAPI NtCreateUserProcess( HANDLE *process_handle_ptr, HANDLE *thread_
             machine = ios_cur_image_info()->Machine;
     }
 #ifdef WINE_IOS
+    /* Steam downloads CEF after NSIS exits. Prepare the actual installed pair
+     * here, before its first web helper can map either DLL. The app serializes
+     * concurrent starts and recovers interrupted replacements before return. */
+    {
+        extern int madeira_steam_cef_prepare(const char *unix_name) __attribute__((weak_import));
+        if (machine == IMAGE_FILE_MACHINE_AMD64 && unix_name && madeira_steam_cef_prepare &&
+            ios_image_name_is(params->ImagePathName.Buffer, params->ImagePathName.Length / sizeof(WCHAR),
+                              "steamwebhelper.exe") && madeira_steam_cef_prepare(unix_name) < 0)
+        {
+            status = STATUS_UNSUCCESSFUL;
+            goto done;
+        }
+    }
+#endif
+#ifdef WINE_IOS
     /* an aarch64 program is refused in an ARM64EC session (see ec_native_child_refuse) */
     {
         const char *ec_conhost = getenv( "MADEIRA_EC_CONHOST" );
